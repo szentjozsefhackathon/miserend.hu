@@ -111,7 +111,7 @@ class SimpleFunctionsTest extends TestCase {
                 
         $result = twig_hungarian_date_format($candidate, '');
 
-        $this->assertMatchesRegularExpression('/\(.*\d+\.\)$/', $result);
+        $this->assertMatchesRegularExpression('/\d{1,2}\.(,)?/u', $result);
     }
 
     public function testTwigHungarianDateFormatForDateInCurrentWeekIncludesTimeWhenRequested() {
@@ -135,7 +135,8 @@ class SimpleFunctionsTest extends TestCase {
 
         $result = twig_hungarian_date_format($candidate, 'H:i');
 
-        $this->assertMatchesRegularExpression('/\(.*\d+\.\) \d{2}:\d{2}$/', $result);
+        $this->assertMatchesRegularExpression('/\d{1,2}\.(,)?/u', $result);
+        $this->assertMatchesRegularExpression('/\s\d{2}:\d{2}$/', $result);
     }
 
     public function testTwigHungarianDateFormatForOlderDateUsesMonthDayAndWeekday() {
