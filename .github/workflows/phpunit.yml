@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run coverage (Docker)
-        run: bash scripts/docker-coverage.sh --log-junit tests/junit.xml --coverage-cobertura tests/coverage/cobertura.xml
+        run: bash scripts/docker-coverage.sh
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4

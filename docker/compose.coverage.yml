@@ -3,3 +3,6 @@ services:
     build:
       context: ..
       dockerfile: docker/miserend/Dockerfile.coverage
+    depends_on:
+      mysql:
+        condition: service_healthy

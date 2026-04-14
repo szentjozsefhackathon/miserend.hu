@@ -53,4 +53,4 @@ composer.phar
 # PHPUnit cache and coverage artifacts
 /webapp/tests/.phpunit*
 /webapp/tests/coverage/
-
+/webapp/tests/junit.xml
