@@ -1,0 +1,56 @@
+name: Playwright E2E Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start application services
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml up -d
+          
+      - name: Wait for application to be ready
+        run: |
+          timeout 120 bash -c 'until curl -f http://localhost:8000 > /dev/null 2>&1; do sleep 2; done'
+
+      - name: Run Playwright E2E tests
+        env:
+          E2E_ADMIN_USER: ${{ secrets.E2E_ADMIN_USER || 'admin' }}
+          E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS || 'miserend' }}
+          CI: true
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.e2e.yml run --rm playwright
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: e2e/test-results/
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml down -v

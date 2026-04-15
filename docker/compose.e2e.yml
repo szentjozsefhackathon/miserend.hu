@@ -1,0 +1,18 @@
+services:
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.59.1-jammy
+    working_dir: /work/e2e
+    volumes:
+      - ../e2e:/work/e2e
+      - ../webapp:/work/webapp
+    environment:
+      E2E_ADMIN_USER: ${E2E_ADMIN_USER:-admin}
+      E2E_ADMIN_PASS: ${E2E_ADMIN_PASS:-miserend}
+      CI: ${CI:-false}
+      PLAYWRIGHT_IN_DOCKER: "true"
+    networks:
+      - inner
+    depends_on:
+      miserend:
+        condition: service_started
+    command: sh -c "npm install && npx playwright test"
