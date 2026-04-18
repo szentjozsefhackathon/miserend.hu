@@ -1,4 +1,4 @@
-FROM ghcr.io/szentjozsefhackathon/miserend.hu:v2026.3.24
+FROM localhost/miserend.hu:latest
 
 USER root
 
