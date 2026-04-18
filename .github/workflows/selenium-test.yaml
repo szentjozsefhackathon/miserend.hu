@@ -4,9 +4,16 @@ on:
   pull_request:
   push:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to test"
+        required: true
+        default: "2026.4.18"
 
 env:
-  APP_IMAGE: localhost/miserend.hu:selenium-test
+  IMAGE_NAME: ghcr.io/borazslo/miserend.hu
+  IMAGE_TAG: ${{ inputs.image_tag || '2026.4.18' }}
+  LOCAL_IMAGE: localhost/miserend.hu:latest
 
 jobs:
   selenium-tests:
@@ -16,31 +23,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build app image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/miserend/Dockerfile.github
-          load: true
-          push: false
-          tags: ${{ env.APP_IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Create Docker Compose CI override
+      - name: Pull app image
         run: |
-          cat > docker/compose.selenium.yml <<'EOF'
-          services:
-            miserend:
-              image: localhost/miserend.hu:selenium-test
-          EOF
+          docker pull $IMAGE_NAME:$IMAGE_TAG
+
+      - name: Tag app image for compose
+        run: |
+          docker tag $IMAGE_NAME:$IMAGE_TAG $LOCAL_IMAGE
 
       - name: Start application stack
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.selenium.yml up -d
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml up -d
 
       - name: Wait for application
         run: |
@@ -67,9 +60,9 @@ jobs:
       - name: Show Docker logs on failure
         if: failure()
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.selenium.yml logs
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml logs
 
       - name: Stop application stack
         if: always()
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.selenium.yml down -v
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml down -v
