@@ -1,4 +1,15 @@
 services:
+  tmp-init:
+    image: busybox
+    volumes:
+      - tmp:/data
+    command: sh -c "chown -R 33:33 /data"
+    restart: "no"
+  data-init:
+    image: ghcr.io/szentjozsefhackathon/miserend-elasticsearch-data:2026.4.18
+    volumes:
+      - elasticsearch_data:/data
+    restart: "no"
   mysql:
     image: mariadb:12
     container_name: mysql
@@ -21,14 +32,11 @@ services:
       inner:
         aliases:
           - mysql
-  data-init:
-    image: ghcr.io/krisek/miserend-elasticsearch-data:2026.2.9
-    volumes:
-      - elasticsearch_data:/data
-    restart: "no"
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.10.1
     container_name: elasticsearch
+    entrypoint: ["/entrypoint-wrapper.sh"]
+    command: ["eswrapper"]
     environment:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
@@ -41,34 +49,28 @@ services:
     ports:
       - 9200:9200
       - 9300:9300
-    depends_on:
-      - data-init
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/entrypoint.sh:/entrypoint-wrapper.sh:ro
     networks:
       inner:
         aliases:
           - elasticsearch
-  tmp-init:
-    image: busybox
-    volumes:
-      - tmp:/data
-    command: sh -c "chown -R 33:33 /data"
-    restart: "no"
-
   miserend:
     container_name: miserend
-    image: ghcr.io/szentjozsefhackathon/miserend.hu:v2026.3.24
+    image: ghcr.io/szentjozsefhackathon/miserend.hu:2026.4.18
     volumes: 
        - tmp:/miserend/webapp/fajlok/tmp
+       - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
     ports:
       - 8000:8000
     user: "www-data"
     restart: "always"
     depends_on:
-      - mysql
-      - tmp-init
-      - elasticsearch    
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
     environment: 
       - MISEREND_WEBAPP_ENVIRONMENT=production
 

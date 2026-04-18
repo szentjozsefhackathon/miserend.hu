@@ -19,25 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # -------- NODE BUILDS --------
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Build legacy assets
-        run: |
-          cd webapp
-          npm ci
-
-      - name: Build calendar assets
-        run: |
-          cd calendar
-          npm ci
-          npm run build
-
       # -------- DOCKER BUILD --------
 
       - uses: docker/setup-buildx-action@v3
@@ -61,5 +42,21 @@ jobs:
           platforms: linux/amd64
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Build & push coverage image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/miserend/Dockerfile.coverage
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            BASE_TAG=${{ steps.tag.outputs.TAG }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-coverage:${{ steps.tag.outputs.TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-coverage:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max

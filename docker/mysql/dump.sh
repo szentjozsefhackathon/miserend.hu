@@ -23,7 +23,6 @@ ignore_tables=(
   emails
   remarks
   user
-  boundaries
   distances
   lookup_boundary_church
   lookup_church_osm

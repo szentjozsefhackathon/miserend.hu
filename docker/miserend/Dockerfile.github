@@ -1,10 +1,32 @@
-FROM ghcr.io/krisek/miserend.hu/php-base:8.2
+FROM node:18 AS legacy-assets
+
+WORKDIR /legacy
+
+COPY webapp/package*.json ./
+RUN npm ci
+
+FROM node:18 AS calendar-build
+
+WORKDIR /calendar
+
+COPY calendar/package*.json ./
+RUN npm ci
+
+COPY calendar/ .
+RUN npm run build
+
+FROM ghcr.io/szentjozsefhackathon/miserend.hu/php-base:8.2
 
 WORKDIR /miserend
 
 COPY docker/miserend/ docker/miserend/
 COPY webapp/ webapp/
-COPY calendar/dist/mcal calendar/dist/mcal
+
+COPY --from=legacy-assets /legacy/node_modules \
+    webapp/node_modules
+
+COPY --from=calendar-build /calendar/dist/mcal/browser \
+    calendar/dist/mcal/browser
 
 RUN python3 docker/miserend/calendar_deploy.py \
     calendar/dist/mcal/browser webapp \
@@ -23,7 +45,8 @@ RUN --mount=type=cache,target=/root/.composer \
 COPY webapp/ .
 
 COPY docker/miserend/php.ini /usr/local/etc/php/conf.d/php.ini
-COPY docker/miserend/apache.conf /etc/apache2/sites-available/miserend.conf
+COPY docker/miserend/apache/apache.conf /etc/apache2/sites-available/miserend.conf
+COPY docker/miserend/apache/ports.conf /etc/apache2/ports.conf
 
 RUN a2dissite 000-default && a2ensite miserend
 

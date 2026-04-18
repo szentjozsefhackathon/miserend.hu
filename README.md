@@ -34,13 +34,11 @@ Elsősorban __linux__ alapú fejlesztésre van minden optimalizálva, de nem leh
 ### tl;dr
 ```sh
 git clone https://github.com/borazslo/miserend.hu/
-npm --prefix miserend.hu/webapp ci
-docker pull ghcr.io/borazslo/miserend.hu:{{ version }}
-docker tag ghcr.io/borazslo/miserend.hu:{{ version }} localhost/miserend.hu:latest
+cd miserend.hu/webapp
+npm ci
+cd ..
 docker-compose  -f docker/compose.yml -f docker/compose.dev.yml up
 ```
-
-Ahol a `{{ version }}` helyére (kapcsoszárojeleket is elhagyva), azt a verziót konténer image verziót kell beírni, amelyikkel dolgozni szeretnél.
 
 ### Részletesebben
 
@@ -49,31 +47,16 @@ Ahol a `{{ version }}` helyére (kapcsoszárojeleket is elhagyva), azt a verzió
 git clone https://github.com/borazslo/miserend.hu/
 ```
 #### Telepítenünk kell a Javascript/CSS függőségeket
+
 ```
 cd miserend.hu/webapp
 npm ci
 ```
 
-#### Miserend docker image letöltése
-
-Természetesen magunk is felépíthetjük a helyi "miserend" docker conatinert, de sokkal gyorsabb és stabilabb, ha egy már kiadott release-t töltünk le és használunk. 
-
-A github oldalunkon található [tag-elt release-k](https://github.com/borazslo/miserend.hu/tags)  közül válogathatunk.
-
-Például:
-```
-docker pull ghcr.io/borazslo/miserend.hu:v2026.2.23
-```
-##### A letöltött image átnevezése
-A developer környezet a ```localhost/miserend.hu:latest``` image-t keresi, így az előbb letöltött változatnak adjunk egy megfelelő aliast. 
-
-Előbbi példát folytatva:
-```
-docker tag ghcr.io/borazslo/miserend.hu:v2026.2.23 localhost/miserend.hu:latest
-```
 ##### Kezdődjön a móka
 A docker compose valamennyi konténert szépen felépíti, bekonfigurálja, feltölti adatokkal, és elindítja:
 ```
+cd ..
 docker-compose  -f docker/compose.yml  -f docker/compose.dev.yml up
 ```
 
@@ -152,7 +135,6 @@ npm install
 
 ```sh
 ng build --configuration=localProd
-python ../docker/miserend/calendar_deploy.py
 npm run start:integrated
 ```
 
