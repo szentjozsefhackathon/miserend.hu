@@ -57,5 +57,6 @@ jobs:
             BASE_TAG=${{ steps.tag.outputs.TAG }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-coverage:${{ steps.tag.outputs.TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-coverage:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
