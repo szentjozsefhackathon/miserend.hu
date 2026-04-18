@@ -19,21 +19,26 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Determine image tag
+      - name: Determine ref and tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "REF=${{ github.ref }}" >> $GITHUB_OUTPUT
             echo "TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # Extract tag from the workflow_run event
-            TAG="${{ github.event.workflow_run.head_branch }}"
-            echo "TAG=$TAG" >> $GITHUB_OUTPUT
+            # Use the exact commit and tag from the workflow_run event
+            echo "REF=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            echo "TAG=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
           else
+            # Pull request or other events
+            echo "REF=${{ github.ref }}" >> $GITHUB_OUTPUT
             echo "TAG=latest" >> $GITHUB_OUTPUT
           fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.REF }}
 
       - name: Set up test directories
         run: |
