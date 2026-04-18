@@ -19,25 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # -------- NODE BUILDS --------
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Build legacy assets
-        run: |
-          cd webapp
-          npm ci
-
-      - name: Build calendar assets
-        run: |
-          cd calendar
-          npm ci
-          npm run build
-
       # -------- DOCKER BUILD --------
 
       - uses: docker/setup-buildx-action@v3
