@@ -2,29 +2,48 @@ name: PHPUnit
 
 on:
   pull_request:
-  push:
-    branches:
-      - master
-      - production
-      - develop
-
+  workflow_run:
+    workflows: ["🐳 Build & publish app image"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to publish (e.g. 2026.2.8, ci, test)"
+        required: true
+        default: latest
 jobs:
   phpunit:
     runs-on: ubuntu-latest
+    # Only run if workflow_run was successful or if triggered by other events
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run coverage (Docker)
-        run: bash scripts/docker-coverage.sh --log-junit tests/junit.xml --coverage-cobertura tests/coverage/cobertura.xml
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # Extract tag from the workflow_run event
+            TAG="${{ github.event.workflow_run.head_branch }}"
+            echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests with coverage
+        run: bash scripts/run-tests.sh --coverage --runtime docker --tag ${{ steps.tag.outputs.TAG }}
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: phpunit-coverage-html
-          path: webapp/tests/coverage/html
+          path: /tmp/tests/coverage/html
           if-no-files-found: error
 
       - name: Upload cobertura XML
@@ -32,14 +51,14 @@ jobs:
         if: always()
         with:
           name: phpunit-coverage-cobertura
-          path: webapp/tests/coverage/cobertura.xml
+          path: /tmp/tests/coverage/cobertura.xml
           if-no-files-found: error
 
       - name: Publish JUnit report
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-          report_paths: webapp/tests/junit.xml
+          report_paths: /tmp/tests/junit.xml
           fail_on_failure: false
           detailed_summary: true
           include_passed: false
