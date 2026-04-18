@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers --strict-config -p no:cacheprovider"
+markers = [
+  "smoke: critical smoke tests"
+]

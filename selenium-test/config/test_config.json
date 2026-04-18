@@ -1,0 +1,19 @@
+{
+  "default_environment": "local",
+  "browser": "chrome",
+  "timeout_seconds": 10,
+  "window": {
+    "width": 1366,
+    "height": 768
+  },
+  "environments": {
+    "local": {
+      "base_url": "http://localhost:8000/",
+      "headless": true
+    },
+    "miserend": {
+      "base_url": "https://miserend.hu/",
+      "headless": true
+    }
+  }
+}
