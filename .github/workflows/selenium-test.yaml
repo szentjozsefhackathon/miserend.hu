@@ -8,11 +8,11 @@ on:
       image_tag:
         description: "Docker image tag to test"
         required: true
-        default: "2026.4.18"
+        default: "latest"
 
 env:
   IMAGE_NAME: ghcr.io/szentjozsefhackathon/miserend.hu
-  IMAGE_TAG: ${{ inputs.image_tag || '2026.4.18' }}
+  IMAGE_TAG: ${{ inputs.image_tag || 'latest' }}
   LOCAL_IMAGE: localhost/miserend.hu:latest
 
 
