@@ -1,4 +1,4 @@
-hu89i#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "Waiting for Elasticsearch data initialization..."
