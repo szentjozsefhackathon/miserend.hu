@@ -2,7 +2,6 @@ name: Selenium E2E Tests
 
 on:
   pull_request:
-  push:
   workflow_dispatch:
     inputs:
       image_tag:
