@@ -43,6 +43,7 @@ jobs:
       - name: Set up test directories
         run: |
           mkdir -p "${{ github.workspace }}/test-results/coverage/html"
+          chmod -R 777 "${{ github.workspace }}/test-results" || true
 
       - name: Run PHPUnit tests
         run: |
