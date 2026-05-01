@@ -42,29 +42,77 @@ jobs:
 
       - name: Set up test directories
         run: |
-          mkdir -p /tmp/tests/coverage/html
-          chmod -R 777 /tmp/tests || true
+          mkdir -p "${{ github.workspace }}/test-results/coverage/html"
 
       - name: Run PHPUnit tests
         run: |
           docker run --rm \
             -v $(pwd)/webapp:/miserend/webapp \
             -v /miserend/webapp/vendor \
-            -v /tmp/tests:/miserend/webapp/fajlok/tmp/tests \
+            -v "${{ github.workspace }}/test-results:/miserend/test-results" \
             -w /miserend/webapp/tests \
             --entrypoint /miserend/webapp/vendor/bin/phpunit \
             ghcr.io/szentjozsefhackathon/miserend.hu-coverage:${{ steps.tag.outputs.TAG }} \
             -c phpunit.xml \
-            --coverage-html /miserend/webapp/fajlok/tmp/tests/coverage/html \
-            --log-junit /miserend/webapp/fajlok/tmp/tests/junit.xml \
-            --coverage-cobertura /miserend/webapp/fajlok/tmp/tests/coverage/cobertura.xml
+            --coverage-html /miserend/test-results/coverage/html \
+            --log-junit /miserend/test-results/unit-junit.xml \
+            --coverage-cobertura /miserend/test-results/coverage/cobertura.xml
+
+      - name: Start application stack
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml up -d
+
+      - name: Wait for application
+        run: |
+          timeout 120 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null; do sleep 2; done'
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: Verify browser tooling
+        run: |
+          command -v google-chrome || command -v chromium || command -v chromium-browser
+          command -v chromedriver
+
+      - name: Install functional test dependencies
+        working-directory: webapp
+        run: |
+          if grep -q '"symfony/panther"' composer.lock; then
+            composer install --no-interaction --prefer-dist
+          else
+            composer update --no-interaction --prefer-dist symfony/panther --with-all-dependencies
+          fi
+
+      - name: Run functional tests
+        working-directory: webapp/tests
+        env:
+          PANTHER_EXTERNAL_BASE_URI: http://127.0.0.1:8000
+          PANTHER_NO_SANDBOX: 1
+        run: |
+          export PANTHER_CHROME_BINARY="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          ../vendor/bin/phpunit \
+            -c phpunit.functional.xml \
+            --log-junit "${{ github.workspace }}/test-results/functional-junit.xml"
+
+      - name: Show Docker logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml logs
+
+      - name: Stop application stack
+        if: always()
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml down -v
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: phpunit-coverage-html
-          path: /tmp/tests/coverage/html
+          path: ${{ github.workspace }}/test-results/coverage/html
           if-no-files-found: error
 
       - name: Upload cobertura XML
@@ -72,17 +120,19 @@ jobs:
         if: always()
         with:
           name: phpunit-coverage-cobertura
-          path: /tmp/tests/coverage/cobertura.xml
+          path: ${{ github.workspace }}/test-results/coverage/cobertura.xml
           if-no-files-found: error
 
       - name: Publish JUnit report
         uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-          report_paths: /tmp/tests/junit.xml
+          report_paths: |
+            ${{ github.workspace }}/test-results/unit-junit.xml
+            ${{ github.workspace }}/test-results/functional-junit.xml
           fail_on_failure: false
           detailed_summary: true
           include_passed: false
           annotate_only: true
-          check_name: PHPUnit Test Results
-          job_name: PHPUnit
+          check_name: All Test Results
+          job_name: Tests

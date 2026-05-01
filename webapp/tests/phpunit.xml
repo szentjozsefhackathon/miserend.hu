@@ -6,6 +6,9 @@
          cacheDirectory=".phpunit.cache"
          stopOnFailure="false">
     <testsuites>
+        <testsuite name="smoke">
+            <directory>Smoke</directory>
+        </testsuite>
         <testsuite name="simple">
             <file>SimpleFunctionsTest.php</file>
             <file>UtilityFunctionsTest.php</file>
