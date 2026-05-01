@@ -80,7 +80,10 @@ jobs:
 
       - name: Install functional test dependencies
         working-directory: webapp
+        env:
+          COMPOSER_VENDOR_DIR: ${{ github.workspace }}/test-results/functional-vendor
         run: |
+          mkdir -p "${COMPOSER_VENDOR_DIR}"
           if grep -q '"symfony/panther"' composer.lock; then
             composer install --no-interaction --prefer-dist
           else
@@ -92,9 +95,10 @@ jobs:
         env:
           PANTHER_EXTERNAL_BASE_URI: http://127.0.0.1:8000
           PANTHER_NO_SANDBOX: 1
+          FUNCTIONAL_VENDOR_AUTOLOAD: ${{ github.workspace }}/test-results/functional-vendor/autoload.php
         run: |
           export PANTHER_CHROME_BINARY="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          ../vendor/bin/phpunit \
+          "${{ github.workspace }}/test-results/functional-vendor/bin/phpunit" \
             -c phpunit.functional.xml \
             --log-junit "${{ github.workspace }}/test-results/functional-junit.xml"
 
