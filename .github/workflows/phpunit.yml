@@ -105,19 +105,22 @@ jobs:
             -c phpunit.functional.xml \
             --log-junit "${{ github.workspace }}/test-results/functional-junit.xml"
 
+      - name: Inspect test result files
+        if: always()
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
+        run: |
+          echo "Host test-results files:"
+          find "${{ github.workspace }}/test-results" -maxdepth 3 -type f | sort || true
+          echo "Container test-results files:"
+          docker compose $COMPOSE_FILES exec -T miserend sh -lc 'find /miserend/test-results -maxdepth 3 -type f | sort' || true
+
       - name: Show Docker logs on failure
         if: failure()
         env:
           COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
             docker compose $COMPOSE_FILES logs
-
-      - name: Stop application stack
-        if: always()
-        env:
-          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
-        run: |
-            docker compose $COMPOSE_FILES down -v
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4
@@ -148,3 +151,10 @@ jobs:
           annotate_only: true
           check_name: All Test Results
           job_name: Tests
+
+      - name: Stop application stack
+        if: always()
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
+        run: |
+            docker compose $COMPOSE_FILES down -v
