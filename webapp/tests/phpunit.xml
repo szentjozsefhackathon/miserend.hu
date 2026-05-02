@@ -20,6 +20,9 @@
             <file>SimplerruleTest.php</file>
             <file>DSTSimplerruleTest.php</file>
         </testsuite>
+        <testsuite name="integration">
+            <file>UserTest.php</file>
+        </testsuite>
     </testsuites>
     <source>
         <include>
