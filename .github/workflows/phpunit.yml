@@ -12,6 +12,11 @@ on:
         description: "Image tag to publish (e.g. 2026.2.8, ci, test)"
         required: true
         default: latest
+
+env:
+  COMPOSE_FILES: -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml
+  TEST_RESULTS_PATH: ${{ github.workspace }}
+
 jobs:
   phpunit:
     runs-on: ubuntu-latest
@@ -46,14 +51,15 @@ jobs:
           chmod -R 777 "${{ github.workspace }}/test-results" || true
 
       - name: Start application stack
-        env:
-          TEST_RESULTS_PATH: ${{ github.workspace }}
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml up -d
+          docker compose $COMPOSE_FILES up -d
 
-      - name: Wait for services
+      - name: Wait for mysql health
         run: |
-          timeout 300 bash -c 'until docker compose exec -T mysql mariadb-admin ping -h localhost -u user -ppw > /dev/null 2>&1; do sleep 2; done'
+          timeout 300 bash -c 'until [ "$(docker compose $COMPOSE_FILES ps --format json mysql | jq -r ".[0].Health")" = "healthy" ]; do sleep 2; done'
+
+      - name: Wait for application
+        run: |
           timeout 300 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null; do sleep 2; done'
 
       - name: Run PHPUnit tests
