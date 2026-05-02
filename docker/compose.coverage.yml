@@ -1,8 +1,6 @@
 services:
   miserend:
-    build:
-      context: ..
-      dockerfile: docker/miserend/Dockerfile.coverage
+    image: ghcr.io/szentjozsefhackathon/miserend.hu-coverage:${COVERAGE_IMAGE_TAG:-latest}
     volumes:
       - ../webapp:/miserend/webapp
       - vendor_data:/miserend/webapp/vendor

@@ -51,16 +51,20 @@ jobs:
           chmod -R 777 "${{ github.workspace }}/test-results" || true
 
       - name: Start application stack
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
           docker compose $COMPOSE_FILES up -d
 
       - name: Wait for application
         run: |
-          timeout 300 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null; do sleep 2; done'
+            timeout 300 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null 2>&1; do sleep 2; done'
 
       - name: Run PHPUnit tests
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
-          docker compose exec -T miserend /miserend/webapp/vendor/bin/phpunit \
+            docker compose $COMPOSE_FILES exec -T miserend /miserend/webapp/vendor/bin/phpunit \
             -c /miserend/webapp/tests/phpunit.xml \
             --coverage-html /miserend/test-results/coverage/html \
             --log-junit /miserend/test-results/unit-junit.xml \
@@ -103,13 +107,17 @@ jobs:
 
       - name: Show Docker logs on failure
         if: failure()
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml logs
+            docker compose $COMPOSE_FILES logs
 
       - name: Stop application stack
         if: always()
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml down -v
+            docker compose $COMPOSE_FILES down -v
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4
