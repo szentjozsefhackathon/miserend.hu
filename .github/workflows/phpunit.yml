@@ -52,7 +52,7 @@ jobs:
 
       - name: Start application stack
         run: |
-          docker compose $COMPOSE_FILES up -d --wait --wait-timeout 300
+          docker compose $COMPOSE_FILES up -d
 
       - name: Wait for application
         run: |
