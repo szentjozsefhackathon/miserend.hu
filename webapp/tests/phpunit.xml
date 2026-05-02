@@ -36,7 +36,4 @@
             <text outputFile="php://stdout" showOnlySummary="false"/>
         </report>
     </coverage>
-    <logging>
-        <junit outputFile="../../../test-results/unit-junit.xml"/>
-    </logging>
 </phpunit>

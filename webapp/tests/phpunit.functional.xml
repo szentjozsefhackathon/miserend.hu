@@ -10,7 +10,4 @@
             <directory>Functional</directory>
         </testsuite>
     </testsuites>
-    <logging>
-        <junit outputFile="../../../test-results/functional-junit.xml"/>
-    </logging>
 </phpunit>
