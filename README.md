@@ -245,17 +245,30 @@ A coverage report HTML formátumban a `webapp/tests/coverage/html/index.html` f�
 
 ### Teszt struktúra
 
-A tesztek a `webapp/tests/` könyvtárban találhatók, és tükrözik a `webapp/classes/` struktúráját:
+A tesztek a `webapp/tests/` könyvtárban találhatók, és a futtatott PHPUnit suite-ok szerint vannak csoportosítva:
 
 ```
 webapp/tests/
 ├── bootstrap.php              # Test környezet inicializálása
+├── functional-bootstrap.php   # Funkcionális tesztek bootstrapja
 ├── phpunit.xml                # PHPUnit konfiguráció
-├── SimpleFunctionsTest.php    # Helper funkciók tesztjei
-├── UtilityFunctionsTest.php   # Utility funkciók tesztjei
-└── Api/                       # API osztályok tesztjei
-    ├── ApiTest.php            # Api\Api osztály tesztjei
-    └── LoginTest.php          # Api\Login osztály tesztjei
+├── phpunit.functional.xml     # Funkcionális PHPUnit konfiguráció
+├── Unit/                      # Egységtesztek
+│   ├── SimpleFunctionsTest.php
+│   └── UtilityFunctionsTest.php
+├── Api/                       # API tesztek
+│   ├── ApiEndpointsTest.php
+│   ├── ApiTest.php
+│   └── LoginTest.php
+├── Request/                   # Request helper tesztek
+│   └── RequestTest.php
+├── Rules/                     # Szabálykezelő tesztek
+│   ├── SimplerruleTest.php
+│   └── DSTSimplerruleTest.php
+├── Integration/               # Integrációs tesztek
+│   └── UserTest.php
+└── Functional/                # Böngészős funkcionális tesztek
+    └── HomepageLogoTest.php
 ```
 
 ### Fontos tudnivalók

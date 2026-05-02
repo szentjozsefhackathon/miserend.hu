@@ -1,13 +1,43 @@
 <?php
 
+use PHPUnit\Framework\TestCase;
+
 global $config;
-include_once('load.php');
+require_once dirname(__DIR__, 2) . '/load.php';
 configurationSetEnvironment('testing');
 
-class ApiTest extends \PHPUnit_Framework_TestCase {
+class ApiEndpointsTest extends TestCase {
+
+    protected ?string $token = null;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $_REQUEST = [];
+        $this->token = null;
+    }
+
+    protected function tearDown(): void {
+        $_REQUEST = [];
+        $this->token = null;
+        parent::tearDown();
+    }
+
+    private function assertArrayContainsSubset(array $expected, array $actual): void {
+        foreach ($expected as $key => $value) {
+            $this->assertArrayHasKey($key, $actual);
+
+            if (is_array($value)) {
+                $this->assertIsArray($actual[$key]);
+                $this->assertArrayContainsSubset($value, $actual[$key]);
+                continue;
+            }
+
+            $this->assertEquals($value, $actual[$key]);
+        }
+    }
 
     /**
-     * @dataProvider providerTestApiSqlite    
+     * @dataProvider providerTestApiSqlite
      */
     public function testApiSqlite($version) {
         $_REQUEST['v'] = $version;
@@ -39,11 +69,11 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider providerTestApiSignup
      */
     public function testApiSignup($request, $json, $output) {
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $rawresponse . "\n";
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiSignup() {
@@ -68,16 +98,16 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @dataProvider providerTestApiLogin     
+     * @dataProvider providerTestApiLogin
      */
     public function testApiLogin($request, $json, $output) {
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $rawresponse . "\n";
         } elseif (isset($response['token'])) {
             $this->token = $response['token'];
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiLogin() {
@@ -112,12 +142,12 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
 
         $json['token'] = $this->token;
 
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
 
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $response . "\n";
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiUser() {
@@ -144,12 +174,12 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
 
         $json['token'] = $this->token;
 
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
 
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $rawresponse . "\n";
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiFavorites() {
@@ -189,11 +219,11 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider providerTestApiReportByAnonym
      */
     public function testApiReportByAnonym($request, $json, $output) {
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $rawresponse . "\n";
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiReportByAnonym() {
@@ -241,16 +271,16 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
         $loginOutput = array('error' => 0);
         $this->testApiLogin($loginRequest, $loginPhpinput, $loginOutput);
 
-        if (!$json['token']) {
+        if (empty($json['token'])) {
             $json['token'] = $this->token;
         }
 
-        $rawresponse = callPageFake('index.php', $request, $json);
+        $rawresponse = callPageFake(PATH . 'index.php', $request, $json);
 
         if (!$response = json_decode($rawresponse, true)) {
             echo "ERROR: " . $rawresponse . "\n";
         }
-        $this->assertArraySubset($output, $response);
+        $this->assertArrayContainsSubset($output, $response);
     }
 
     public function providerTestApiReportByUser() {
@@ -277,7 +307,7 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
      * @dataProvider providerTestApiUpdated
      */
     public function testApiUpdated($request, $output) {
-        $response = callPageFake('index.php', $request);
+        $response = callPageFake(PATH . 'index.php', $request);
         $this->assertEquals($output, $response);
     }
 
@@ -293,13 +323,13 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
     }
 
     /**
-     * @dataProvider providerTestApiTable     
+     * @dataProvider providerTestApiTable
      */
     public function testApiTable($request, $json, $output) {
-        $responseRaw = callPageFake('index.php', $request, $json);
+        $responseRaw = callPageFake(PATH . 'index.php', $request, $json);
         $response = json_decode($responseRaw, true);
         if (is_array($response)) {
-            $this->assertArraySubset($output, $response);
+            $this->assertArrayContainsSubset($output, $response);
         } else {
             $this->assertEquals($output, $responseRaw);
         }
@@ -335,12 +365,11 @@ class ApiTest extends \PHPUnit_Framework_TestCase {
             array(
                 array('q' => 'api', 'action' => 'table', 'v' => '3', 'table' => 'templomok'),
                 array('columns' => array('id', 'nev', 'ismertnev')),
-                array('templomok' => array(array('id' => '138', 'nev' => 'Szent Anna templom', 'ismertnev' => 'Szabadhegyi templom',), array('id' => '139', 'nev' => 'Loyolai Szent Ignác-templom', 'ismertnev' => 'Bencés templom',)), 'error' => 0)),
+                array('templomok' => array(array('id' => '138', 'nev' => 'Szent Anna templom', 'ismertnev' => 'Szabadhegyi templom'), array('id' => '139', 'nev' => 'Loyolai Szent Ignác-templom', 'ismertnev' => 'Bencés templom')), 'error' => 0)),
             array(
                 array('q' => 'api', 'action' => 'table', 'v' => '3', 'table' => 'templomok'),
                 array('columns' => array('id', 'nev', 'ismertnev'), 'format' => 'text'),
                 "id;nev;ismertnev;\n138;Szent Anna templom;Szabadhegyi templom;\n139;Loyolai Szent Ignác-templom;Bencés templom;\n"),
         );
     }
-
 }

@@ -6,25 +6,20 @@
          cacheDirectory=".phpunit.cache"
          stopOnFailure="false">
     <testsuites>
-        <testsuite name="smoke">
-            <directory>Smoke</directory>
-        </testsuite>
         <testsuite name="simple">
-            <file>SimpleFunctionsTest.php</file>
-            <file>UtilityFunctionsTest.php</file>
+            <directory>Unit</directory>
         </testsuite>
         <testsuite name="api">
             <directory>Api</directory>
         </testsuite>
         <testsuite name="request">
-            <file>RequestTest.php</file>            
+            <directory>Request</directory>
         </testsuite>
         <testsuite name="simplerrules">
-            <file>SimplerruleTest.php</file>
-            <file>DSTSimplerruleTest.php</file>
+            <directory>Rules</directory>
         </testsuite>
         <testsuite name="integration">
-            <file>UserTest.php</file>
+            <directory>Integration</directory>
         </testsuite>
     </testsuites>
     <source>
