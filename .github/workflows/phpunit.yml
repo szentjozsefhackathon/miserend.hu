@@ -52,11 +52,7 @@ jobs:
 
       - name: Start application stack
         run: |
-          docker compose $COMPOSE_FILES up -d
-
-      - name: Wait for mysql health
-        run: |
-          timeout 300 bash -c 'until [ "$(docker compose $COMPOSE_FILES ps --format json mysql | jq -r ".[0].Health")" = "healthy" ]; do sleep 2; done'
+          docker compose $COMPOSE_FILES up -d --wait --wait-timeout 300
 
       - name: Wait for application
         run: |
