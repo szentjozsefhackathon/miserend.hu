@@ -2,10 +2,6 @@
 
 use PHPUnit\Framework\TestCase;
 
-global $config;
-require_once dirname(__DIR__, 2) . '/load.php';
-configurationSetEnvironment('testing');
-
 class ApiEndpointsTest extends TestCase {
 
     protected ?string $token = null;
