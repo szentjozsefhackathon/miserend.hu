@@ -21,9 +21,6 @@
         <testsuite name="integration">
             <directory>Integration</directory>
         </testsuite>
-        <testsuite name="integration">
-            <file>UserTest.php</file>
-        </testsuite>
     </testsuites>
     <source>
         <include>
