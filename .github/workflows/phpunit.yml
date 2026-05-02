@@ -45,27 +45,24 @@ jobs:
           mkdir -p "${{ github.workspace }}/test-results/coverage/html"
           chmod -R 777 "${{ github.workspace }}/test-results" || true
 
+      - name: Start application stack
+        env:
+          TEST_RESULTS_PATH: ${{ github.workspace }}
+        run: |
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml up -d
+
+      - name: Wait for services
+        run: |
+          timeout 120 bash -c 'until docker compose exec -T mysql mariadb-admin ping -h localhost -u user -ppw > /dev/null 2>&1; do sleep 2; done'
+          timeout 120 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null; do sleep 2; done'
+
       - name: Run PHPUnit tests
         run: |
-          docker run --rm \
-            -v $(pwd)/webapp:/miserend/webapp \
-            -v /miserend/webapp/vendor \
-            -v "${{ github.workspace }}/test-results:/miserend/test-results" \
-            -w /miserend/webapp/tests \
-            --entrypoint /miserend/webapp/vendor/bin/phpunit \
-            ghcr.io/szentjozsefhackathon/miserend.hu-coverage:${{ steps.tag.outputs.TAG }} \
-            -c phpunit.xml \
+          docker compose exec -T miserend /miserend/webapp/vendor/bin/phpunit \
+            -c /miserend/webapp/tests/phpunit.xml \
             --coverage-html /miserend/test-results/coverage/html \
             --log-junit /miserend/test-results/unit-junit.xml \
             --coverage-cobertura /miserend/test-results/coverage/cobertura.xml
-
-      - name: Start application stack
-        run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml up -d
-
-      - name: Wait for application
-        run: |
-          timeout 120 bash -c 'until curl -fsS http://127.0.0.1:8000/ > /dev/null; do sleep 2; done'
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -105,12 +102,12 @@ jobs:
       - name: Show Docker logs on failure
         if: failure()
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml logs
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml logs
 
       - name: Stop application stack
         if: always()
         run: |
-          docker compose -f docker/compose.yml -f docker/compose.dev.yml down -v
+          docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml down -v
 
       - name: Upload coverage HTML
         uses: actions/upload-artifact@v4

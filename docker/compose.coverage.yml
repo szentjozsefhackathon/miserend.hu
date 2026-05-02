@@ -3,6 +3,14 @@ services:
     build:
       context: ..
       dockerfile: docker/miserend/Dockerfile.coverage
+    volumes:
+      - ../webapp:/miserend/webapp
+      - vendor_data:/miserend/webapp/vendor
+      - node_modules_data:/miserend/webapp/node_modules
+      - ${TEST_RESULTS_PATH:-.}/test-results:/miserend/test-results
     depends_on:
       mysql:
         condition: service_healthy
+volumes:
+  vendor_data:
+  node_modules_data:
