@@ -28,7 +28,7 @@ class Signup extends Api {
         'password' => [
             'required' => true,
             'validation' => 'string',
-            'description' => 'a jelszó egyszerű szövegként. (Jelenleg nincsen összetettségi követelmény.)'
+            'description' => 'Ebben az API verzióban ezt a mezőt a rendszer figyelmen kívül hagyja. A regisztráció után a rendszer egy véletlenszerű jelszót generál és az email címre küld.'
         ],
         'nickname' => [             
             'validation' => 'string',
@@ -55,8 +55,7 @@ class Signup extends Api {
         $docs['response'] = <<<HTML
         <ul>
             <li>„error”: <strong>0</strong>, ha nincs hiba. <strong>1</strong>, ha van valami hiba.</li>
-            <li>„text” (opcionális): „error:1” esetén a hiba szöveges leírása. Ez olyan fontos üzeneteket tartalmazhat, mint hogy már foglalt a felhasználónév.</li>
-        </ul>
+                <li>„text” (opcionális): „error:1” esetén a hiba szöveges leírása. Ez olyan fontos üzeneteket tartalmazhat, mint hogy már foglalt a felhasználónév.</li>            <li>Sikeres regisztráció esetén a rendszer egy véletlenszerű jelszót generál és az email címre küld az új felhasználónak.</li>        </ul>
         HTML;
 
         return $docs;
