@@ -90,7 +90,7 @@ class ApiEndpointsTest extends TestCase {
             ['vacskamati', ['username' => 'vacskamati', 'password' => 'VanValami'], ['error' => 1]],  // missing email
             ['hosszuujnev', ['username' => 'EgyHosszúÚjNév', 'email' => 'teszt@teszt.com', 'password' => 'sippala'], ['error' => 1]],  // accented username
             ['hosszuujnev', ['username' => 'user' . $randomSuffix, 'email' => 'teszt_' . $randomSuffix . '@teszt.com', 'password' => 'sippala'], ['error' => 0]],  // valid
-            ['masikujnev', ['username' => 'EgyMasikHosszuUjNev', 'email' => 'teszt@teszt.com', 'password' => 'simoppo'], ['error' => 1]],  // already registered
+            ['masikujnev', ['username' => 'EgyMasikHosszuUjNev', 'email' => 'teszt_' . $randomSuffix . '@teszt.com', 'password' => 'simoppo'], ['error' => 1]],  // already registered
         ];
     }
 
