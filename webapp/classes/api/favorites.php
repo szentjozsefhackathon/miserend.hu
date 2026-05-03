@@ -57,14 +57,14 @@ class Favorites extends Api {
         global $user;
         $user = new \User($token->uid);
 
-        if (isset($this->input['remove'])) {
-            if (!$user->removeFavorites($this->input['remove'])) {
-                throw new \Exception("Could not remove favorites.");
-            }
-        }
         if (isset($this->input['add'])) {
             if (!$user->addFavorites($this->input['add'])) {
                 throw new \Exception("Could not add favorites.");
+            }
+        }
+        if (isset($this->input['remove'])) {
+            if (!$user->removeFavorites($this->input['remove'])) {
+                throw new \Exception("Could not remove favorites.");
             }
         }
 
