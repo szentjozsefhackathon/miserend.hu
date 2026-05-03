@@ -15,9 +15,6 @@
         <testsuite name="request">
             <directory>Request</directory>
         </testsuite>
-        <testsuite name="simplerrules">
-            <directory>Rules</directory>
-        </testsuite>
         <testsuite name="integration">
             <directory>Integration</directory>
         </testsuite>
