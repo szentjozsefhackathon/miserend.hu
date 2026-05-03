@@ -13,7 +13,7 @@ services:
   miserend:
     environment:
       - SMTP_HOST=mailcatcher
-      - SMTP_PORT=11025
+      - SMTP_PORT=1025
       - MISEREND_WEBAPP_ENVIRONMENT=development
     volumes:
       - ../webapp:/miserend/webapp
