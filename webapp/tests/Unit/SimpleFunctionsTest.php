@@ -102,12 +102,26 @@ class SimpleFunctionsTest extends TestCase {
         global $_honapok;
         $monthNumber = (int)date('n', $candidate);
         if (!isset($_honapok[$monthNumber][0]) || $_honapok[$monthNumber][0] === '') {
-            $_honapok[$monthNumber] = ['mon', 'month'];
+            $defaultMonths = [
+                1 => ['jan', 'január'],
+                2 => ['feb', 'február'],
+                3 => ['márc', 'március'],
+                4 => ['ápr', 'április'],
+                5 => ['máj', 'május'],
+                6 => ['jún', 'június'],
+                7 => ['júl', 'július'],
+                8 => ['aug', 'augusztus'],
+                9 => ['szept', 'szeptember'],
+                10 => ['okt', 'október'],
+                11 => ['nov', 'november'],
+                12 => ['dec', 'december'],
+            ];
+            $_honapok[$monthNumber] = $defaultMonths[$monthNumber];
         }
                 
         $result = twig_hungarian_date_format($candidate, '');
 
-        $this->assertMatchesRegularExpression('/\(.*\d+\.\)$/', $result);
+        $this->assertMatchesRegularExpression('/[a-záéíóöőüű]+\.?\s+\d+\./', $result);
     }
 
     public function testTwigHungarianDateFormatForDateInCurrentWeekIncludesTimeWhenRequested() {
@@ -123,11 +137,25 @@ class SimpleFunctionsTest extends TestCase {
         global $_honapok;
         $monthNumber = (int)date('n', $candidate);
         if (!isset($_honapok[$monthNumber][0]) || $_honapok[$monthNumber][0] === '') {
-            $_honapok[$monthNumber] = ['mon', 'month'];
+            $defaultMonths = [
+                1 => ['jan', 'január'],
+                2 => ['feb', 'február'],
+                3 => ['márc', 'március'],
+                4 => ['ápr', 'április'],
+                5 => ['máj', 'május'],
+                6 => ['jún', 'június'],
+                7 => ['júl', 'július'],
+                8 => ['aug', 'augusztus'],
+                9 => ['szept', 'szeptember'],
+                10 => ['okt', 'október'],
+                11 => ['nov', 'november'],
+                12 => ['dec', 'december'],
+            ];
+            $_honapok[$monthNumber] = $defaultMonths[$monthNumber];
         }
 
         $result = twig_hungarian_date_format($candidate, 'H:i');
 
-        $this->assertMatchesRegularExpression('/\(.*\d+\.\) \d{2}:\d{2}$/', $result);
+        $this->assertMatchesRegularExpression('/[a-záéíóöőüű]+\.?\s+\d+\..*\d{2}:\d{2}$/', $result);
     }
 }
