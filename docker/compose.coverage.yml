@@ -5,7 +5,8 @@ services:
       - ../webapp:/miserend/webapp
       - vendor_data:/miserend/webapp/vendor
       - node_modules_data:/miserend/webapp/node_modules
-      - ${TEST_RESULTS_PATH:-.}/test-results:/miserend/test-results
+      - ${TEST_RESULTS_PATH:-..}/test-results:/miserend/test-results
+      - ${TEST_RESULTS_PATH:-..}/test-results/coverage:/miserend/webapp/tests/coverage
     depends_on:
       mysql:
         condition: service_healthy
