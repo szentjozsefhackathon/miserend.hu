@@ -159,18 +159,77 @@ function idoszak($i) {
     return $tmp;
 }
 
+function dumpToFile(mixed ...$values): void {
+    $file = '/tmp/api-endpoints-test-debug.log';
+
+    $chunks = [
+        '[' . date('c') . ']',
+    ];
+
+    foreach ($values as $index => $value) {
+        $chunks[] = 'value_' . $index . ':';
+        $chunks[] = var_export($value, true);
+    }
+
+    file_put_contents(
+        $file,
+        implode(PHP_EOL, $chunks) . PHP_EOL . str_repeat('-', 60) . PHP_EOL,
+        FILE_APPEND
+    );
+}
+
+
 function callPageFake($uri, $post, $phpinput = array()) {
-    stream_wrapper_unregister("php");
-    stream_wrapper_register("php", "MockPhpStream");
+    dumpToFile('callPageFake start', [
+        'uri' => $uri,
+        'file_exists' => file_exists($uri),
+        'cwd' => getcwd(),
+        'request_before' => $_REQUEST,
+        'post' => $post,
+        'phpinput' => $phpinput,
+    ]);
+
+    ini_set('display_errors', '1');
+    error_reporting(E_ALL & ~E_WARNING & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE);
+
+    register_shutdown_function(function () use ($uri) {
+        $lastError = error_get_last();
+        dumpToFile('shutdown', [
+            'uri' => $uri,
+            'last_error' => $lastError,
+            'buffer' => ob_get_contents(),
+        ]);
+    });
+
+    stream_wrapper_unregister('php');
+    stream_wrapper_register('php', 'MockPhpStream');
     file_put_contents('php://input', json_encode($phpinput));
     $_REQUEST = array_merge($_REQUEST, $post);
 
     ob_start();
-    include $uri;
-    $page = ob_get_contents();
-    ob_end_clean();
 
-    stream_wrapper_restore("php");
+    try {
+        include $uri;
+        $page = ob_get_contents();
+        dumpToFile('include returned', $page);
+    } catch (\Throwable $e) {
+        dumpToFile('include threw', [
+            'class' => get_class($e),
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'buffer' => ob_get_contents(),
+        ]);
+        throw $e;
+    } finally {
+        if (in_array('php', stream_get_wrappers(), true)) {
+            stream_wrapper_restore('php');
+        }
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+    }
 
     return $page;
 }
