@@ -155,12 +155,34 @@ class Campaign {
             try {
                 DB::table('user')->where('uid', $user->uid)->update(['volunteer' => 0]);
                 $stats['cleared']++;
+                // Mint a régi Campaign-ben: udvariasan értesítjük is őket, hogy ne
+                // egy „hirtelen elhalkulás" legyen — kérdés nélkül vissza tudják állítani.
+                try {
+                    self::sendOptOutEmail($user);
+                } catch (\Throwable $mailErr) {
+                    $stats['errors'][] = "opt-out mail user {$user->uid}: " . $mailErr->getMessage();
+                }
             } catch (\Throwable $e) {
                 $stats['errors'][] = "user {$user->uid}: " . $e->getMessage();
             }
         }
 
         return $stats;
+    }
+
+    /**
+     * #315: opt-out értesítés az inaktívvá tett önkéntesnek.
+     * A régi Campaign-ben is ment ilyen email — most külön Twig template-tel,
+     * udvarias hangnemmel, link a profil-oldalra.
+     */
+    private static function sendOptOutEmail($user): void {
+        $name = $user->becenev ?: ($user->nev ?: $user->login);
+        $mail = new \Eloquent\Email();
+        $mail->render('volunteer_optout', [
+            'name' => $name,
+            'addressee' => $user,
+        ]);
+        $mail->send($user->email);
     }
 
     /**
