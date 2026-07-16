@@ -87,6 +87,16 @@ class Campaign {
                   ->whereColumn('updates.tid', 't.id')
                   ->where('timestamp', '>', (new DateTime())->modify('-' . self::SKIP_RECENT_REMARK_MONTHS . ' months')->format('Y-m-d H:i:s'));
             })
+            // #315: ne osszunk ki olyan templomot, amelynek NYITOTT észrevétele van
+            // (allapot u=új, f=folyamatban; j=megoldott). A rewrite-ban ez a kizárás
+            // kimaradt - a komment ígéri ("nincs update / észrevétel"), de a kód csak
+            // az updates-et nézte. A régi tábla `eszrevetelek`/`hol_id`, az új `remarks`/`church_id`.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                  ->from('remarks')
+                  ->whereColumn('remarks.church_id', 't.id')
+                  ->whereIn('remarks.allapot', ['u', 'f']);
+            })
             ->orderBy('t.frissites')
             ->orderBy('t.id')
             ->limit($eligibleUsers->count() * self::WEEKLY_LIMIT)
@@ -145,9 +155,11 @@ class Campaign {
                   ->where('timestamp', '>', $monthAgo);
             })
             ->whereNotExists(function ($q) use ($monthAgo) {
-                $q->select(DB::raw(1))->from('eszrevetelek')
-                  ->whereColumn('eszrevetelek.login', 'user.login')
-                  ->where('datum', '>', $monthAgo);
+                // #315: a tábla `eszrevetelek` -> `remarks`, a submission-dátum
+                // `datum` -> `created_at` (a `login` oszlop megmaradt).
+                $q->select(DB::raw(1))->from('remarks')
+                  ->whereColumn('remarks.login', 'user.login')
+                  ->where('remarks.created_at', '>', $monthAgo);
             })
             ->get();
 
