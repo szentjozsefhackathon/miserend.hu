@@ -50,6 +50,12 @@ UNLOCK TABLES;
 INSERT INTO `crons` VALUES
 (43,'\\Crons','rollPeriodYears','1 month',NULL,NULL,'0000-00-00 00:00:00',0,'0000-00-00 00:00:00','0000-00-00 00:00:00','0000-00-00 00:00:00');
 
+-- #315: a heti önkéntes-kiosztás cronjai külön INSERT-ként (nem a fenti VALUES-listába),
+-- hogy ne ütközzön más branch cron-hozzáadásával a merge-nél. Id 46/47 (42-45 másutt foglalt).
+-- Meglévő (nem friss) adatbázison ezt kézzel kell befuttatni — deploy-lépés.
+INSERT INTO `crons` VALUES
+(46,'\\Campaign','assignUpdates','1 week',NULL,NULL,'0000-00-00 00:00:00',0,'0000-00-00 00:00:00','0000-00-00 00:00:00','0000-00-00 00:00:00'),
+(47,'\\Campaign','clearoutVolunteers','1 month',NULL,NULL,'0000-00-00 00:00:00',0,'0000-00-00 00:00:00','0000-00-00 00:00:00','0000-00-00 00:00:00');
 commit;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
