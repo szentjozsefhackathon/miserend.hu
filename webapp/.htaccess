@@ -1,3 +1,14 @@
+# #375: a képek (kepek/) statikusan, közvetlenül szolgálódnak (lásd lentebb a
+# `^(vendor|kepek|...)/ - [L]` szabályt), így NEM mennek át az index.php-n, ahol a
+# CORS-header lenne. A canvas-export (templom-terkep) emiatt CORS-hibát dob. Minden
+# képre engedjük a cross-origin olvasást. IfModule-ba csomagolva: ha a mod_headers
+# nincs engedélyezve, csendben no-op (nem 500). Prod-on `a2enmod headers` kell hozzá.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(jpe?g|png|gif|webp|svg|ico)$">
+        Header set Access-Control-Allow-Origin "*"
+    </FilesMatch>
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews
