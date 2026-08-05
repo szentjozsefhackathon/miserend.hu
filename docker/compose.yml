@@ -77,9 +77,12 @@ services:
   miserend:
     image: ${MISEREND_IMAGE:-localhost/miserend:latest}
     volumes:
+       - ../webapp:/miserend/webapp
+       - vendor_data:/miserend/webapp/vendor
+       - node_modules_data:/miserend/webapp/node_modules    
        - tmp:/miserend/webapp/fajlok/tmp
        - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
-       - ../webapp:/miserend/webapp
+
     ports:
       - ${APP_PORT:-8000}:8000
     user: "www-data"
@@ -118,3 +121,6 @@ volumes:
   db_data: {}
   elasticsearch_data: {}
   tmp: {}
+  vendor_data:
+  node_modules_data:
+  
