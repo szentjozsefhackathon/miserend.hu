@@ -79,6 +79,7 @@ services:
     volumes:
        - tmp:/miserend/webapp/fajlok/tmp
        - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
+       - ../webapp:/miserend/webapp
     ports:
       - ${APP_PORT:-8000}:8000
     user: "www-data"
@@ -100,6 +101,11 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_SECURE=${SMTP_SECURE:-}
+      - OSM_URL=${OSM_URL:-}
+      - OSM_CLIENT=${OSM_CLIENT:-}
+      - OSM_CLIENT_SECRET=${OSM_CLIENT_SECRET:-}
+      - OSM_APPLICATION_CODE=${OSM_APPLICATION_CODE:-}
+      - OSM_ACCESS_TOKEN=${OSM_ACCESS_TOKEN:-}
 
     networks:
       inner:
