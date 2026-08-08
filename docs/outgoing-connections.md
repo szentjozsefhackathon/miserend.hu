@@ -49,6 +49,52 @@ Engedélyezni kell:
 |---|---|---|
 | SMTP relay | (config-tól függ) | 25 / 465 / 587 |
 
+### Kézbesíthetőség
+
+Az SMTP `250` válasz csak azt igazolja, hogy a relay átvette a levelet, a címzetti
+kézbesítést nem. A feladó domain SPF rekordjának engedélyeznie kell a relay tényleges
+kimenő IP-jét, és a relay naplójában kell ellenőrizni az esetleges későbbi visszapattanást.
+
+A #610 vizsgálatakor az `epistola.hcbc.hu` relay nem szerepelt a `miserend.hu` SPF
+rekordjában. Ha továbbra is ez a szolgáltató küld, az SPF-hez a szolgáltató által megadott
+`include:` mechanizmust (jelenleg `include:epistola.hcbc.hu`) kell hozzáadni úgy, hogy
+egyetlen SPF rekord maradjon. Ne a relay fogadó A rekordját vegyük fel találomra: a kimenő
+IP eltérhet tőle. A módosítás után külső címre küldött tesztlevél fejlécében ellenőrizni
+kell az SPF eredményt; ha nem `pass`, a relay naplója alapján kell azonosítani a tényleges
+kimenő címet.
+
+## A BÖNGÉSZŐ által betöltött külső erőforrások
+
+> Ezek nem a szerverről mennek ki, hanem a látogató böngészőjéből — tehát egy szerver-oldali
+> egress-allowlist NEM fedi le őket. Akkor számítanak, ha zárt hálózatban (vagy szigorú CSP
+> mellett) kell működnie az oldalnak: ha ezek nem érhetők el, a térkép egyszerűen nem jelenik meg.
+> Ezért kerültek ide. (#653)
+
+| Cél | Host | Mire kell | Hol |
+|---|---|---|---|
+| **Leaflet** (JS + CSS) | `unpkg.com` | a térkép motorja | `_map_leaflet.twig` (1.7.1), `stat.twig` (1.9.3), `church/create.twig` (1.9.4) |
+| **Leaflet.PolylineDecorator** | `unpkg.com` | a kapcsolat-vonalak nyilai | `_map_leaflet.twig` |
+| **Leaflet.TextPath** | `makinacorpus.github.io` | vonalra írt felirat | `_map_leaflet.twig` |
+| **CARTO Voyager csempék** | `{a,b,c,d}.basemaps.cartocdn.com` | a térkép alaprétege | `_map_leaflet.twig` |
+| html5shiv, respond.js | `oss.maxcdn.com` | régi IE-polyfillek | `layout.twig` |
+| OpenLayers | `openlayers.org` | régi térkép-kód | (legacy) |
+
+Amit érdemes tudni róluk:
+
+- **Három különböző Leaflet-verziót** töltünk be három sablonból (1.7.1 / 1.9.3 / 1.9.4). Ezt
+  egységesíteni kellene.
+- A `makinacorpus.github.io` egy GitHub Pages, **nem CDN** — nincs rendelkezésre állási ígéret rá.
+- A `leaflet.polylinedecorator.css` hivatkozás **HTTP 404** volt (nem létezik az unpkg-n); a #653-ban
+  töröltük.
+- A **Stamen csempeszerver** (`stamen-tiles-*.a.ssl.fastly.net`) mérve **HTTP 503**-at adott: a Stamen
+  2023-ban a Stadiához költözött. A réteg soha nem is volt kiválasztható (definiálva volt, de sehol
+  nem használtuk), ezért a #653-ban töröltük. Az utód (`tiles.stadiamaps.com`) kulcs nélkül **HTTP
+  401** — ha valaha kell terep-alapréteg, az regisztrációt és API-kulcsot igényel.
+
+A #653 arról szól, hogy ezek nagy részét saját kiszolgálásra váltsuk (a jQuery, a Bootstrap és a
+FontAwesome már ma is a `webapp/package.json`-ból jön) — akkor ez a szakasz a csempeszerverre
+zsugorodik.
+
 ## Container image registry-k
 
 Build / pull időben kellhet:

@@ -128,6 +128,28 @@ class ChurchRelationshipTest extends TestCase {
         $this->assertContains($child2, $ids);
     }
 
+    public function testFullNetworkKeepsEveryGenerationOnItsOwnLevel(): void {
+        $grandparent = $this->createChurch('Nagyszülő');
+        $parent = $this->createChurch('Szülő');
+        $current = $this->createChurch('Aktuális');
+        $child = $this->createChurch('Gyerek');
+
+        $this->createRelationship($grandparent, $parent);
+        $this->createRelationship($parent, $current);
+        $this->createRelationship($current, $child);
+
+        $network = \Eloquent\Church::find($current)->fullNetwork;
+
+        $this->assertSame(
+            [$grandparent, $parent, $current, $child],
+            array_map(static fn(array $item): int => (int) $item['church']->id, $network)
+        );
+        $this->assertSame(
+            [0, 1, 2, 3],
+            array_column($network, 'level')
+        );
+    }
+
     public function testCircularRelationshipDoesNotCauseInfiniteLoop(): void {
         $a = $this->createChurch('A');
         $b = $this->createChurch('B');

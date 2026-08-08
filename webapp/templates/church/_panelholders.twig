@@ -122,6 +122,10 @@
   <style>
     /* #529: a nagy parent-lista legördülője kapjon görgetőt (jobbra) */
     .ui-autocomplete { max-height: 320px; overflow-y: auto; overflow-x: hidden; }
+    /* #639: az ellátó plébánia törlése egy kattintással, a mező mellett */
+    .custom-combobox { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
+    .custom-combobox > input { flex: 1; }
+    .custom-combobox-clear { flex: 0 0 auto; line-height: 1; padding: 4px 10px; }
   </style>
   <script>
   $( function() {
@@ -139,12 +143,17 @@
 
 
       _createAutocomplete: function() {
+        /*
+         * #639: itt korábban egy `/* oops *\/ value = "";` sor kiütötte a kiszámolt
+         * értéket, ezért a mező MINDIG üresen jött fel — a szerkesztő azt látta, hogy
+         * nincs beállítva ellátó plébánia, pedig a rejtett <select>-ben ott volt.
+         * (Menteni jól mentett, csak nem látszott.)
+         *
+         * A "0" a placeholder-opció ("– válassz templomot –"), azt nem írjuk ki.
+         */
         var selected = this.element.children( ":selected" ),
-          value = selected.val() ? selected.text() : "";
-
-          /* oops */
-          value = "";
-
+          selectedValue = selected.val(),
+          value = ( selectedValue && selectedValue !== "0" ) ? selected.text() : "";
 
         this.input = $( "<input>" )
           .appendTo( this.wrapper )
@@ -193,6 +202,21 @@
         response( results );
       },
 
+      /*
+       * #639: a mező kiürítése LEGYEN érvényes művelet — így lehet visszavonni a
+       * korábban beállított ellátó plébániát. Ilyenkor a placeholder-opcióra ("0")
+       * állunk vissza, nem hagyjuk a <select>-et kiválasztás nélkül.
+       */
+      _clearSelection: function() {
+        this.input.val( "" );
+        if ( this.element.children( "option[value='0']" ).length ) {
+          this.element.val( "0" );
+        } else {
+          this.element.val( "" );
+        }
+        this.element.trigger( "change" );
+      },
+
       _removeIfInvalid: function( event, ui ) {
 
         // Selected an item, nothing to do
@@ -200,9 +224,16 @@
           return;
         }
 
+        var value = this.input.val();
+
+        // #639: az üresre törlés szándékos, nem hiba — ne tegyünk rá hibaüzenetet.
+        if ( $.trim( value ) === "" ) {
+          this._clearSelection();
+          return;
+        }
+
         // Search for a match (case-insensitive)
-        var value = this.input.val(),
-          valueLowerCase = value.toLowerCase(),
+        var valueLowerCase = value.toLowerCase(),
           valid = false;
         this.element.children( "option" ).each(function() {
           if ( $( this ).text().toLowerCase() === valueLowerCase ) {
@@ -217,11 +248,10 @@
         }
 
         // Remove invalid value
+        this._clearSelection();
         this.input
-          .val( "" )
-          .attr( "title", "Nincs „" + value + "” nevű felhasználónk." )
+          .attr( "title", "Nincs „" + value + "” nevű " + ( this.options.notFoundNoun || "felhasználónk" ) + "." )
           .tooltip( "open" );
-        this.element.val( "" );
         this._delay(function() {
           this.input.tooltip( "close" ).attr( "title", "" );
         }, 2500 );
@@ -239,9 +269,28 @@
     // #522: az ellátó-plébánia választót is kereshetővé tesszük (ugyanez a widget).
     // Graceful: ha a widget nem futna le, a plain select minden aktív templommal ott marad.
     if ( $( "#selectParentChurch" ).length ) {
-      $( "#selectParentChurch" ).combobox();
-      var $parentInput = $( "#selectParentChurch" ).next( ".custom-combobox" ).find( "input" );
+      var $parentSelect = $( "#selectParentChurch" );
+      $parentSelect.combobox({ notFoundNoun: "misézőhelyünk" });
+      var $parentWrapper = $parentSelect.next( ".custom-combobox" );
+      var $parentInput = $parentWrapper.find( "input" );
       $parentInput.attr( "placeholder", "Kezdd el gépelni a települést vagy a templom nevét…" );
+
+      /*
+       * #639: kellett egy egyértelmű módja annak, hogy NE legyen ellátó plébánia.
+       * A mező kiürítése eddig sem volt kényelmes (és hibaüzenetet adott), a gomb
+       * viszont egy kattintás. A <select> a placeholderre ("0") áll vissza, amit a
+       * mentés a "nincs kapcsolat" ágként dolgoz fel.
+       */
+      $( "<button>" )
+        .attr( "type", "button" )
+        .addClass( "btn btn-sm btn-outline-secondary custom-combobox-clear" )
+        .attr( "title", "Ellátó plébánia törlése" )
+        .text( "×" )
+        .appendTo( $parentWrapper )
+        .on( "click", function() {
+          $parentSelect.combobox( "instance" )._clearSelection();
+          $parentInput.trigger( "focus" );
+        });
       // #529: üres mezőbe kattintva rögtön jöjjön a legközelebbi 10 (a _source üres
       // termre 10-et ad, az opciók távolság szerint elöl). Gépelésre a _source szűr,
       // a hosszú lista görgethető (CSS lent). minLength=0 + focus-trigger kell hozzá.

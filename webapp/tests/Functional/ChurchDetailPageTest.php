@@ -2,6 +2,7 @@
 
 namespace Tests\Functional;
 
+use Facebook\WebDriver\WebDriverDimension;
 use Symfony\Component\Panther\PantherTestCase;
 
 /**
@@ -136,6 +137,37 @@ final class ChurchDetailPageTest extends PantherTestCase
         );
         
         self::assertTrue($hasRemarkOption, 'Church page should have remark option');
+    }
+
+    public function testStaleChurchMovesCompleteHelpPanelToTopOnMobile(): void
+    {
+        // A stabil tesztadatbázisban publikus, 180 napnál régebben frissített templom.
+        $churchId = 2061;
+
+        $this->client->manage()->window()->setSize(new WebDriverDimension(375, 800));
+        $this->client->request('GET', "/templom/{$churchId}");
+        $this->client->waitFor('#church-mobile-help-placeholder #church-help-panel-wrap', 10);
+
+        $helpItems = $this->client->executeScript(
+            "var panel = document.querySelector('#church-mobile-help-placeholder #church-help-panel-wrap');
+             return {
+                 remark: !!panel.querySelector('a[href*=\"ujeszrevetel\"]'),
+                 holder: panel.textContent.includes('Gondnokság vállalása'),
+                 photo: !!panel.querySelector('a[href*=\"ujkep\"]')
+             };"
+        );
+
+        self::assertTrue($helpItems['remark']);
+        self::assertTrue($helpItems['holder']);
+        self::assertTrue($helpItems['photo']);
+
+        $this->client->manage()->window()->setSize(new WebDriverDimension(1024, 800));
+        usleep(250000); // A sablon resize-kezelője 100 ms-os debounce-ot használ.
+        self::assertTrue(
+            $this->client->executeScript(
+                "return document.querySelector('.church-site-left-sidebar > #church-help-panel-wrap') !== null;"
+            )
+        );
     }
 
     public function testPhotosRenderIfPresent(): void

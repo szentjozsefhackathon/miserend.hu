@@ -12,6 +12,12 @@ services:
       - tmp:/data
     command: sh -c "chown -R 33:33 /data"
     restart: "no"
+  sqlite-init:
+    image: busybox
+    volumes:
+      - sqlite:/data
+    command: sh -c "chown -R 33:33 /data"
+    restart: "no"
   data-init:
     image: ghcr.io/szentjozsefhackathon/miserend-elasticsearch-data:2026.4.18
     volumes:
@@ -81,6 +87,7 @@ services:
        - vendor_data:/miserend/webapp/vendor
        - node_modules_data:/miserend/webapp/node_modules    
        - tmp:/miserend/webapp/fajlok/tmp
+       - sqlite:/miserend/webapp/fajlok/sqlite
        - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
 
     ports:
@@ -88,6 +95,8 @@ services:
     user: "www-data"
     restart: "always"
     depends_on:
+      sqlite-init:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       elasticsearch:
@@ -121,6 +130,6 @@ volumes:
   db_data: {}
   elasticsearch_data: {}
   tmp: {}
+  sqlite: {}
   vendor_data:
   node_modules_data:
-  

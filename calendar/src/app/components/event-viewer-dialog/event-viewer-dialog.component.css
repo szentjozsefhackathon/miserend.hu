@@ -56,3 +56,10 @@ button[mat-flat-button] {
   padding: 8px 16px !important;
   border-radius: 20px !important;
 }
+
+/* #592: magyarázat a szerkesztés/törlés gombok helyett importált liturgiánál. */
+.imported-note {
+  color: #666;
+  font-size: 0.9rem;
+  padding: 0 8px;
+}

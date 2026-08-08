@@ -126,9 +126,8 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $network = [];
         $visited = [$this->id];
         
-        // 1. Gyűjtsük össze az összes őst (fordított sorrendben, hogy felülről induljon)
+        // 1. Gyűjtsük össze az összes őst, felülről lefelé haladó sorrendben.
         $ancestors = $this->_collectAllAncestors([], $visited);
-        $ancestors = array_reverse($ancestors);
         
         // Őseink hozzáadása
         $level = 0;
@@ -154,7 +153,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         ];
         
         // 3. Hozzáadjuk a leszármazottakat
-        $descendants = $this->_collectAllDescendants([], $visited);
+        $descendants = $this->_collectAllDescendants([], $visited, $level + 1);
         foreach ($descendants as $descendant) {
             $network[] = [
                 'church' => $descendant['church'],
@@ -626,32 +625,84 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     }
 
     /**
-     * Betöltödik a MASS kategóriához tartozó misék típusa kulcsait
-     * a mass-definitions.json-ből (ugyanaz, amit home.php és searchresultsmasses.php használ)
+     * #641: hétvégi misék SOK templomra, egyetlen Elasticsearch-lekérdezéssel.
+     *
+     * A térkép bbox-végpontja templomonként hívta a getWeekendMasses()-t, az pedig
+     * templomonként KÉT ES-kört futtat (szombat + vasárnap). 460 templomnál ez 920
+     * hálózati kör — mérve ez tette 4 másodpercessé a térkép minden mozdítását.
+     * A két időablak egybefüggő (szombat 17:00 → vasárnap 23:59), ezért egyben
+     * kérjük le, és PHP-ben bontjuk napokra.
+     *
+     * A visszaadott alak SZÁNDÉKOSAN azonos a getWeekendMasses()-ével, hogy a
+     * frontend-szerződés ne változzon.
+     *
+     * @param  int[] $churchIds
+     * @return array [church_id => ['saturday' => [...], 'sunday' => [...]]]
      */
+    public static function weekendMassesForChurches(array $churchIds): array
+    {
+        $empty = ['saturday' => [], 'sunday' => []];
+        $result = [];
+        foreach ($churchIds as $id) {
+            $result[(int) $id] = $empty;
+        }
+        if (empty($churchIds)) {
+            return $result;
+        }
+
+        $saturday = (new self())->getTargetSaturdayDate();
+        $sunday = $saturday->copy()->addDay();
+
+        $fromUtc = \Carbon\Carbon::parse($saturday->toDateString() . 'T17:00:00', 'Europe/Budapest')
+            ->setTimezone('UTC')->format('Y-m-d\TH:i:s') . 'Z';
+        $toUtc = \Carbon\Carbon::parse($sunday->toDateString() . 'T23:59:00', 'Europe/Budapest')
+            ->setTimezone('UTC')->format('Y-m-d\TH:i:s') . 'Z';
+
+        try {
+            $byChurch = (new \ExternalApi\ElasticsearchApi())->massesByChurch(
+                $churchIds,
+                $fromUtc,
+                $toUtc,
+                self::getMassTypeKeysFromDefinitions()
+            );
+        } catch (\Throwable $e) {
+            // A térkép a misék nélkül is használható — ne bukjon el az egész válasz.
+            error_log('[#641] hétvégi misék lekérése nem sikerült: ' . $e->getMessage());
+            return $result;
+        }
+
+        $saturdayDate = $saturday->toDateString();
+        $sundayDate = $sunday->toDateString();
+
+        foreach ($byChurch as $churchId => $masses) {
+            foreach ($masses as $mass) {
+                // Ugyanaz a helyi idejű formázás, mint a Search::prepareMassesResults()-ban.
+                $local = \Carbon\Carbon::parse($mass['start_date'])->setTimezone('Europe/Budapest');
+                $day = $local->toDateString();
+                $entry = [
+                    'time' => $local->format('H:i'),
+                    'date' => $day,
+                    'title' => $mass['title'],
+                ];
+                if ($day === $saturdayDate && count($result[$churchId]['saturday']) < 4) {
+                    $result[$churchId]['saturday'][] = $entry;
+                } elseif ($day === $sundayDate && count($result[$churchId]['sunday']) < 4) {
+                    $result[$churchId]['sunday'][] = $entry;
+                }
+            }
+        }
+
+        return $result;
+    }
+
     private static function getMassTypeKeysFromDefinitions(): array
     {
-        $massDefinitionsPath = \PATH . 'mass-definitions.json';
-        
-        if (!file_exists($massDefinitionsPath)) {
-            // Fallback: ha nem érhető el a JSON, üres tömb (ne szűrjön)
-            return [];
-        }
-        
-        $massDefinitions = json_decode(file_get_contents($massDefinitionsPath), true);
-        
-        if (!isset($massDefinitions['definitions']) || !is_array($massDefinitions['definitions'])) {
-            return []; // Biztonsági fallback
-        }
-        
-        // Gyűjtödik a MASS kategóriához tartozó definíciókat
         $massTypeKeys = [];
-        foreach ($massDefinitions['definitions'] as $definition) {
-            if ($definition['category'] === 'MASS') {
-                $massTypeKeys[] = $definition['key'];
-                $massTypeKeys[] = t('MASS_TITLE.' . $definition['key']);
-            }
-        }        
+        foreach ((new \MassDefinitions())->definitionKeysByCategory('MASS') as $key) {
+            $massTypeKeys[] = $key;
+            $massTypeKeys[] = t('MASS_TITLE.' . $key);
+        }
+
         return $massTypeKeys;
     }
     
@@ -915,7 +966,19 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             }
 
             // boundaries
-            $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();    
+            $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();
+
+            /*
+             * #644: akadálymentesség és csökkentett gluténtartalmú áldozás — szűrhető,
+             * LAPOS mezőként. Az `accessibility` tömb ugyan eddig is kiment, de üres
+             * templomnál üres tömb, ezért az ES-ben mapping se jött rá létre, és nem
+             * lehetett rá szűrni. Itt fix kulcsokkal, mindig kiírjuk (üres stringgel,
+             * ha nincs adat), így a churches indexbe ÉS a mass_index church-részébe is
+             * bekerül — a kereső mindkettőn tud szűrni.
+             */
+            $return['wheelchair'] = (string) ($this->wheelchair ?? '');
+            $return['gluten_free_holidays'] = (string) ($this->{\GlutenFreeCommunion::HOLIDAYS_KEY} ?? '');
+            $return['gluten_free_weekdays'] = (string) ($this->{\GlutenFreeCommunion::WEEKDAYS_KEY} ?? '');
         }
         
         return $return;
@@ -1297,6 +1360,44 @@ class Church extends \Illuminate\Database\Eloquent\Model {
 			}
 		}
         return $return;
+    }
+
+
+    /*
+     * #284: a `payment:credit_cards` OSM-értékeinek EGYETLEN forrása. Ugyanez a mondat
+     * a címke az /editosm legördülőjében és a nyilvános szöveg a templomlapon — így egy
+     * szöveg egy helyen van megadva. Az üres kulcs a "nincs adat" ág: az /editosm-en
+     * választható, a templomlapon viszont nem állítunk vele semmit (message = null).
+     */
+    public const CARD_DONATION_OPTIONS = [
+        '' => 'Nincs információ.',
+        'yes' => 'Bankkártyás, digitális persely is elérhető.',
+        'limited' => 'Bankkártyás adományozás a sekrestyében vagy külön kérésre lehetséges.',
+        'no' => 'Csak készpénzes adományozás lehetséges.',
+    ];
+
+    /* Mely `payment:credit_cards` értékek jelentenek tényleges kártyás lehetőséget. */
+    public const CARD_DONATION_AVAILABLE = ['yes', 'limited'];
+
+    public function getCardDonationAttribute(): array {
+        $value = $this->getAttribute('payment:credit_cards');
+        $message = ($value === null || $value === '')
+            ? null
+            : (self::CARD_DONATION_OPTIONS[$value] ?? null);
+
+        return [
+            'value' => $value,
+            'message' => $message,
+            'available' => in_array($value, self::CARD_DONATION_AVAILABLE, true),
+        ];
+    }
+
+    public function getGlutenFreeCommunionAttribute(): array {
+        return \GlutenFreeCommunion::details(
+            $this->getAttribute(\GlutenFreeCommunion::HOLIDAYS_KEY),
+            $this->getAttribute(\GlutenFreeCommunion::WEEKDAYS_KEY)
+        );
+
     }
 	
     /*

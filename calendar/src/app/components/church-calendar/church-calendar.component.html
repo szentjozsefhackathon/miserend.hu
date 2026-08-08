@@ -229,7 +229,10 @@
             <ng-container *ngIf="group.weight === 0 && group.hasOldMasses && group.expandOldMasses && group.oldMasses">
               <tr *ngFor="let m of group.oldMasses" style="opacity: 0.7; background-color: #fafafa;">
                 <td>
-                  <button mat-icon-button (click)="openMassFromList(m)" [matTooltip]="'EDIT' | translate" aria-label="edit">
+                  <!-- #592: importált liturgia — a napi szinkron írja, itt nem szerkeszthető. -->
+                  <mat-icon *ngIf="m.imported" class="imported-lock"
+                            [matTooltip]="'EVENT_VIEWER.IMPORTED_NOT_EDITABLE' | translate">cloud_sync</mat-icon>
+                  <button *ngIf="!m.imported" mat-icon-button (click)="openMassFromList(m)" [matTooltip]="'EDIT' | translate" aria-label="edit">
                     <mat-icon>edit</mat-icon>
                   </button>
                 </td>
@@ -298,7 +301,10 @@
                 </td>
                 <td style="padding:10px">{{m.comment}}</td>
                 <td style="text-align: right; padding-right: 10px;">
-                  <button mat-icon-button (click)="openDeleteMassDialog(m)" [matTooltip]="'DELETE' | translate" aria-label="delete">
+                  <!-- #592: importált liturgia — a napi szinkron írja, itt nem szerkeszthető. -->
+                  <mat-icon *ngIf="m.imported" class="imported-lock"
+                            [matTooltip]="'EVENT_VIEWER.IMPORTED_NOT_EDITABLE' | translate">cloud_sync</mat-icon>
+                  <button *ngIf="!m.imported" mat-icon-button (click)="openDeleteMassDialog(m)" [matTooltip]="'DELETE' | translate" aria-label="delete">
                     <mat-icon>delete_outline</mat-icon>
                   </button>
                 </td>
@@ -307,7 +313,10 @@
 
             <tr *ngFor="let m of group.masses">
               <td>
-                <button mat-icon-button (click)="openMassFromList(m)" [matTooltip]="'EDIT' | translate" aria-label="edit">
+                <!-- #592: importált liturgia — a napi szinkron írja, itt nem szerkeszthető. -->
+                <mat-icon *ngIf="m.imported" class="imported-lock"
+                          [matTooltip]="'EVENT_VIEWER.IMPORTED_NOT_EDITABLE' | translate">cloud_sync</mat-icon>
+                <button *ngIf="!m.imported" mat-icon-button (click)="openMassFromList(m)" [matTooltip]="'EDIT' | translate" aria-label="edit">
                   <mat-icon>edit</mat-icon>
                 </button>
               </td>
@@ -379,7 +388,10 @@
                 <button mat-icon-button (click)="openCopyMassDialog(m)" [matTooltip]="'COPY_THIS_MASS' | translate" aria-label="copy">
                   <mat-icon>content_copy</mat-icon>
                 </button>
-                <button mat-icon-button (click)="openDeleteMassDialog(m)" [matTooltip]="'DELETE' | translate" aria-label="delete">
+                <!-- #592: importált liturgia — a napi szinkron írja, itt nem szerkeszthető. -->
+                <mat-icon *ngIf="m.imported" class="imported-lock"
+                          [matTooltip]="'EVENT_VIEWER.IMPORTED_NOT_EDITABLE' | translate">cloud_sync</mat-icon>
+                <button *ngIf="!m.imported" mat-icon-button (click)="openDeleteMassDialog(m)" [matTooltip]="'DELETE' | translate" aria-label="delete">
                   <mat-icon>delete_outline</mat-icon>
                 </button>
               </td>

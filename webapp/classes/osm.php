@@ -211,6 +211,109 @@ class OSM {
         }
     }
     
+    /**
+     * #484: a címkecsere TISZTA része — a meglévő OSM-tagokból és az új értékből
+     * előállítja a mentendő taglistát. Szándékosan hálózat- és DB-mentes, hogy
+     * unit-tesztelhető legyen, mi számít egyáltalán változásnak.
+     *
+     * @param  array  $tags   a jelenlegi OSM-tagok (kulcs => érték)
+     * @param  string $value  új érték; üres string = a címke törlése
+     * @return ?array a mentendő taglista, vagy null, ha nincs változás
+     */
+    static function applyTagChange(array $tags, string $key, string $value): ?array {
+        // Nincs változás: se eddig, se most nincs érték, vagy pont ugyanaz van kint.
+        if (($tags[$key] ?? '') === $value) {
+            return null;
+        }
+
+        if ($value === '') {
+            unset($tags[$key]);
+        } else {
+            $tags[$key] = $value;
+        }
+
+        return $tags;
+    }
+
+    /**
+     * #484: EGYETLEN OSM-címke felküldése a misézőhely OSM-entitására.
+     *
+     * Az /edit oldalon szerkesztett, származtatott adatokat (ma: diet:gluten_free)
+     * mentéskor rögtön kiírjuk az OSM-be is, hogy ne kelljen utána az /editosm-en
+     * még egyszer elmenteni. Ehhez végig kell járni a teljes changeset-kört:
+     * entitás letöltése -> van-e egyáltalán változás -> changeset nyitás ->
+     * entitás PUT -> changeset zárás.
+     *
+     * A címke hozzáadását, módosítását ÉS törlését is kezeli: üres $value esetén
+     * kivesszük a tagot az entitásból.
+     *
+     * FONTOS: olvasni is a config szerinti (írásra használt) API-ról olvasunk, mert
+     * a PUT-nak az ottani entitás-verziót kell látnia — élőről olvasva + devre írva
+     * verzióütközés lenne.
+     *
+     * @param  \Eloquent\Church $church
+     * @param  string           $key    OSM tag kulcs (pl. 'diet:gluten_free')
+     * @param  ?string          $value  új érték; üres/null = a címke törlése
+     * @return bool  true, ha tényleg módosítottuk az OSM-et; false, ha nem volt mit
+     * @throws \Exception  ha az OSM nem érhető el vagy a mentés nem sikerült
+     */
+    static function pushTag($church, string $key, ?string $value): bool {
+
+        if (empty($church->osmtype) OR empty($church->osmid)) {
+            return false;
+        }
+
+        $value = $value === null ? '' : trim($value);
+        $osmtype = $church->osmtype;
+
+        $osmapi = new \ExternalApi\OpenstreetmapApi();
+        $osmapi->query = '/api/0.6/'.$osmtype.'/'.$church->osmid;
+        $osmapi->run();
+
+        if (!isset($osmapi->xmlData->{$osmtype}[0])) {
+            throw new \Exception('Az OSM entitás ('.$osmtype.':'.$church->osmid.') nem érhető el.');
+        }
+        $entity = $osmapi->xmlData;
+
+        $tags = [];
+        foreach ($entity->{$osmtype}[0]->tag as $tag) {
+            $tags[(string) $tag['k']] = (string) $tag['v'];
+        }
+
+        $tags = self::applyTagChange($tags, $key, $value);
+        if ($tags === null) {
+            return false; // nincs eltérés, ne nyissunk fölösleges changesetet
+        }
+
+        // SimpleXML-ből egyetlen gyereket nem lehet célzottan törölni, ezért az
+        // egész taglistát eldobjuk és újraírjuk (ugyanaz, mint az /editosm-en).
+        unset($entity->{$osmtype}->tag);
+        foreach ($tags as $k => $v) {
+            $newTag = $entity->{$osmtype}->addChild('tag');
+            $newTag->addAttribute('k', $k);
+            $newTag->addAttribute('v', $v);
+        }
+
+        global $user;
+        $writeApi = new \ExternalApi\OpenstreetmapApi();
+        $changesetID = $writeApi->changesetCreate([
+            'created_by' => 'miserend.hu',
+            'comment' => 'Changes by a user of miserend.hu called '.($user->login ?? 'unknown'),
+        ]);
+        if ($changesetID <= 0) {
+            throw new \Exception('Nem sikerült OSM changesetet nyitni.');
+        }
+
+        $versionID = $writeApi->putEntity($changesetID, $osmtype, $entity);
+        $writeApi->changesetClose($changesetID);
+
+        if (!$versionID) {
+            throw new \Exception('Az OSM entitás mentése nem sikerült ('.$osmtype.':'.$church->osmid.').');
+        }
+
+        return true;
+    }
+
     function saveOSM2Church($church, $element) {
 			
 			// Ha valamiért nincs church.id, akkor inkább elszállunk, minthogy mindent töröljünk és megkavarjunk.

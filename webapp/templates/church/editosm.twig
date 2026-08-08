@@ -69,6 +69,7 @@
 					<td >
 						{% if item['type'] == 'input' %}
 							{{ forms.input(item) }}
+							{% if item.disabled %}<input type="hidden" name="{{ item.name }}" value="{{ item.value|e }}">{% endif %}
 						{% elseif item['type'] == 'textarea' %}
 							{{ forms.textarea(item) }}
 						{% else %}

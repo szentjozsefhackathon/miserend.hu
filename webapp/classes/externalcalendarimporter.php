@@ -63,41 +63,64 @@ function sanitizeUtf8($text) {
  */
 class ExternalCalendarImporter {
 
+    public const IMPORT_MARKER = 'External calendar import';
+    private const CRON_CLASS = '\\ExternalCalendarImporter';
+
     /**
      * Main cron entry point: Import all active external calendars
      * This is called daily from the cron system
      */
-    public static function importAllExternalCalendars() {
+    public static function importAllExternalCalendars(?callable $calendarImporter = null) {
         set_time_limit(600);
-        
-        try {
-            $calendars = \Eloquent\ExternalCalendar::where('active', 1)->get();
-            
-            if ($calendars->isEmpty()) {
-                echo "ℹ No active external calendars to import.<br>\n";
-                return;
-            }
-            
-            foreach ($calendars as $calendar) {
-                try {
-                    echo "▶ Importing: Church #{$calendar->church_id} - {$calendar->name}...<br>\n";
-                    
-                    self::importFromUrl($calendar->url, $calendar->church_id);
-                    
-                    // Update last_import_at timestamp
-                    $calendar->last_import_at = \Carbon\Carbon::now();
-                    $calendar->save();
-                    
-                    echo "✓ Import successful: Church #{$calendar->church_id}<br>\n";
-                } catch (\Exception $e) {
-                    echo "✗ Import failed for Church #{$calendar->church_id}: " . $e->getMessage() . "<br>\n";
-                    \Log::error("ExternalCalendarImporter: Church #{$calendar->church_id} - " . $e->getMessage());
+        $calendars = \Eloquent\ExternalCalendar::where('active', 1)->get();
+
+        if ($calendars->isEmpty()) {
+            echo "ℹ No active external calendars to import.<br>\n";
+            return;
+        }
+
+        $import = $calendarImporter ?? static function ($calendar): void {
+            self::importFromUrl($calendar->url, (int)$calendar->church_id);
+        };
+        $failures = [];
+
+        foreach ($calendars as $calendar) {
+            try {
+                echo "▶ Importing: Church #{$calendar->church_id} - {$calendar->name}...<br>\n";
+                $import($calendar);
+
+                $calendar->last_import_at = \Carbon\Carbon::now();
+                $calendar->save();
+                echo "✓ Import successful: Church #{$calendar->church_id}<br>\n";
+            } catch (\Throwable $e) {
+                $message = "Church #{$calendar->church_id}: " . $e->getMessage();
+                $failures[] = $message;
+                echo "✗ Import failed for {$message}<br>\n";
+                if (class_exists('Log')) {
+                    \Log::error('ExternalCalendarImporter: ' . $message);
+                } else {
+                    error_log('ExternalCalendarImporter: ' . $message);
                 }
             }
-        } catch (\Exception $e) {
-            echo "✗ Critical error in importAllExternalCalendars: " . $e->getMessage() . "<br>\n";
-            \Log::error("ExternalCalendarImporter: " . $e->getMessage());
         }
+
+        if ($failures !== []) {
+            throw new \RuntimeException('External calendar import failed: ' . implode('; ', $failures));
+        }
+    }
+
+    /*
+     * #638: ez a függvény volt a kiindulópont ("jó-e ez a cron-kezelés?"). A felvétel
+     * logikája átkerült a \Eloquent\Cron::ensureRegistered()-be, a munka maga pedig a
+     * webapp/fajlok/crons.php registrybe — így új cron-függvénynél nincs kézi INSERT.
+     * Ez a metódus megmarad kényelmi belépőnek (és a teszteknek).
+     */
+    public static function ensureCronRegistered(): \Eloquent\Cron {
+        \Eloquent\Cron::ensureRegistered(self::CRON_CLASS, 'importAllExternalCalendars', '1 day');
+
+        return \Eloquent\Cron::whereIn('class', [self::CRON_CLASS, self::class])
+            ->where('function', 'importAllExternalCalendars')
+            ->firstOrFail();
     }
 
     /**
@@ -117,19 +140,13 @@ class ExternalCalendarImporter {
             throw new \Exception("Failed to download iCalendar from URL: " . substr($url, 0, 50) . "...");
         }
         
-        // 2. Delete existing external calendar masses
-        // (masses imported from external calendars have period_id = NULL)
-        \Eloquent\CalMass::where('church_id', $churchId)
-            ->whereNull('period_id')
-            ->delete();
-        
-        // 3. Parse and create new CalMass objects
-        $eventsCreated = self::parseAndCreateCalMasses($icsContent, $churchId);
+        // 2-3. Parse the complete feed, then replace only earlier imported masses atomically.
+        $eventsCreated = self::replaceFromIcs($icsContent, $churchId);
 
         echo "  Created $eventsCreated masses from iCalendar<br>\n";
 
         // 4. Refresh Elasticsearch index for this church
-        $years = [2025, 2026, 2027, 2028];
+        $years = self::extractIndexedYears($icsContent);
         \ExternalApi\ElasticsearchApi::updateMasses($years, [$churchId],
             function($msg) { echo "  " . $msg . "<br>\n"; }
         );
@@ -138,30 +155,75 @@ class ExternalCalendarImporter {
     }
 
     /**
+     * Parse a complete iCalendar feed and atomically replace this church's earlier import.
+     * Manually entered one-off masses also have a null period_id, so ownership is identified
+     * exclusively by IMPORT_MARKER.
+     */
+    public static function replaceFromIcs(string $icsContent, int $churchId): int {
+        if (!preg_match('/BEGIN:VCALENDAR/i', $icsContent) || !preg_match('/END:VCALENDAR/i', $icsContent)) {
+            throw new \InvalidArgumentException('Invalid iCalendar document.');
+        }
+
+        $events = self::parseIcsEvents($icsContent);
+        $masses = [];
+        foreach ($events as $event) {
+            $masses[] = self::createCalMassFromEvent($event, $churchId);
+        }
+
+        $connection = \Eloquent\CalMass::getConnectionResolver()->connection();
+        $connection->transaction(function () use ($churchId, $masses): void {
+            \Eloquent\CalMass::where('church_id', $churchId)
+                ->where('comment', self::IMPORT_MARKER)
+                ->delete();
+
+            foreach ($masses as $mass) {
+                $mass->save();
+            }
+        });
+
+        return count($masses);
+    }
+
+    /** @return int[] */
+    private static function extractIndexedYears(string $icsContent): array {
+        preg_match_all('/^DTSTART(?:;[^:]*)?:(\d{4})/mi', $icsContent, $matches);
+        $years = array_map('intval', $matches[1] ?? []);
+        $years[] = (int)date('Y') - 1;
+        $years[] = (int)date('Y');
+        $years[] = (int)date('Y') + 1;
+        $years = array_values(array_unique($years));
+        sort($years);
+        return $years;
+    }
+
+    /**
      * Download ICS content from URL using ExternalApi
      */
     private static function downloadIcsFromUrl($url) {
         try {
-            $api = new \ExternalApi\ExternalApi();
-            $api->cache = '1 day';
-            $api->query = $url;
-            $api->format = 'json';  // Temporarily set to avoid strict format checking
-            $api->strictFormat = false;
+            $host = parse_url($url, PHP_URL_HOST);
+            $ips = self::resolveHostIps((string)$host);
+            if (!self::isAllowedCalendarUrl($url, $ips)) {
+                throw new \Exception('Only public HTTPS iCalendar URLs are allowed.');
+            }
             
             // Download raw ICS content
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
             curl_setopt($ch, CURLOPT_USERAGENT, 'miserend.hu/ExternalCalendarImporter');
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+            curl_setopt($ch, CURLOPT_RESOLVE, [sprintf('%s:443:%s', $host, $ips[0])]);
             
             $content = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
             curl_close($ch);
             
             if ($httpCode !== 200 || empty($content)) {
-                throw new \Exception("HTTP $httpCode: Failed to download from $url");
+                throw new \Exception("HTTP $httpCode: Failed to download from $url" . ($curlError ? " ($curlError)" : ''));
             }
             
             return $content;
@@ -171,48 +233,55 @@ class ExternalCalendarImporter {
     }
 
     /**
-     * Parse iCalendar content and create CalMass objects
-     * Simple custom parser for iCalendar format
+     * SSRF guard for editor-provided calendar URLs. Resolved addresses may be supplied
+     * by tests; production resolves and pins the same public address for cURL.
      */
-    private static function parseAndCreateCalMasses($icsContent, $churchId) {
-        $eventsCreated = 0;
-        
-        try {
-            // Parse iCalendar using custom parser
-            $events = self::parseIcsEvents($icsContent);
-            
-            if (empty($events)) {
-                return 0;  // No events in calendar
-            }
-            
-            try {
-                $deleted = \Eloquent\CalMass::where('church_id', $churchId)
-                    ->where('comment', 'External calendar import')
-                    ->delete();
-                echo "  Deleted {$deleted} existing external masses for church #{$churchId}<br>\n";
-            } catch (\Exception $e) {
-                echo "  ⚠ Failed to delete existing masses for church #{$churchId}: " . $e->getMessage() . "<br>\n";
-                \Log::error("ExternalCalendarImporter: failed deleting previous masses for church #{$churchId} - " . $e->getMessage());
-            }
-
-            // Iterate through parsed events
-            foreach ($events as $event) {
-                try {
-                    $calMass = self::createCalMassFromEvent($event, $churchId);
-                    if($calMass) {
-                        $calMass->save();
-                        $eventsCreated++;
-                    }
-                } catch (\Exception $e) {
-                    echo "  ⚠ Error creating CalMass: " . $e->getMessage() . "<br>\n";
-                    // Continue with next event instead of failing entire import
-                }
-            }
-        } catch (\Exception $e) {
-            throw new \Exception("iCalendar parsing failed: " . $e->getMessage());
+    public static function isAllowedCalendarUrl(string $url, ?array $resolvedIps = null): bool {
+        if (!filter_var($url, FILTER_VALIDATE_URL) || strtolower((string)parse_url($url, PHP_URL_SCHEME)) !== 'https') {
+            return false;
         }
-        
-        return $eventsCreated;
+
+        $host = (string)parse_url($url, PHP_URL_HOST);
+        if ($host === '' || strtolower($host) === 'localhost') {
+            return false;
+        }
+
+        $ips = $resolvedIps ?? self::resolveHostIps($host);
+        if (empty($ips)) {
+            return false;
+        }
+
+        foreach ($ips as $ip) {
+            if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static function saveCalendarUrl(int $churchId, string $url, ?array $resolvedIps = null): ?\Eloquent\ExternalCalendar {
+        $url = trim($url);
+        if ($url === '') {
+            \Eloquent\ExternalCalendar::where('church_id', $churchId)->update(['active' => 0]);
+            return null;
+        }
+        if (!self::isAllowedCalendarUrl($url, $resolvedIps)) {
+            throw new \InvalidArgumentException('Csak publikus HTTPS iCalendar URL adható meg.');
+        }
+
+        return \Eloquent\ExternalCalendar::updateOrCreate(
+            ['church_id' => $churchId, 'name' => 'Google Calendar'],
+            ['url' => $url, 'active' => 1]
+        );
+    }
+
+    /** @return string[] */
+    private static function resolveHostIps(string $host): array {
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return [$host];
+        }
+        $ips = gethostbynamel($host);
+        return $ips === false ? [] : array_values(array_unique($ips));
     }
 
     /**
@@ -229,6 +298,8 @@ class ExternalCalendarImporter {
         }
         
         foreach ($matches[1] as $eventData) {
+            // RFC 5545 line unfolding: a line starting with space/tab continues the previous one.
+            $eventData = preg_replace("/\r?\n[ \t]/", '', $eventData);
             $event = (object) [
                 'SUMMARY' => null,
                 'DTSTART' => null,
@@ -247,18 +318,18 @@ class ExternalCalendarImporter {
             }
 
             // Parse SUMMARY
-            if (preg_match('/^SUMMARY\:\b(.*)$/im', $eventData, $m)) {
+            if (preg_match('/^SUMMARY:(.*)$/im', $eventData, $m)) {
                 $event->SUMMARY = trim(preg_replace('/\\\\,/', ', -', $m[1]));
             }
             
             // Parse DTSTART
-            if (preg_match('/^DTSTART(\;|\:)\b(.*)$/im', $eventData, $m)) {
-                $event->DTSTART = trim($m[2]);
+            if (preg_match('/^DTSTART(?:;|:)(.*)$/im', $eventData, $m)) {
+                $event->DTSTART = trim($m[1]);
             }
             
             // Parse DTEND
-            if (preg_match('/^DTEND(\;|\:)\b(.*)$/im', $eventData, $m)) {
-                $event->DTEND = trim($m[2]);
+            if (preg_match('/^DTEND(?:;|:)(.*)$/im', $eventData, $m)) {
+                $event->DTEND = trim($m[1]);
             }
             
             // Parse DURATION
@@ -310,7 +381,7 @@ class ExternalCalendarImporter {
             'rite' => 'ROMAN_CATHOLIC',  // Default rite
             'lang' => 'hu',     // Default language
             'period_id' => null,  // External calendars don't belong to periods
-            'comment' => 'External calendar import',
+            'comment' => self::IMPORT_MARKER,
         ]);
 
         return $calMass;
@@ -521,7 +592,7 @@ class ExternalCalendarImporter {
         }
         
         // Handle datetime format (YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ)
-        if (preg_match('/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/', $dtString, $matches)) {
+        if (preg_match('/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/', $dtString, $matches)) {
             $year = $matches[1];
             $month = $matches[2];
             $day = $matches[3];
@@ -537,8 +608,11 @@ class ExternalCalendarImporter {
                     // Create in the specified timezone and convert to UTC
                     $carbon = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $dateTimeStr, $tzid);
                     return $carbon->setTimezone('Europe/Budapest')->format('Y-m-d\TH:i:s');
+                } elseif (!empty($matches[7])) {
+                    $carbon = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $dateTimeStr, 'UTC');
+                    return $carbon->setTimezone('Europe/Budapest')->format('Y-m-d\TH:i:s');
                 } else {
-                    // No timezone specified, treat as UTC
+                    // Floating local time: keep the wall-clock value in the application timezone.
                     $carbon = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $dateTimeStr, 'Europe/Budapest');
                     return $carbon->format('Y-m-d\TH:i:s');
                 }
@@ -607,6 +681,6 @@ class ExternalCalendarImporter {
             $hours += $days * 24;
         }
         
-        return json_encode(['hours' => $hours, 'minutes' => $minutes]);
+        return ['hours' => $hours, 'minutes' => $minutes];
     }
 }

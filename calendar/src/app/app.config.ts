@@ -1,8 +1,8 @@
-import {ApplicationConfig, importProvidersFrom, provideZoneChangeDetection} from '@angular/core';
+import {ApplicationConfig, provideZoneChangeDetection} from '@angular/core';
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
-import {HttpClient, provideHttpClient, withInterceptors, HTTP_INTERCEPTORS} from '@angular/common/http';
+import {provideHttpClient, HTTP_INTERCEPTORS} from '@angular/common/http';
 import {HttpTimeoutInterceptor} from './http.interceptor';
 import {HttpErrorInterceptor} from './http-error.interceptor';
 import {OverlayContainer} from '@angular/cdk/overlay';
@@ -11,15 +11,10 @@ import { LOCALE_ID } from '@angular/core';
 import { MAT_DATE_LOCALE } from '@angular/material/core';
 import { registerLocaleData } from '@angular/common';
 import localeHu from '@angular/common/locales/hu';
-import {TranslateHttpLoader} from '@ngx-translate/http-loader';
-import {TranslateLoader, TranslateModule} from '@ngx-translate/core';
+import {provideTranslateService} from '@ngx-translate/core';
+import {provideTranslateHttpLoader} from '@ngx-translate/http-loader';
 
 registerLocaleData(localeHu);
-
-export function HttpLoaderFactory(http: HttpClient) {
-  return new TranslateHttpLoader(http, '/i18n/', '.json');
-}
-
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -42,15 +37,12 @@ export const appConfig: ApplicationConfig = {
     },
     { provide: LOCALE_ID, useValue: 'hu' },
     { provide: MAT_DATE_LOCALE, useValue: 'hu' },
-    importProvidersFrom(
-      TranslateModule.forRoot({
-        defaultLanguage: 'hu',
-        loader: {
-          provide: TranslateLoader,
-          useFactory: HttpLoaderFactory,
-          deps: [HttpClient]
-        }
+    provideTranslateService({
+      lang: 'hu',
+      loader: provideTranslateHttpLoader({
+        prefix: '/i18n/',
+        suffix: '.json',
       }),
-    )
+    }),
   ],
 };

@@ -367,6 +367,9 @@ class EditOsm extends \Html\Html {
 						'limited' => 'Lehetséges, de külön szólni kell. Sőt egyes helyeken vinni is kell ostyát.',
 						'no' => 'Nem lehetséges.'
 					),
+					'value' => $this->church->glutenFreeCommunion['hasInformation']
+						? $this->church->glutenFreeCommunion['osmValue']
+						: ($osmtags->{'diet:gluten_free'} ?? ''),
 					'disabled' => true,
 					'help' => 'Ezt a mezőt a részletesebb (ünnepnapokat és hétköznapokat külön kezelő) beállítások alapján töltjük ki.'
 				]
@@ -574,12 +577,9 @@ class EditOsm extends \Html\Html {
 				'payment:credit_cards' =>[
 					'title' => 'Bankkártyás adományozási lehetőség',
 					'wiki_hu' => false,
-					'options' => array(
-						'' => 'Nincs információ.',
-						'yes' => 'Bankkártyás, digitális persely is elérhető.',
-						'limited' => 'Bankkártyás fizetés csak a sekrestyében ill. külön kérésre.',
-						'no' => 'Csak készpénzes fizetés/adományozás lehetséges.'
-					),
+					// #284: a címkék az \Eloquent\Church-ből jönnek, hogy a szerkesztő
+					// legördülője és a templomlap nyilvános mondata ugyanaz legyen.
+					'options' => \Eloquent\Church::CARD_DONATION_OPTIONS,
 					'help' => 'Egyre több helyen elérhető bankkártyás fizetési vagy külön adományozó terminál, mely első változatás a jezsuiták AutoMáténak neveztek el.'
 				]
 		

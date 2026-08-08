@@ -85,17 +85,16 @@ class Sqlite extends Api {
 
         $this->search = new \Search("masses");
 
-        if ($this->generateSqlite()) {
-            //Sajnos ez itten nem működik... Nem lesz szépen letölthető.  Headerrel sem
-            //$data = readfile($sqllitefile); exit($data);
+        try {
+            if (!$this->generateSqlite()) {
+                throw new \Exception("Could not make the requested sqlite3 file.");
+            }
             return true;
-        } else {
-            throw new \Exception("Could not make the requested sqlite3 file.");
+        } finally {
+            if ($this->search->pitId !== false) {
+                $this->search->closePit();
+            }
         }
-
-        // Ha nyitva maradt volna a pit, akkor szépen csukjuk be
-        if($this->search->pitId != false ) $this->search->closePit();
-
     }
 
     function setFileName() {
@@ -149,17 +148,47 @@ class Sqlite extends Api {
         echo "Sqlite is beginning right now...";
         if(!isset($this->sqliteFilePath)) {
             $this->setFilePath();
-}
-        $this->connectToSqlite('sqlite_v' . $this->version, $this->sqliteFilePath);
-        $this->sqlite->beginTransaction();
-        $this->dropAllTables();
-        echo "<br/>\nCreate Tables ...";
-        $this->createTables();
-        $this->insertData();
-        echo "<br/>\n";
-        $this->sqlite->commit();
-        DB::disconnect('sqlite_v' . $this->version);
-        return true;
+        }
+
+        $directory = dirname($this->sqliteFilePath);
+        if (!is_dir($directory) || !is_writable($directory)) {
+            throw new \RuntimeException("SQLite directory is not writable: " . $directory);
+        }
+
+        $temporaryFile = tempnam($directory, '.' . $this->sqliteFileName . '.');
+        if ($temporaryFile === false) {
+            throw new \RuntimeException("Could not create temporary SQLite file in " . $directory);
+        }
+
+        $connectionName = 'sqlite_v' . $this->version . '_' . bin2hex(random_bytes(6));
+        try {
+            $this->connectToSqlite($connectionName, $temporaryFile);
+            $this->sqlite->beginTransaction();
+            $this->dropAllTables();
+            echo "<br/>\nCreate Tables ...";
+            $this->createTables();
+            $this->insertData();
+            echo "<br/>\n";
+            $this->sqlite->commit();
+            DB::disconnect($connectionName);
+            $this->sqlite = null;
+
+            if (!rename($temporaryFile, $this->sqliteFilePath)) {
+                throw new \RuntimeException("Could not publish generated SQLite file.");
+            }
+            return true;
+        } catch (\Throwable $e) {
+            if ($this->sqlite !== null && $this->sqlite->transactionLevel() > 0) {
+                $this->sqlite->rollBack();
+            }
+            DB::disconnect($connectionName);
+            $this->sqlite = null;
+            throw $e;
+        } finally {
+            if (file_exists($temporaryFile)) {
+                unlink($temporaryFile);
+            }
+        }
     }
 
     function dropAllTables() {

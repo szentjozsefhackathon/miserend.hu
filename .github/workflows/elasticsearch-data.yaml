@@ -28,26 +28,78 @@ jobs:
 
       - name: Export elasticsearch data from production
         env:
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          # #637: ez a workflow 2026 áprilisa óta MINDEN futáskor elhasalt, ezért ragadt
+          # a dev-image a 2026.4.18-as tagen. A hiba a kulcsbetöltésnél volt
+          # ("Load key: error in libcrypto" -> "Permission denied (publickey,password)").
+          #
+          # Két oka volt, és mindkettőt javítjuk:
+          #  1. A kulcsfájl záró sortörés NÉLKÜL készült (`printf '%s'`), az OpenSSH
+          #     viszont ilyenkor nem tudja beolvasni.
+          #  2. Ez a workflow egy külön DEPLOY_* titok-készletet használt, amit sehol
+          #     máshol nem használunk. A deploy-workflowk (staging ÉS production, ugyanaz
+          #     a gép, más könyvtár) a STAGING_SSH_* készletet használják — az bizonyítottan
+          #     működik. Elsődlegesen azt vesszük, a régi nevek tartaléknak maradnak.
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY || secrets.DEPLOY_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST || secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER || secrets.DEPLOY_USER }}
+          SSH_PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
         run: |
-           mkdir -p ~/.ssh
-           printf '%s' "$DEPLOY_KEY" > ~/.ssh/deploy_key
-           chmod 600 ~/.ssh/deploy_key
-           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-           
-           # Copy elasticsearch data directory from production server and compress
-           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-             "docker exec elasticsearch tar czf - -C /usr/share/elasticsearch/data ." > elasticsearch_data.tar.gz
-           
-           # Verify file exists and has content
-           if [ -f elasticsearch_data.tar.gz ] && [ -s elasticsearch_data.tar.gz ]; then
-             echo "✓ Data export successful ($(du -h elasticsearch_data.tar.gz | cut -f1))"
-           else
-             echo "✗ Error: Data export failed or is empty"
-             exit 1
-           fi
+          set -euo pipefail
+
+          if [ -z "${SSH_HOST:-}" ] || [ -z "${SSH_USER:-}" ] || [ -z "${SSH_KEY:-}" ]; then
+            echo "✗ Hiányzó SSH-titok (STAGING_SSH_HOST / STAGING_SSH_USER / STAGING_SSH_KEY)."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          # A ZÁRÓ SORTÖRÉS kötelező, e nélkül az OpenSSH "error in libcrypto"-val elszáll.
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Korai, érthető hibaüzenet, ha a kulcs formátuma rossz — ne az ssh
+          # jelszavas fallbackjéből derüljön ki 3 sorral később.
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>&1; then
+            echo "✗ A megadott SSH-kulcs nem olvasható (rossz formátum vagy jelszóval védett)."
+            exit 1
+          fi
+
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # BatchMode: sose próbáljon jelszót kérni, inkább bukjon el azonnal, érthetően.
+          SSH="ssh -i $HOME/.ssh/deploy_key -p $SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
+          # A konténer neve a compose projekt-prefixtől függ (pl. miserend-elasticsearch-1),
+          # ezért nem drótozzuk be "elasticsearch"-nek. FONTOS: ugyanazon a gépen fut a
+          # staging is, ezért a PRODUCTION projektnevet olvassuk ki a .env-ből (ugyanúgy,
+          # ahogy a deploy-workflowk teszik) — nehogy a staging indexét mentsük el.
+          # A távoli parancs EGYSZERES idézőjelben van, hogy a $PROJECT a szerveren
+          # helyettesítődjön be, ne itt a runneren.
+          FIND_CONTAINER='cd /var/www/production.miserend.hu || exit 1; PROJECT=miserend; [ -f .env ] && . ./.env; docker ps --filter "name=^${PROJECT}-elasticsearch" --filter "status=running" --format "{{.Names}}" | head -1'
+          CONTAINER=$($SSH "$SSH_USER@$SSH_HOST" "$FIND_CONTAINER")
+
+          if [ -z "$CONTAINER" ]; then
+            echo "✗ Nem találtam futó elasticsearch konténert a production compose-projektben."
+            exit 1
+          fi
+          echo "Elasticsearch konténer: $CONTAINER"
+
+          $SSH "$SSH_USER@$SSH_HOST" \
+            "docker exec $CONTAINER tar czf - -C /usr/share/elasticsearch/data ." > elasticsearch_data.tar.gz
+
+          # Nem elég, hogy létezik és nem üres: legyen valódi, kicsomagolható gzip.
+          # (Egy hibaüzenet a távoli oldalról is "nem üres fájl" volna.)
+          if ! gzip -t elasticsearch_data.tar.gz 2>/dev/null; then
+            echo "✗ A letöltött állomány nem érvényes gzip — valószínűleg hibaüzenet került bele:"
+            head -c 300 elasticsearch_data.tar.gz
+            exit 1
+          fi
+
+          SIZE=$(stat -c%s elasticsearch_data.tar.gz)
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "✗ A mentés gyanúsan kicsi ($SIZE bájt) — az index üres vagy hiányos lehet."
+            exit 1
+          fi
+          echo "✓ Data export successful ($(du -h elasticsearch_data.tar.gz | cut -f1))"
 
       - uses: docker/setup-buildx-action@v3
 

@@ -7,6 +7,8 @@ use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
 class Email extends \Illuminate\Database\Eloquent\Model {
+
+    public const SMTP_ACCEPTED = 'Az SMTP-kiszolgáló elfogadta a tesztlevelet. Ez nem igazolja a címzetti kézbesítést; ellenőrizd a levelet és a relay naplóját.';
     
     public $debug;
     public $debugger;
@@ -217,7 +219,10 @@ class Email extends \Illuminate\Database\Eloquent\Model {
 			return "Valami hiba történt teszt email kiküldése közben: " . $error->getMessage();
 		}
 
-		return "OK";
+		// A send() sikere csak azt jelenti, hogy a következő SMTP relay átvette a
+		// levelet. A relay később még visszautasíthatja (például SPF/DKIM miatt), ezért
+		// a health oldal ne állítsa, hogy a címzetti kézbesítés rendben van.
+		return self::SMTP_ACCEPTED;
 
 	}
     

@@ -9,21 +9,41 @@
     RewriteRule ^(.*)/$ /$1 [L,R=301]
 
     RewriteBase /
+
+    # #642: az OSM-ben sok helyen a régi `?templom=1254` alakú link szerepel. Erre
+    # kattintva a látogató egy elérhetetlen címen kötött ki:
+    #   http://miserend.hu:8000/templom/1254?templom=1254  (ERR_CONNECTION_TIMED_OUT)
+    # Három baj volt egyszerre:
+    #   1. az Apache a 8000-es porton figyel (előtte a Caddy a 443-on), és a relatív
+    #      célból abszolút URL-t építve ODATETTE a saját fizikai portját;
+    #   2. a séma http-re esett vissza, mert a TLS-t a Caddy zárja;
+    #   3. a QSD hiánya miatt az EREDETI query string is odakerült, innen a
+    #      megkettőzött `?templom=1254`.
+    # Ezért az átirányítás célját mostantól magunk állítjuk össze a kliens Host
+    # fejlécéből — így se port, se séma nem tud elromlani, és dev/staging/prod
+    # egyaránt jól viselkedik.
+    RewriteCond %{HTTPS} =on [OR]
+    RewriteCond %{HTTP:X-Forwarded-Proto} =https
+    RewriteRule ^ - [E=PROTO:https]
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ - [E=PROTO:http]
+
     RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
-    RewriteRule ^(.*)$ http://%1/$1 [R=301,L]
+    RewriteRule ^(.*)$ %{ENV:PROTO}://%1/$1 [R=301,L]
 
     # Redirect query parameter ?templom=ID to path /templom/ID for Angular
     # Case 1: Only ?templom=ID (no other parameters)
     RewriteCond %{QUERY_STRING} ^templom=([0-9]+)$
-    RewriteRule ^/?$ /templom/%1 [R=301,L]
-    
+    RewriteRule ^/?$ %{ENV:PROTO}://%{HTTP_HOST}/templom/%1 [R=301,L,QSD]
+
     # Case 2: ?templom=ID&other=params (temple at start)
     RewriteCond %{QUERY_STRING} ^templom=([0-9]+)&(.+)$
-    RewriteRule ^/?$ /templom/%1?%2 [R=301,L]
-    
+    RewriteRule ^/?$ %{ENV:PROTO}://%{HTTP_HOST}/templom/%1?%2 [R=301,L,QSD]
+
     # Case 3: ?other=params&templom=ID (and possibly more params after)
     RewriteCond %{QUERY_STRING} ^(.+?)&templom=([0-9]+)((?:&.+)?)$
-    RewriteRule ^/?$ /templom/%2?%1%3 [R=301,L]
+    RewriteRule ^/?$ %{ENV:PROTO}://%{HTTP_HOST}/templom/%2?%1%3 [R=301,L,QSD]
 
     # Handle Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d

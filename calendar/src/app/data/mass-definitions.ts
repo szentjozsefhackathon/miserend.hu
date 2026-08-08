@@ -200,6 +200,17 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
     },
 
     {
+      // #593: keresztút. A bejelentésben a kenyérmegáldás is szerepelt, azt borazslo
+      // elvetette ("Jó lenne minél lejjebb tartani a szertartástípusok számát"), a
+      // keresztutat viszont jóváhagyta.
+      key: 'STATIONS_OF_THE_CROSS',
+      category: MassTitleCategory.OTHER,
+      rites: [Rite.ROMAN_CATHOLIC],
+      description: 'Stations of the Cross (Way of the Cross) devotion',
+      specialUsage: null
+    },
+
+    {
       key: 'MATINS',
       category: MassTitleCategory.OTHER,
       rites: [Rite.GREEK_CATHOLIC],

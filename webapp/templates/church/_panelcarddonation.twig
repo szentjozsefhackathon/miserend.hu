@@ -1,0 +1,9 @@
+{% extends 'panel.twig' %}
+
+{% set title = '<i class="' ~ ICONS_AUTOMATE ~ '"></i> Bankkártyás adományozás' %}
+{% set panel = cardDonation.available ? 'primary' : 'default' %}
+{% set collapsible = 'collapsed' %}
+
+{% block body %}
+    <p>{{ cardDonation.message }}</p>
+{% endblock %}

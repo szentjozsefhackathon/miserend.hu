@@ -166,4 +166,11 @@ class EmailSendingTest extends TestCase
 
         $this->assertStringContainsString('SMTP_HOST', $email->test());
     }
+
+    public function testSuccessfulSmtpResultDoesNotClaimDelivery(): void
+    {
+        $this->assertStringContainsString('elfogadta', \Eloquent\Email::SMTP_ACCEPTED);
+        $this->assertStringContainsString('nem igazolja', \Eloquent\Email::SMTP_ACCEPTED);
+        $this->assertStringNotContainsString('OK', \Eloquent\Email::SMTP_ACCEPTED);
+    }
 }

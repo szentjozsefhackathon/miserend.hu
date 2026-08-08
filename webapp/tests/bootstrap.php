@@ -34,5 +34,10 @@ configurationSetEnvironment($env);
 // Set up database connection for integration tests
 dbconnect();
 
+// #638: Seed the cron registry — mirrors the deployment step (index.php?q=cron&cron_init=1).
+// Without this the crons table stays empty and tests that rely on pre-existing
+// cron rows (e.g. testCronInitAddsMissingJobsAndKeepsExistingHistory) would fail.
+\Eloquent\Cron::init();
+
 date_default_timezone_set('Europe/Budapest');
 

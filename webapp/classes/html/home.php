@@ -106,25 +106,9 @@ class Home extends Html {
         $this->favorites = $user->getFavorites();
         $this->searchform = $searchform;
         
-        // Load rites and categories from mass-definitions.json
-        $massDefinitionsPath = PATH . 'mass-definitions.json';
-        if (file_exists($massDefinitionsPath)) {
-            $massDefinitionsJson = file_get_contents($massDefinitionsPath);
-            $massDefinitionsData = json_decode($massDefinitionsJson, true);
-            if (isset($massDefinitionsData['rites']) && is_array($massDefinitionsData['rites'])) {
-                $this->rites = $massDefinitionsData['rites'];
-            } else {
-                $this->rites = [];
-            }
-            if (isset($massDefinitionsData['categories']) && is_array($massDefinitionsData['categories'])) {
-                $this->categories = $massDefinitionsData['categories'];
-            } else {
-                $this->categories = [];
-            }
-        } else {
-            $this->rites = [];
-            $this->categories = [];
-        }
+        $massDefinitions = new \MassDefinitions();
+        $this->rites = $massDefinitions->rites();
+        $this->categories = $massDefinitions->categories();
 		try {
             $this->alert = (new \ExternalApi\NapilelkibatyuApi())->liturgicalAlert();            
         } catch (\Exception $e) {

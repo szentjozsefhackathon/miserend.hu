@@ -7,7 +7,8 @@
    crossorigin=""></script>
     <script src="https://makinacorpus.github.io/Leaflet.TextPath/leaflet.textpath.js"></script>
     <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylinedecorator.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylinedecorator.css"/>
+    {# A leaflet-polylinedecorator CSS-e itt volt behivatkozva, de nem létezik: az unpkg
+       HTTP 404-et ad rá. Minden térképes oldalbetöltéskor feleslegesen kértük. (#653) #}
 
 <style>
     /* Map Popup Weekend Masses Styling */
@@ -99,9 +100,20 @@
 
 
 <script>
-    
-    var mymap = L.map('mapid');  
-        
+
+    /*
+     * #640: a térkép felállását nehéz volt nyomon követni, mert a hiba csak az ELSŐ
+     * betöltéskor jött elő, frissítésre eltűnt. A dobott hibákat ezért gyűjtjük, hogy
+     * a funkcionális teszt (MapInitializationTest) számon tudja kérni őket.
+     */
+    window.__mapErrors = [];
+    window.addEventListener('error', function (event) {
+        window.__mapErrors.push(String(event.message || event.error));
+    });
+
+    var mymap = L.map('mapid');
+    window.mymap = mymap;
+
     var logo = L.control({position: 'bottomright'});
     logo.onAdd = function(map){
         var div = L.DomUtil.create('div', 'myclass');
@@ -117,7 +129,7 @@
     // Determine initial position: check autogeolocation first
     var initialPosition = null;
     var initialZoom = 13;
-    
+
     {% if center %}
         initialPosition = [{{ center.lat }}, {{ center.lon}}];
         {% if center.zoom %} initialZoom = {{ center.zoom }}; {% endif %}
@@ -127,43 +139,53 @@
     {% else %}
         initialPosition = [47.5, 19.05]; // Budapest default
     {% endif %}
-    
+
     // Geolocation check - try to get user position before setView
     {% if enableAutoGeoLocation is not defined %}
         {% set enableAutoGeoLocation = false %}
     {% endif %}
-    
-    function initializeMapWithPosition(lat, lng) {
-        mymap.setView([lat, lng], initialZoom);
-        // Trigger the data loading
-        onMapMoved.call(mymap);
-    }
-    
-    if ({% if enableAutoGeoLocation %}true{% else %}false{% endif %} && navigator.geolocation && !{% if center %}true{% else %}false{% endif %} && !{% if location %}true{% else %}false{% endif %}) {
-        // Try to get geolocation, but don't wait too long
-        var geolocationTimer = setTimeout(function() {
-            // Fallback to initial position if geolocation takes too long
-            mymap.setView(initialPosition, initialZoom);
-            onMapMoved.call(mymap);
-        }, 3000);
-        
-        navigator.geolocation.getCurrentPosition(
-            function(position) {
-                clearTimeout(geolocationTimer);
-                initializeMapWithPosition(position.coords.latitude, position.coords.longitude);
-            },
-            function(error) {
-                // Fallback to initial position on error
-                clearTimeout(geolocationTimer);
+
+    /*
+     * #640: a nézet beállítása KÉSŐBB, a script legvégén történik — itt csak definiáljuk.
+     *
+     * A setView() szinkron elsüti a 'load' eseményt, arra pedig az onMapMoved() és a
+     * loadBoundary() van kötve (fentebb). Ha a nézetet még itt beállítjuk, ezek olyankor
+     * futnak le, amikor a rétegek (activeRomanLayer, ...) és az svgIcons még nem léteznek.
+     * Ezért kellett korábban a script végén egy külön onMapMoved() hívás — csakhogy az
+     * auto-geolokációs ágon fordítva sült el: a setView() egy aszinkron callbackben marad,
+     * így a végi hívás nézet NÉLKÜL futott, és a getBounds() eldobta a térképet
+     * ("Set map center and zoom first"). Frissítésre azért javult meg, mert akkor a
+     * gyorsítótárazott pozíció megnyerte a versenyt.
+     *
+     * A helyes sorrend: előbb minden réteg és ikon, utána kap nézetet a térkép.
+     * Az adatbetöltést így végig az események intézik ('load' + lentebb 'moveend'),
+     * nem kell külön onMapMoved()-ot hívogatni.
+     */
+    function setInitialView() {
+        if ({% if enableAutoGeoLocation %}true{% else %}false{% endif %} && navigator.geolocation && !{% if center %}true{% else %}false{% endif %} && !{% if location %}true{% else %}false{% endif %}) {
+            // Try to get geolocation, but don't wait too long
+            var geolocationTimer = setTimeout(function() {
+                // Fallback to initial position if geolocation takes too long
                 mymap.setView(initialPosition, initialZoom);
-                onMapMoved.call(mymap);
-            }
-        );
-    } else {
-        // No autogeolocation or already have center/location
-        mymap.setView(initialPosition, initialZoom);
+            }, 3000);
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    clearTimeout(geolocationTimer);
+                    mymap.setView([position.coords.latitude, position.coords.longitude], initialZoom);
+                },
+                function(error) {
+                    // Fallback to initial position on error
+                    clearTimeout(geolocationTimer);
+                    mymap.setView(initialPosition, initialZoom);
+                }
+            );
+        } else {
+            // No autogeolocation or already have center/location
+            mymap.setView(initialPosition, initialZoom);
+        }
     }
-                        
+
     //https://leaflet-extras.github.io/leaflet-providers/preview/
     var CartoDB_Voyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -174,18 +196,22 @@
 		maxZoom: 19,
 		attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 	});
-	var Stamen_Terrain = 		L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.{ext}', {
-		attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-		subdomains: 'abcd',
-		minZoom: 0,
-		maxZoom: 18,
-		ext: 'png'
-	});
+    /*
+     * #653: a Stamen Terrain réteg innen KIKERÜLT. A Stamen 2023-ban a Stadia Mapshez
+     * költözött, a régi végpont (stamen-tiles-*.a.ssl.fastly.net) mérve HTTP 503-at ad,
+     * tehát a réteg évek óta halott volt. Ráadásul soha nem is lehetett kiválasztani:
+     * definiálva volt, de sehol nem használtuk (a lenti control.layers baseLayers-e null).
+     *
+     * Visszahozni nem tudjuk csak úgy: az utód (tiles.stadiamaps.com/tiles/stamen_terrain)
+     * kulcs nélkül HTTP 401-et ad — regisztráció, API-kulcs és domain-engedélyezés kellene
+     * hozzá. Ha valaha kell egy terep-alapréteg, az külön döntés (és külön kulcs-kezelés).
+     */
+
     // #376: a direkt tile.openstreetmap.org az OSM Tile Usage Policy szerint
     // produkciós forgalomra tiltott → intermittensen „Access blocked" csempe
     // (van akinek megy, van akinek nem, Referer/IP/forgalom alapján). A CARTO
     // Voyager basemap (ingyenes, produkcióra való) a default — böngészőben mérve
-    // minden csempe 200-zal jön. Az OpenStreetMap_Mapnik/Stamen fentebb definiálva
+    // minden csempe 200-zal jön. Az OpenStreetMap_Mapnik fentebb definiálva
     // marad, de nincs a réteg-választóban (baseLayers=null a lenti control.layers-nél).
     CartoDB_Voyager.addTo(mymap);
     
@@ -216,6 +242,18 @@
                 ];
 
     {% if dioceseslayer %}
+    /*
+     * #641: az egyházmegye neve eddig sehogy nem látszott a térképen (a válaszban sem
+     * volt benne). Kattintás helyett lebegő címke: a templom-gombostűk nem lopják el,
+     * és rögtön látszik, melyik egyházmegye fölött járunk.
+     */
+    function dioceseTooltip(feature, layer) {
+        var name = (feature.geometry && feature.geometry.name) || feature.properties && feature.properties.name;
+        if (name) {
+            layer.bindTooltip(name, { sticky: true, direction: 'top', className: 'diocese-tooltip' });
+        }
+    }
+
     // Egyházmegyék rétegekhez tartozó ID-k nyilvántartása
     var addedGreekCatholicIds = new Set();
     var addedRomanCatholicIds = new Set();
@@ -239,7 +277,8 @@
                     fillOpacity: 0.3
                 };
             
-        }
+        },
+        onEachFeature: dioceseTooltip
     });
 
     var diocesesRomanCatholicLayer = L.geoJSON(null, {
@@ -260,7 +299,8 @@
                     fillOpacity: 0.3
                 };
             
-        }
+        },
+        onEachFeature: dioceseTooltip
     }).addTo(mymap);
     layerControls['Római katolikus egyházmegyék'] = diocesesRomanCatholicLayer;  
     layerControls['Görögkatolikus egyházmegyék'] = diocesesGreekcatholicLayer;  
@@ -371,6 +411,9 @@
     
     // Relációs vonalak nyilvántartása az összehasonlításhoz
     var currentRelationshipIds = new Set();
+
+    // #641: a már kirajzolt templomok, hogy mozgatáskor csak a különbséget rajzoljuk.
+    var renderedChurchIds = new Set();
     
     L.control.layers( null, layerControls ).addTo(mymap);
        
@@ -390,17 +433,37 @@
            if(activeRomanLayer) activeRomanLayer.clearLayers();
            if(activeGreekLayer) activeGreekLayer.clearLayers();
            if(inactiveLayer) inactiveLayer.clearLayers();
+           // #641: a nyilvántartást is ürítjük, különben visszazoomolva azt hinnénk,
+           // hogy a templomok még fent vannak, és üres maradna a térkép.
+           renderedChurchIds.clear();
 
-           
       } else {
       
-        $.getJSON( "/ajax/churchesinbbox?bbox=" + params , function( data ) {                              
+        $.getJSON( "/ajax/churchesinbbox?bbox=" + params , function( data ) {
             if(data) {
 
-                activeRomanLayer.clearLayers();
-                activeGreekLayer.clearLayers();
-                inactiveLayer.clearLayers();
-                                 
+                /*
+                 * #641: eddig minden mozdításkor LETÖRÖLTÜNK minden templomot, majd
+                 * újrarajzoltuk az egészet — ettől villódzott a térkép, pedig a látható
+                 * templomok többsége ugyanaz maradt. Most csak a különbséget rajzoljuk:
+                 * a kikerülteket levesszük, az újakat feltesszük, a maradókhoz nem nyúlunk.
+                 * (A kapcsolatok rétege már így működött, innen a minta.)
+                 */
+                var incomingIds = new Set();
+                $.each( data, function( key, val ) { incomingIds.add( val.id ); });
+
+                [ activeRomanLayer, activeGreekLayer, inactiveLayer ].forEach(function( group ) {
+                    var toRemove = [];
+                    group.eachLayer(function( layer ) {
+                        if ( !incomingIds.has( layer._churchId ) ) { toRemove.push( layer ); }
+                    });
+                    // Az eltávolítás külön menetben: iterálás közben ne módosítsuk a réteget.
+                    toRemove.forEach(function( layer ) {
+                        group.removeLayer( layer );
+                        renderedChurchIds.delete( layer._churchId );
+                    });
+                });
+
                 var items = [];
                 var isFullMapView = {% if not church_id %}true{% else %}false{% endif %};
                 
@@ -430,6 +493,9 @@
                 
                 $.each( data, function( key, val ) {
                     var current = {% if church_id %} {{ church_id }} {% else %} -1 {% endif %};
+                    // #641: ami már fent van a térképen, azzal nincs dolgunk — a popup
+                    // összeállítását se kezdjük el fölöslegesen.
+                    if ( renderedChurchIds.has( val.id ) ) { return; }
                     if( current != val.id) {
                         var popupContent = "<div class='map-popup-container'>";
                         popupContent += "<h3><a href='/templom/" + val.id.toString() + "'>"  + val.nev + "</a></h3>";
@@ -490,8 +556,9 @@
                         
                         popupContent += "</div>";
                         var geojsonFeature = {
-                            "type": "Feature",                                                      
+                            "type": "Feature",
                             "properties": {
+                                "id": val.id,
                                 "name": val.nev,
                                 "popupContent": popupContent,
                                 "active": val.active,
@@ -503,52 +570,68 @@
                                 "coordinates": [ val.lon , val.lat]
                             },
                         };
-                        
+
                         if( val.active == 1 ) {
-                            if( val.denomination == 'roman_catholic') {                            
+                            if( val.denomination == 'roman_catholic') {
                                 activeRomanLayer.addData(geojsonFeature);
                             } else if ( val.denomination == 'greek_catholic') {
                                 activeGreekLayer.addData(geojsonFeature);
-                            }                            
+                            }
                         } else {
                                 inactiveLayer.addData(geojsonFeature);
                         }
+                        renderedChurchIds.add( val.id );
                     }
                 });
             }
         });  
         }
          {% if dioceseslayer %}
-        // Egyházmegyéke lekérés a bbox alapján        
-        $.getJSON('/ajax/diocesesinbbox?bbox=' + params, function (data) {
+        /*
+         * #641: az egyházmegye-határokat MINDEN térképmozdításkor újra lekértük, pedig
+         * a réteg soha nem dob el semmit — a válasz nagy részét a kliens azonnal kiszűrte
+         * mint "már megvan". Mérve viszont a szerveroldal így is elvégezte a munkát:
+         * 2,3 s Budapestre, 17,9 s / 3,2 MB a Kárpát-medencére (a végpont Overpasst hív,
+         * majd egyházmegyénként Nominatimot — külső szolgáltatásokat, a térkép kritikus
+         * útján). Mostantól csak akkor kérünk, ha
+         *   - a réteg tényleg látszik, ÉS
+         *   - a nézet kilóg abból a területből, amit már egyszer lekértünk.
+         * A lekért területet megnöveljük, így a szokásos pásztázás már nem jár kéréssel.
+         */
+        var dioceseFetchedBounds = null;
 
-            // Új adatok hozzáadása a meglévő rétegekhez
-            if (data['greekcatholic']) {
-                const newGreekCatholicData = data['greekcatholic'].filter(feature => {
-                    const id = feature.id || feature.properties.id; // Azonosító lekérése
-                    if (!addedGreekCatholicIds.has(id)) {
-                        addedGreekCatholicIds.add(id); // Hozzáadás az ID-k listájához
-                        console.log('New Greekcatholic Diocese:', 'https://openstreetmap.org/' + id);
-                        return true; // Új adat
-                    }
-                    return false; // Már létező adat
-                });
-                diocesesGreekcatholicLayer.addData(newGreekCatholicData); // Csak az új adatok hozzáadása
-            }
+        function refreshDioceses(mapBounds) {
+            var visible = mymap.hasLayer(diocesesRomanCatholicLayer) || mymap.hasLayer(diocesesGreekcatholicLayer);
+            if (!visible) { return; }
+            if (dioceseFetchedBounds && dioceseFetchedBounds.contains(mapBounds)) { return; }
 
-            if (data['roman_catholic']){
-                const newRomanCatholicData = data['roman_catholic'].filter(feature => {
-                    const id = feature.id || feature.properties.id; // Azonosító lekérése
-                    if (!addedRomanCatholicIds.has(id)) {
-                        addedRomanCatholicIds.add(id); // Hozzáadás az ID-k listájához
-                        console.log('New Roman Catholic Diocese:', 'https://openstreetmap.org/' + id);
-                        return true; // Új adat
-                    }
-                    return false; // Már létező adat
-                });
-                diocesesRomanCatholicLayer.addData(newRomanCatholicData); // Csak az új adatok hozzáadása
-            }
-        });
+            // A tényleges nézetnél nagyobb területet kérünk, hogy a pásztázás ne kérjen újra.
+            var padded = mapBounds.pad(0.5);
+            var box = padded.getSouthWest().lat + ";" + padded.getSouthWest().lng + ";"
+                    + padded.getNorthEast().lat + ";" + padded.getNorthEast().lng;
+
+            $.getJSON('/ajax/diocesesinbbox?bbox=' + box, function (data) {
+                // Csak sikeres válasz után jegyezzük fel — különben hiba esetén
+                // azt hinnénk, hogy megvan az a terület.
+                dioceseFetchedBounds = padded;
+
+                addDioceses(data['greekcatholic'], addedGreekCatholicIds, diocesesGreekcatholicLayer);
+                addDioceses(data['roman_catholic'], addedRomanCatholicIds, diocesesRomanCatholicLayer);
+            });
+        }
+
+        function addDioceses(features, seenIds, layer) {
+            if (!features || !features.length) { return; }
+            var fresh = features.filter(function (feature) {
+                var id = feature.id || (feature.properties && feature.properties.id);
+                if (seenIds.has(id)) { return false; }
+                seenIds.add(id);
+                return true;
+            });
+            if (fresh.length) { layer.addData(fresh); }
+        }
+
+        refreshDioceses(box);
         {% endif %}
 
 
@@ -645,19 +728,28 @@
         }
     }
     
-    // Trigger initial load after all layers are set up
-    onMapMoved.call(mymap);
-         
     mymap.on('moveend', onMapMoved);
-    
+
     // Kapcsolatok réteg frissítése, amikor be/ki kapcsolják
+    // #641: az egyházmegye-rétegeket is csak akkor töltjük, ha tényleg bekapcsolják.
     mymap.on('overlayadd', function(e) {
-        if (e.name === 'Egyházi kapcsolatok') {
+        if (e.name === 'Egyházi kapcsolatok'
+            || e.name === 'Római katolikus egyházmegyék'
+            || e.name === 'Görögkatolikus egyházmegyék') {
             onMapMoved.call(mymap);
         }
     });
+
+    // #640: minden réteg és eseménykezelő megvan — MOST kaphat nézetet a térkép.
+    // Innentől a 'load' (első setView) és a 'moveend' (minden további) tölti az adatot.
+    setInitialView();
                 
     function onEachFeature(feature, layer) {
+        // #641: a templom azonosítója a rétegre kerül, hogy mozgatáskor pont a
+        // képernyőről kikerülteket tudjuk levenni (és csak azokat).
+        if (feature.properties && typeof feature.properties.id !== 'undefined') {
+            layer._churchId = feature.properties.id;
+        }
         // does this feature have a property named popupContent?
         if (feature.properties && feature.properties.popupContent) {
         layer.bindPopup(feature.properties.popupContent,{
@@ -669,6 +761,13 @@
     
 
 
+ /*
+  * #640: FIGYELEM — ez `const`, tehát a deklarációja ELŐTT nem érhető el (TDZ), a
+  * layerIcon() viszont jóval fentebb használja. Ma ez rendben van, mert a layerIcon()
+  * kizárólag a $.getJSON válasz-callbackjeiből fut, azok pedig mindig e sor után.
+  * Ha valaki ide fentebb szinkron adatbetöltést tesz (pl. async:false vagy egy korai
+  * setView), visszajön a "Cannot access 'svgIcons' before initialization".
+  */
  const svgIcons = {
     rm: `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
 	 width="100%" viewBox="0 0 346 513" enable-background="new 0 0 346 513" xml:space="preserve">

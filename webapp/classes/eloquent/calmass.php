@@ -50,6 +50,42 @@ class CalMass extends CalModel
     protected $primaryKey = 'id';
     protected $keyType = 'int';
 
+    /*
+     * #592: az importált miséket a külső naptár szinkronja írja és törli teljes
+     * cserével, ezért a szerkesztő nem nyúlhat hozzájuk — a következő import úgyis
+     * felülírná. A többi (kézzel felvitt) miséhez viszont hozzá KELL férni: a
+     * kettő megfér egymás mellett.
+     *
+     * A tulajdonos-jelölés ma az IMPORT_MARKER a comment mezőben. A frontend és a
+     * jogosultság-ellenőrzés ezen a származtatott mezőn / az importedIdsAmong()-on
+     * keresztül kérdez, hogy a jelölés módja (később: külön DB-oszlop, több naptár
+     * támogatásához) egy helyen legyen cserélhető.
+     */
+    protected $appends = ['imported'];
+
+    public function getImportedAttribute(): bool
+    {
+        return $this->getAttribute('comment') === \ExternalCalendarImporter::IMPORT_MARKER;
+    }
+
+    /**
+     * @param  int[] $ids
+     * @return int[] a megadott ID-k közül azok, amelyek importált miséhez tartoznak
+     */
+    public static function importedIdsAmong(array $ids): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+
+        return static::whereIn('id', $ids)
+            ->where('comment', \ExternalCalendarImporter::IMPORT_MARKER)
+            ->pluck('id')
+            ->map('intval')
+            ->all();
+    }
+
     public function period()
     {
         return $this->belongsTo(CalPeriod::class, 'period_id');
@@ -190,7 +226,6 @@ class CalMass extends CalModel
                     continue;
                 }
 
-                
                 // --- kizárt dátumokkal  ---
                 $excludedDatesRaw = $mass->exdate ?? [];
                 if (is_string($excludedDatesRaw)) {
@@ -391,6 +426,20 @@ class CalMass extends CalModel
                     ];
 
                     
+                }
+
+                if (isset($rrule['dtstart'])) {
+                    try {
+                        $rrule['dtstart'] instanceof \DateTimeInterface
+                            ? Carbon::instance($rrule['dtstart'])
+                            : Carbon::parse($rrule['dtstart'], $timezone);
+                    } catch (\Throwable $e) {
+                        error_log(
+                            "Invalid RRULE dtstart, skipping mass ID {$mass->id}: "
+                            . var_export($rrule['dtstart'], true)
+                        );
+                        continue;
+                    }
                 }
 
                 

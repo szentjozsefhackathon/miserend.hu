@@ -51,6 +51,11 @@ jobs:
             git fetch --prune origin master
             git reset --hard origin/master
 
+            # #652: a lábléc verzió-jelzéséhez kell. Eddig egy git post-checkout hookra
+            # bíztuk, de a hookok nem verziókövetettek, és a `git pull` amúgy sem indít
+            # post-checkoutot — ezért a fájl élesben soha nem jött létre, a lábléc üres volt.
+            bash scripts/write-git-hash.sh || echo "⚠ A git_hash kiírása nem sikerült — a lábléc verzió nélkül marad."
+
             # A staging env-értékek (projekt-név, image-tag, portok) betöltése.
             set -a
             . .env.staging
@@ -71,5 +76,13 @@ jobs:
 
             # Indítás a frissen épített image-dzsel.
             $COMPOSE up -d
+
+            # ── Cron-registry szinkron (#638) ────────────────────────────────
+            # A registry (webapp/fajlok/crons.php) hiányzó sorait a deploy veszi fel;
+            # meglévőt NEM módosít és nem töröl. Ha most nem sikerül, a következő
+            # cron-futás úgyis elvégzi.
+            echo "▶ Cron registry szinkronizálása..."
+            $COMPOSE exec -T miserend php index.php q=cron cron_init=1 \
+              || echo "⚠ A cron-registry szinkron nem futott le most — a következő cron-futás pótolja."
 
             $COMPOSE ps

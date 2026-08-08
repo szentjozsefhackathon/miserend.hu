@@ -280,6 +280,7 @@ class Health extends Html {
 
 
 		$this->mailing['testresult'] = $email->test($html);
+		$this->mailing['testaccepted'] = $this->mailing['testresult'] === \Eloquent\Email::SMTP_ACCEPTED;
 			
 		return;		
     }

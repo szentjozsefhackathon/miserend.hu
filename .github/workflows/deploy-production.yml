@@ -90,6 +90,11 @@ jobs:
             fi
             echo "✅ git pull succeeded"
 
+            # #652: a lábléc verzió-jelzéséhez kell. Eddig egy git post-checkout hookra
+            # bíztuk, de a hookok nem verziókövetettek, és a `git pull` amúgy sem indít
+            # post-checkoutot — ezért a fájl élesben soha nem jött létre, a lábléc üres volt.
+            bash scripts/write-git-hash.sh || echo "⚠ A git_hash kiírása nem sikerült — a lábléc verzió nélkül marad."
+
             # ── 3) Docker image újraépítése ──────────────────────────────────
             echo "▶ Building Docker image..."
             docker build \
@@ -100,6 +105,16 @@ jobs:
             # ── 4) Konténerek újraindítása ───────────────────────────────────
             echo "▶ Starting containers..."
             $COMPOSE up -d
+
+            # ── 5) Cron-registry szinkron (#638) ─────────────────────────────
+            # Új cron-függvénynél eddig kézzel kellett INSERT INTO-t nyomni az éles
+            # adatbázisba, mert az initdb seed nem fut újra. A registry
+            # (webapp/fajlok/crons.php) hiányzó sorait innentől a deploy veszi fel;
+            # meglévőt NEM módosít és nem töröl, tehát a lastsuccess_at megmarad.
+            # Ha most nem sikerül, nem baj: a következő cron-tick is elvégzi.
+            echo "▶ Cron registry szinkronizálása..."
+            $COMPOSE exec -T miserend php index.php q=cron cron_init=1 \
+              || echo "⚠ A cron-registry szinkron nem futott le most — a következő cron-futás pótolja."
 
             echo "▶ Container status:"
             $COMPOSE ps

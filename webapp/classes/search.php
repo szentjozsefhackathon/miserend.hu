@@ -242,6 +242,59 @@ class Search {
         $this->filters[] = "A liturgia nyelve legyen <b>" . implode('</b> vagy <b>', $translated) . "</b>";        
     }
 
+    /*
+     * #644: akadálymentesség szűrő.
+     *
+     * SZÁNDÉKOSAN csak pozitív irányban lehet keresni ('yes' és/vagy 'limited'):
+     * arra nincs mód, hogy valaki kifejezetten a NEM akadálymentes helyeket keresse.
+     *
+     * Mindkét indexen működik: a misekeresőben a templom a `church.` alatt van.
+     */
+    const WHEELCHAIR_VALUES = ['yes', 'limited'];
+
+    function wheelchair(array $values): void {
+        $values = array_values(array_intersect($values, self::WHEELCHAIR_VALUES));
+        if (empty($values)) return;
+
+        $prefix = $this->massOrChurch === 'mass' ? 'church.' : '';
+        $this->addMust([ 'terms' => [$prefix . 'wheelchair.keyword' => $values] ]);
+
+        $labels = ['yes' => 'akadálymentes', 'limited' => 'részben akadálymentes'];
+        $this->filters[] = 'Kerekesszékkel <b>'
+            . implode('</b> vagy <b>', array_map(fn($v) => $labels[$v], $values)) . '</b>';
+    }
+
+    /*
+     * #644: csökkentett gluténtartalmú áldozás szűrő.
+     *
+     * A hétköznap és a vasárnap KÜLÖN kérdés (borazslo: „gyakran lehet olyan hogy
+     * keresek olyan helyet ahol hétköznap lehet, meg olyat ahol legalább vasárnap").
+     * Ha mindkettőt kéri, mindkettőnek teljesülnie kell.
+     *
+     * A 'no' és az üres érték nem számít lehetőségnek, ezért azokat kizárjuk.
+     */
+    const GLUTEN_FREE_POSSIBLE = ['always', 'at_end', 'at_start', 'ask_sacristy', 'bring_host'];
+
+    function glutenFree(array $days): void {
+        $fields = [
+            'holidays' => ['gluten_free_holidays', 'ünnepnapokon'],
+            'weekdays' => ['gluten_free_weekdays', 'hétköznapokon'],
+        ];
+        $prefix = $this->massOrChurch === 'mass' ? 'church.' : '';
+
+        $chosen = [];
+        foreach ($days as $day) {
+            if (!isset($fields[$day])) continue;
+            [$field, $label] = $fields[$day];
+            $this->addMust([ 'terms' => [$prefix . $field . '.keyword' => self::GLUTEN_FREE_POSSIBLE] ]);
+            $chosen[] = $label;
+        }
+
+        if (!empty($chosen)) {
+            $this->filters[] = 'Csökkentett gluténtartalmú áldozás <b>' . implode('</b> és <b>', $chosen) . '</b>';
+        }
+    }
+
     function rites(array $rites) {
         $this->filters[] = "Rítus legyen: <b>" . htmlspecialchars(implode(' vagy ', t($rites))) . "</b>";
         if (is_array($rites) && count($rites) > 0) {
@@ -470,7 +523,7 @@ class Search {
 
         $elastic = new ElasticSearchApi();
         $elastic->curl_setopt(CURLOPT_CUSTOMREQUEST, "DELETE");
-        $elastic->buildQuery('_pit', json_encode(['id' => [$pitId]]));
+        $elastic->buildQuery('_pit', json_encode(['id' => $pitId]));
         $elastic->run();
  
         if (isset($elastic->jsonData->succeeded) && $elastic->jsonData->succeeded == true) {

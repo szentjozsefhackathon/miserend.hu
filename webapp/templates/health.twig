@@ -298,7 +298,7 @@
 					{% if foremail %}
 						It is the test email itself. ;)
 					{% else %}
-						<span class="{% if mailing.testresult != 'OK' %}table-danger{% endif%}">{{ mailing.testresult }}</span>
+						<span class="{% if not mailing.testaccepted %}table-danger{% endif%}">{{ mailing.testresult }}</span>
 					{% endif %}
 				</td>
 			</tr>

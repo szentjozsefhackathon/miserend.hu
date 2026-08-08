@@ -69,7 +69,11 @@
     }
   </mat-card-content>
   <mat-card-actions>
-    @if (data.suggestOrEditable) {
+    @if (data.mass.imported) {
+      <!-- #592: importált liturgia — a napi szinkron írja, itt nincs mit szerkeszteni. -->
+      <span class="imported-note">{{ 'EVENT_VIEWER.IMPORTED_NOT_EDITABLE' | translate }}</span>
+      <button mat-flat-button mat-dialog-close>{{ 'EVENT_VIEWER.CLOSE' | translate }}</button>
+    } @else if (data.suggestOrEditable) {
       @if (!confirmedEdit) {
         <button mat-flat-button (click)="onSuggestClicked()">{{ 'EVENT_VIEWER.SUGGEST' | translate }}</button>
         <button mat-flat-button mat-dialog-close>{{ 'EVENT_VIEWER.CLOSE' | translate }}</button>

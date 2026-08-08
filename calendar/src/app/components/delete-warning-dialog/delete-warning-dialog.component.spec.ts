@@ -1,6 +1,6 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MAT_DIALOG_DATA, MatDialogRef} from '@angular/material/dialog';
-import {TranslateModule} from '@ngx-translate/core';
+import {provideTranslateService} from '@ngx-translate/core';
 
 import {DeleteWarningDialogComponent} from './delete-warning-dialog.component';
 import {DialogResponse} from '../../enum/dialog-response';
@@ -46,8 +46,9 @@ describe('DeleteWarningDialogComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [DeleteWarningDialogComponent, TranslateModule.forRoot()],
+      imports: [DeleteWarningDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: dialogData},
         {provide: MatDialogRef, useValue: dialogRefMock},
         {provide: PeriodService, useValue: periodServiceMock},
