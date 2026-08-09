@@ -23,7 +23,7 @@ class Health extends Html {
         parent::__construct();
 
         global $user;
-        if (!$user->checkRole('any')) {
+        if (!$user->checkRole('"any"')) {
             throw new \Exception('Nincs jogosultságod megtekinteni az egészség oldalt.');
         }
 
