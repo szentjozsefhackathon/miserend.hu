@@ -23,6 +23,80 @@ services:
     volumes:
       - elasticsearch_data:/data
     restart: "no"
+  # #673: saját OSRM útvonaltervező.
+  #
+  # OPCIONÁLIS — `profiles` alatt van, tehát a sima `docker compose up` NEM indítja,
+  # és a CI-ra sincs hatással. Bekapcsolva:
+  #   docker compose --profile osrm up -d
+  #
+  # Miért érdemes: nem pénzt spórol (a mi forgalmunkon a fizetős szolgáltatók is a
+  # díjmentes keretükön belül vannak), hanem függetlenséget ad: nincs API-kulcs,
+  # nincs napi limit, és nem tud alólunk kicsúszni egy szolgáltatói feltétel-változás
+  # (lásd a Stamen 2023-as költözését, ami egy halott csempe-réteget hagyott — #653).
+  # Cserébe nekünk kell üzemeltetni: ~389 MB RAM és havi újraépítés.
+  #
+  # Mért értékek magyarországi kivonaton, car profillal:
+  #   memória futás közben 389 MB | útvonal-válasz 10–20 ms | gráf-építés ~27 s
+  #   csúcs-RAM építéskor 1,9 GB  | lemez 306 MB PBF + 588 MB gráf
+  # A kivonat letöltése külön, busybox-ban: az osrm-backend image-ben NINCS letöltő
+  # eszköz (se wget, se curl, se nc — kimértem). Ugyanaz a minta, mint a data-init.
+  osrm-fetch:
+    image: busybox
+    profiles: ["osrm"]
+    volumes:
+      - osrm_data:/data
+      - ./osrm/fetch-pbf.sh:/fetch-pbf.sh:ro
+    environment:
+      # Kisebb kivonattal is működik (füstteszthez pl. egy andorrányi terület).
+      - OSRM_PBF_URL=${OSRM_PBF_URL:-https://download.geofabrik.de/europe/hungary-latest.osm.pbf}
+      - OSRM_FORCE_DOWNLOAD=${OSRM_FORCE_DOWNLOAD:-0}
+    entrypoint: ["/bin/sh", "/fetch-pbf.sh"]
+    restart: "no"
+  osrm-init:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    profiles: ["osrm"]
+    volumes:
+      - osrm_data:/data
+      - ./osrm/build-graph.sh:/build-graph.sh:ro
+    environment:
+      - OSRM_FORCE_REBUILD=${OSRM_FORCE_REBUILD:-0}
+    entrypoint: ["/bin/sh", "/build-graph.sh"]
+    restart: "no"
+    depends_on:
+      osrm-fetch:
+        condition: service_completed_successfully
+  osrm:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v5.27.1}
+    profiles: ["osrm"]
+    # `mld` — ehhez kell a partition+customize lépés; cserébe a lekérdezés gyors
+    # marad úgy is, hogy az élsúlyok frissíthetők teljes újraépítés nélkül.
+    command: ["osrm-routed", "--algorithm", "mld", "/data/region.osrm"]
+    volumes:
+      - osrm_data:/data
+    ports:
+      - ${OSRM_PORT:-5000}:5000
+    restart: always
+    depends_on:
+      osrm-init:
+        condition: service_completed_successfully
+    networks:
+      inner:
+        aliases:
+          - osrm
+    # Nincs /health végpont, és letöltő eszköz sincs a képben — ezért bash /dev/tcp-vel
+    # kérünk egy valódi útvonalat. Nem konkrét `"code":"Ok"`-ot várunk, mert az a gráf
+    # területétől függ (egy kis kivonaton a budapesti pont NoSegment): azt ellenőrizzük,
+    # hogy az osrm-routed értelmes JSON-nal válaszol, vagyis fut és betöltötte a gráfot.
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/5000 && printf "GET /route/v1/driving/19.04,47.49;19.05,47.50?overview=false HTTP/1.0\r\n\r\n" >&3 && grep -q "\"code\":" <&3'
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
   mysql:
     image: mariadb:12
     platform: linux/amd64
@@ -139,6 +213,8 @@ networks:
 volumes:
   db_data: {}
   elasticsearch_data: {}
+  # #673: a letöltött PBF és a belőle épített gráf. Csak az `osrm` profillal jön létre.
+  osrm_data: {}
   tmp: {}
   sqlite: {}
   vendor_data:
