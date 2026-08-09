@@ -33,7 +33,18 @@ final class LegacyChurchUrlRedirectTest extends TestCase {
                 'follow_location' => 0,
                 'ignore_errors' => true,
                 'header' => $headers,
-                'timeout' => 10,
+                /*
+                 * A tesztek többsége átirányítást kér, az 1 ezredmásodperc alatt
+                 * megvan. Egy viszont TELJES templomlapot tölt (annak a lényege,
+                 * hogy perjel nélkül NINCS átirányítás), és az hidegen 9-10
+                 * másodperc, mert a lap külső API-kat hív. A korábbi 10 másodperc
+                 * épp a mért időn ült, ezért a CI-ban véletlenszerűen elbukott
+                 * "HTTP kérés nem sikerült"-tel.
+                 *
+                 * A gyökérok a külső API-függés, azt a #695 rendezi; addig itt
+                 * bőven a mért idő fölé emelem a korlátot.
+                 */
+                'timeout' => 45,
             ],
         ]);
 
