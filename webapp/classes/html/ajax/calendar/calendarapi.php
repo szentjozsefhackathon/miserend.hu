@@ -1,6 +1,6 @@
 <?php
 
-namespace Html\Calendar;
+namespace Html\Ajax\Calendar;
 
 class CalendarApi extends \Html\Html {
 

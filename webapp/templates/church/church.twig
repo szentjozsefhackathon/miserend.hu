@@ -147,6 +147,11 @@
         <div class="church-update-meta"><b>Frissítve ill. megerősítve:</b> {{ updated }}</div>
     {% endif %}
 
+    {# Hat hónapnál régebbi adatnál mobilon ide kerül a segítségkérő panel. #}
+    {% if days_ago is defined and days_ago >= 180 %}
+        <div id="church-mobile-help-placeholder"></div>
+    {% endif %}
+
     <!--{% include '_panelcampaign.twig' with { collapsible: 'collapsed' }  %}-->
 
     {% if miseaktiv == 1 %}
@@ -222,13 +227,22 @@
 {% set selfAdvertisement = true %}
 {% block leftsidebar %}
     {% if isChurchHolder != 'allowed '%}
-        {% include "church/_panelaskingremark.twig" %}
+        <div id="church-help-panel-wrap">
+            {% include "church/_panelaskingremark.twig" %}
+        </div>
     {% endif %}
     {% include 'announcment.twig' ignore missing %}
 	
 	{% if location.osm is not null %}
 		{% include 'church/_panelaccessibility.twig'  %}
 	{% endif %}
+
+    {% if cardDonation.message %}
+        {% include 'church/_panelcarddonation.twig' %}
+    {% endif %}
+    {% if glutenFreeCommunion.hasInformation %}
+        {% include 'church/_panelglutenfree.twig' %}
+    {% endif %}
     
 {% endblock %}
 
@@ -279,19 +293,28 @@
 	           var placeholder = document.getElementById('church-mobile-panels-placeholder');
 	           var locationWrap = document.getElementById('church-panel-location-wrap');
 	           var contactWrap  = document.getElementById('church-panel-contact-wrap');
-
-	           if (!placeholder || !locationWrap || !contactWrap) return;
+	           var helpPlaceholder = document.getElementById('church-mobile-help-placeholder');
+	           var helpWrap = document.getElementById('church-help-panel-wrap');
 
 	           if (isMobile) {
 	               // Mobilon: mozgasd a placeholder-be a főtartalom után
-	               placeholder.appendChild(locationWrap);
-	               placeholder.appendChild(contactWrap);
+	               if (placeholder && locationWrap && contactWrap) {
+	                   placeholder.appendChild(locationWrap);
+	                   placeholder.appendChild(contactWrap);
+	               }
+	               if (helpPlaceholder && helpWrap) {
+	                   helpPlaceholder.appendChild(helpWrap);
+	               }
 	           } else {
 	               // Asztali: visszahelyezés a jobb oszlopba (legelőre)
 	               var sidebar = document.querySelector('.church-site-right-sidebar');
-	               if (sidebar) {
+	               if (sidebar && locationWrap && contactWrap) {
 	                   sidebar.insertBefore(locationWrap, sidebar.firstChild);
 	                   sidebar.insertBefore(contactWrap, locationWrap.nextSibling);
+	               }
+	               var leftSidebar = document.querySelector('.church-site-left-sidebar');
+	               if (leftSidebar && helpWrap) {
+	                   leftSidebar.insertBefore(helpWrap, leftSidebar.firstChild);
 	               }
 	           }
 	       }

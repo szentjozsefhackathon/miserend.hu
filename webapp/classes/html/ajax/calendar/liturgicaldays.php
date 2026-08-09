@@ -1,10 +1,10 @@
 <?php
 
-namespace Html\Calendar;
+namespace Html\Ajax\Calendar;
 
 use ExternalApi\NapilelkibatyuApi;
 
-class Liturgicaldays extends \Html\Calendar\CalendarApi {
+class Liturgicaldays extends \Html\Ajax\Calendar\CalendarApi {
 
     public function __construct() {
         try {

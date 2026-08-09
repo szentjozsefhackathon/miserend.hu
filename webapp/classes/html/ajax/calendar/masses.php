@@ -1,17 +1,17 @@
 <?php
-namespace Html\Calendar;
+namespace Html\Ajax\Calendar;
 
 use ExternalApi\ElasticsearchApi;
 use Eloquent\CalMass;
 use Eloquent\CalModel;
-use Html\Calendar\Http\ChangeRequest;
+use Html\Ajax\Calendar\Http\ChangeRequest;
 use RRule\RRule;
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
-class Masses extends \Html\Calendar\CalendarApi {
+class Masses extends \Html\Ajax\Calendar\CalendarApi {
 
     protected $elastic;
 
@@ -46,18 +46,28 @@ class Masses extends \Html\Calendar\CalendarApi {
                 http_response_code(200);
                 exit();
             case 'POST':
-                $this->church->append(['writeAccess', 'hasExternalCalendar']);
+                $this->church->append(['writeAccess']);
 
-                // Check write access AND external calendar constraint
                 if (!$this->church->writeAccess) {
                     $this->sendJsonError('Hiányzó jogosultság!', 403);
-                }
-                if ($this->church->hasExternalCalendar) {
-                    $this->sendJsonError('Hiányzó jogosultság! Ez a templom külső naptárra van csatlakoztatva.', 403);
                 }
 
                 $input = json_decode(file_get_contents('php://input'), true);
                 $changeRequest = new ChangeRequest($input['masses'], $input['deletedMasses']);
+
+                // #592: eddig a külső naptár LÉTE tiltotta le az egész szerkesztőt. Ezért
+                // egy templom nem tudta a saját, kézzel felvitt miséit szerkeszteni, ha
+                // egyszer beállított egy importot. Mostantól csak maguk az importált misék
+                // védettek — azokat úgyis felülírná a következő szinkron.
+                $blocked = self::importedIdsIn($changeRequest);
+                if ($blocked !== []) {
+                    $this->sendJsonError(
+                        'A külső naptárból importált liturgiák itt nem szerkeszthetők, azokat a napi szinkron kezeli. '
+                        . 'A többi liturgia szerkesztése változatlanul működik.',
+                        403
+                    );
+                }
+
                 $this->save($changeRequest);
                 $this->optimizeExperiods();
                 // Ha frissítettünk egy miserendet, akkor mindig és automatikusan a dátuma is legyen friss!                
@@ -75,6 +85,26 @@ class Masses extends \Html\Calendar\CalendarApi {
         return CalMass::where('church_id', $churchId)->get()->toArray();
     }
 
+    /**
+     * #592: a beküldött változtatás mely miséi importáltak? A törlésre jelölteket és a
+     * frissítendőket egyaránt nézzük; az új (negatív/hiányzó ID-jű) misék nem lehetnek azok.
+     *
+     * @return int[]
+     */
+    public static function importedIdsIn(ChangeRequest $changeRequest): array
+    {
+        $ids = array_map('intval', $changeRequest->deletedMasses ?? []);
+
+        foreach ($changeRequest->masses as $mass) {
+            $massData = is_array($mass) ? $mass : (array) $mass;
+            if (isset($massData['id']) && (int) $massData['id'] > 0) {
+                $ids[] = (int) $massData['id'];
+            }
+        }
+
+        return CalMass::importedIdsAmong($ids);
+    }
+
     public function save(ChangeRequest $changeRequest): void
     {
         // Törlendő misék
@@ -86,6 +116,10 @@ class Masses extends \Html\Calendar\CalendarApi {
         foreach ($changeRequest->masses as $mass) {
             $massData = is_array($mass) ? $mass : (array) $mass;
             $massData = CalModel::arrayKeysToSnakeCase($massData);
+
+            // #592: az `imported` származtatott mező, nincs mögötte oszlop — a frontend
+            // visszaküldi a modellel együtt, itt viszont nyers UPDATE-be kerülne.
+            unset($massData['imported']);
 
             // Ha negatív az ID, töröljük
             if (isset($massData['id']) && $massData['id'] < 0) {

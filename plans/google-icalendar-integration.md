@@ -366,7 +366,7 @@ public static function importAllExternalCalendars() {
 
 ### Church Detail Endpoint
 
-**Módosítandó fájl:** `webapp/classes/html/calendar/church.php`
+**Módosítandó fájl:** `webapp/classes/html/ajax/calendar/church.php`
 
 A Church API response-ba hozzáadása (GET metódus, 37-46. sor körül):
 
@@ -417,13 +417,13 @@ if (this.churchData.hasExternalCalendar) {
 
 ### CalMass List Endpoint
 
-**Módosítandó fájl:** `webapp/classes/html/calendar/masses.php`
+**Módosítandó fájl:** `webapp/classes/html/ajax/calendar/masses.php`
 
 A `getByChurchId()` metódus output-ja már tartalmazza a CalMass objektumokat, így az RRULE és egyéb mezők már benne vannak.
 
 ### Backend Védelem: Mise-Módosítás Végpontok
 
-**Fájlok:** `webapp/classes/html/calendar/masses.php` és `webapp/classes/html/calendar/suggestions.php`
+**Fájlok:** `webapp/classes/html/ajax/calendar/masses.php` és `webapp/classes/html/ajax/calendar/suggestions.php`
 
 **Probléma:** Az Angular frontend levédi a szerkesztés lehetőségét, de a backend-nek is védekezni kell a direct API hívások ellen.
 
@@ -716,9 +716,9 @@ curl -X GET "localhost:9200/mass/_search?q=church_id:1254"
    - `webapp/classes/eloquent/cron.php` módosítása (initialize metódus)
 
 5. **API Végpontok**
-   - `webapp/classes/html/calendar/church.php` módosítása (GET response)
-   - `webapp/classes/html/calendar/masses.php` módosítása (POST védelmi check)
-   - `webapp/classes/html/calendar/suggestions.php` módosítása (GET/POST védelmi check)
+   - `webapp/classes/html/ajax/calendar/church.php` módosítása (GET response)
+   - `webapp/classes/html/ajax/calendar/masses.php` módosítása (POST védelmi check)
+   - `webapp/classes/html/ajax/calendar/suggestions.php` módosítása (GET/POST védelmi check)
 
 6. **Church/Edit Form Integráció**
    - `webapp/classes/html/church/edit.php` módosítása (form elem + modify logika)

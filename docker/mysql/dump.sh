@@ -33,8 +33,8 @@ ignore_tables=(
   tokens
 )
 
-MYSQL="mysql -h $HOST -u $USER -p$PASS $DB"
-DUMP="mysqldump -h $HOST -u $USER -p$PASS"
+MYSQL="mariadb -h $HOST -u $USER -p$PASS $DB"
+DUMP="mariadb-dump -h $HOST -u $USER -p$PASS"
 
 # ------------------------------------------------------------------
 # 0) TEMP: handle templomok

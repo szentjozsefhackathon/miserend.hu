@@ -1,0 +1,88 @@
+name: 🚀 Deploy to staging
+
+# #532: minden master-push után automatikusan frissül a staging.miserend.hu,
+# hogy legyen egy hosztolt, mindig naprakész nézet a legújabb behúzott kódra.
+#
+# Elv (a #532/#547 megbeszélés szerint):
+#  - SOSEM `git pull`, hanem `git fetch` + `git reset --hard origin/master`
+#    (a legyártott fájlok így sosem ütköznek — mindig tiszta lap).
+#  - A staging a MEGÉPÍTETT image-et futtatja (a Dockerfile multi-stage buildje a
+#    calendar-t is legyártja) → nincs host-oldali `npm build`, nincs git-pull-gubanc.
+#  - A staging példány EL van különítve a prod-tól: külön projekt-név (`PROJECT`),
+#    külön image-tag (`MISEREND_IMAGE`) és külön portok — mind a `.env.staging`-ben.
+#  - Env `staging` (nem `production`) → a layout.twig noindex-et rak ki (#547).
+#  - MINDEN deploynál friss adatbázis: `docker compose down -v` → nulláról seed.
+#  - A productionhöz EZ SOSEM nyúl.
+#
+# Előfeltételek (owner-teendő, egyszeri):
+#  1. A repó klónja a szerveren:  git clone <repo> /var/www/staging.miserend.hu
+#  2. GitHub secretek (Settings → Secrets and variables → Actions):
+#       STAGING_SSH_HOST / STAGING_SSH_USER / STAGING_SSH_KEY / STAGING_SSH_PORT (opc.)
+#  3. A szerveren docker + docker compose; a user a docker csoportban (különben `sudo`).
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          command_timeout: 40m   # a Dockerfile-build (npm + calendar + PHP) + a friss seed hosszú
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR=/var/www/staging.miserend.hu
+            cd "$DEPLOY_DIR"
+
+            # Tiszta lap: fetch + hard reset a master-re (nem 'git pull').
+            git fetch --prune origin master
+            git reset --hard origin/master
+
+            # #652: a lábléc verzió-jelzéséhez kell. Eddig egy git post-checkout hookra
+            # bíztuk, de a hookok nem verziókövetettek, és a `git pull` amúgy sem indít
+            # post-checkoutot — ezért a fájl élesben soha nem jött létre, a lábléc üres volt.
+            bash scripts/write-git-hash.sh || echo "⚠ A git_hash kiírása nem sikerült — a lábléc verzió nélkül marad."
+
+            # A staging env-értékek (projekt-név, image-tag, portok) betöltése.
+            set -a
+            . .env.staging
+            set +a
+
+            COMPOSE="docker compose --env-file .env.staging -f docker/compose.yml -f docker/compose.staging.yml"
+
+            # A miserend image megépítése (a compose nem építi — a Dockerfile multi-stage
+            # buildje csinálja a calendar + PHP fordítást is). Staging-saját tag, hogy a
+            # prod localhost/miserend:latest-jét NE írja felül.
+            docker build \
+              --build-arg NG_CONFIG=staging \
+              -t "${MISEREND_IMAGE}" \
+              -f docker/miserend/Dockerfile .
+
+            # Friss adatbázis MINDEN deploynál: volume-ok törlése → nulláról seed.
+            $COMPOSE down -v --remove-orphans
+
+            # Indítás a frissen épített image-dzsel.
+            $COMPOSE up -d
+
+            # ── Cron-registry szinkron (#638) ────────────────────────────────
+            # A registry (webapp/fajlok/crons.php) hiányzó sorait a deploy veszi fel;
+            # meglévőt NEM módosít és nem töröl. Ha most nem sikerül, a következő
+            # cron-futás úgyis elvégzi.
+            echo "▶ Cron registry szinkronizálása..."
+            $COMPOSE exec -T miserend php index.php q=cron cron_init=1 \
+              || echo "⚠ A cron-registry szinkron nem futott le most — a következő cron-futás pótolja."
+
+            $COMPOSE ps

@@ -1,6 +1,6 @@
 <?php
 
-namespace html\calendar\http;
+namespace Html\Ajax\Calendar\Http;
 
 class ChangeRequest {
     public array $masses;

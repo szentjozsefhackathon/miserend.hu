@@ -38,24 +38,36 @@ class DiocesesInBBox extends Ajax {
              return [];
         }
 
+        // #641: az egyházmegyék NEVÉT eddig nem küldtük le, ezért a térképen semmilyen
+        // módon nem lehetett megnézni, melyik egyházmegye fölött járunk. A Nominatim
+        // csak a geometriát adja vissza, a nevek viszont a saját `boundaries` táblánkban
+        // ott vannak (az OSM-sync tölti) — egyetlen lekérdezéssel hozzájuk tesszük.
+        $names = \Eloquent\Boundary::whereIn('osmid', array_map(function ($e) { return $e->id; }, $overpass->jsonData->elements))
+            ->get(['osmtype', 'osmid', 'name'])
+            ->keyBy(function ($boundary) { return $boundary->osmtype . '/' . $boundary->osmid; })
+            ->map(function ($boundary) { return $boundary->name; })
+            ->toArray();
+
         // Az egyházmegyék geoJSON adatait lekérjük.
         // Ez sok kérésnek tűnik, de mivel komoly cache van ezért gyorsan fog menni.
         $dioceses = [];
-        
-        foreach ($overpass->jsonData->elements as $element) {            
+
+        foreach ($overpass->jsonData->elements as $element) {
                 $types = [
                     'node' => 'N',
                     'way' => 'W',
-                    'relation' => 'R'   
+                    'relation' => 'R'
                 ];
 
-                $nominatim = new \ExternalApi\NominatimApi();        
-                $diocese = $nominatim->OSM2GeoJson($types[$element->type], $element->id);                
+                $nominatim = new \ExternalApi\NominatimApi();
+                $diocese = $nominatim->OSM2GeoJson($types[$element->type], $element->id);
                 if ($diocese == false ) continue;
-                $diocese->id = $element->type."/" .$element->id;
+                $key = $element->type . "/" . $element->id;
+                $diocese->id = $key;
+                $diocese->name = $names[$key] ?? '';
                 $dioceses[] = $diocese;
-                
-        
+
+
         }
 
         return $dioceses;

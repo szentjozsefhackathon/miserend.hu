@@ -1,4 +1,4 @@
 export const environment = {
   development: false,
-  apiUrl: 'https://uat.miserend.hu/calendar/'
+  apiUrl: 'https://staging.miserend.hu/calendar/'
 };

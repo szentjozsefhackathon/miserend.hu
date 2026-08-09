@@ -5,7 +5,9 @@ WORKDIR /legacy
 COPY webapp/package*.json ./
 RUN npm ci
 
-FROM node:18 AS calendar-build
+FROM node:22 AS calendar-build
+
+ARG NG_CONFIG=production
 
 WORKDIR /calendar
 
@@ -13,7 +15,7 @@ COPY calendar/package*.json ./
 RUN npm ci
 
 COPY calendar/ .
-RUN npm run build
+RUN npx ng build --configuration=${NG_CONFIG} && node scripts/generate-mass-definitions.js
 
 FROM php:8.4-apache
 

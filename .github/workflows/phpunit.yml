@@ -28,16 +28,22 @@ jobs:
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "REF=${{ github.ref }}" >> $GITHUB_OUTPUT
-            echo "TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+            echo "REF=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+            echo "TAG=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
             # Use the exact commit and tag from the workflow_run event
-            echo "REF=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
-            echo "TAG=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
+            echo "REF=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            echo "TAG=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # A refs/pull/<id>/merge ref eltűnik, amint a PR-t merge-ölik vagy lezárják.
+            # A head commit továbbra is elérhető, ezért a már sorban álló futás is
+            # biztonságosan checkoutolható.
+            echo "REF=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "TAG=latest" >> "$GITHUB_OUTPUT"
           else
-            # Pull request or other events
-            echo "REF=${{ github.ref }}" >> $GITHUB_OUTPUT
-            echo "TAG=latest" >> $GITHUB_OUTPUT
+            # Other events
+            echo "REF=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+            echo "TAG=latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout

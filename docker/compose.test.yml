@@ -16,5 +16,6 @@ services:
       dockerfile: docker/miserend/Dockerfile.test
     environment:
       - SMTP_HOST=mailcatcher
-      - SMTP_PORT=11025
+      # A 11025 a hoston publikált port; a compose-hálózaton belül a mailcatcher 1025-ön hallgat.
+      - SMTP_PORT=1025
       - MISEREND_WEBAPP_ENVIRONMENT=testing

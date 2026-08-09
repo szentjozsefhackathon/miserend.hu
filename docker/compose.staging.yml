@@ -1,0 +1,29 @@
+# #532: staging override. A compose.yml MELLÉ töltendő (NEM a compose.dev.yml mellé):
+#   docker compose --env-file .env.staging -f docker/compose.yml -f docker/compose.staging.yml ...
+#
+# Miért nem a compose.dev.yml: az a host `../webapp`-ját mountolja a konténer kódja FÖLÉ,
+# így a hostion kellene `npm build`-elni a naptárt (borazslo által jelzett gubanc). Itt a
+# staging a MEGÉPÍTETT image-et futtatja (a Dockerfile multi-stage buildje a calendar-t is
+# legyártja), ezért nincs host-oldali build és nincs git-pull-ütközés.
+#
+# Az env `staging` (nem `production`) → a layout.twig kiteszi a
+# <meta name="robots" content="noindex,nofollow"> tag-et (#547).
+services:
+  miserend:
+    environment:
+      - MISEREND_WEBAPP_ENVIRONMENT=staging
+      - SMTP_HOST=mailcatcher
+      - SMTP_PORT=1025
+    depends_on:
+      mailcatcher:
+        condition: service_started
+  mailcatcher:
+    image: dockage/mailcatcher
+    ports:
+      - ${MAILCATCHER_SMTP_PORT:-11025}:1025
+      - ${MAILCATCHER_WEB_PORT:-11080}:1080
+    restart: on-failure:10
+    networks:
+      inner:
+        aliases:
+          - mailcatcher

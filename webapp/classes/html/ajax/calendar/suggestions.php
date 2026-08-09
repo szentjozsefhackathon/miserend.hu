@@ -1,6 +1,6 @@
 <?php
 
-namespace Html\Calendar;
+namespace Html\Ajax\Calendar;
 
 use Eloquent\CalMass;
 use Eloquent\CalSuggestion;
@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 header("Access-Control-Allow-Origin: *");
 
-class Suggestions extends \Html\Calendar\CalendarApi
+class Suggestions extends \Html\Ajax\Calendar\CalendarApi
 {
     private bool $modify;
 
@@ -61,13 +61,13 @@ class Suggestions extends \Html\Calendar\CalendarApi
                 if ($this->modify) {
                     $this->sendJsonError('Method not allowed', 405);
                 }
-                $this->church->append(['writeAccess', 'hasExternalCalendar']);
+                // #592: a külső naptár léte önmagában nem tilthatja le a javaslatokat sem —
+                // a templom kézzel felvitt miséihez továbbra is lehet javaslatot tenni.
+                // Csak a konkrétan importált misékre vonatkozó műveleteket zárjuk ki (lásd lentebb).
+                $this->church->append(['writeAccess']);
 
                 if (!$this->church->writeAccess) {
                     $this->sendJsonError('Hiányzó jogosultság!', 403);
-                }
-                if ($this->church->hasExternalCalendar) {
-                    $this->sendJsonError('Hiányzó jogosultság! Ez a templom külső naptárra van csatlakoztatva.', 403);
                 }
 
                 $churchId = $this->tid;
@@ -88,12 +88,6 @@ class Suggestions extends \Html\Calendar\CalendarApi
                     $input = json_decode(file_get_contents('php://input'), true);
                     $this->handleModifiedPost($path[0], $path[1], $input);
                 } else {
-                    // Check if church has external calendar
-                    $this->church->append(['hasExternalCalendar']);
-                    if ($this->church->hasExternalCalendar) {
-                        $this->sendJsonError('Ez a templom külső naptárra van csatlakoztatva, módosítás nem lehetséges.', 403);
-                    }
-                    
                     $this->handleNewSuggestionPackage();
                 }
                 break;
@@ -115,11 +109,19 @@ class Suggestions extends \Html\Calendar\CalendarApi
             $this->sendJsonError('Nincs ilyen templom: '.$churchId, 404);
         }
 
-        $modifyChurch->append(['hasExternalCalendar']);
-        if ($modifyChurch && $modifyChurch->hasExternalCalendar) {
-            $this->sendJsonError('Ez a templom külső naptárra van csatlakoztatva, módosítás nem lehetséges.', 403);
+        // #592: nem a külső naptár léte a tiltó ok, hanem az, ha a javaslat épp egy
+        // importált misét módosítana — azt a következő szinkron úgyis felülírná.
+        $importedTargets = \Eloquent\CalMass::importedIdsAmong(
+            $package->suggestions->pluck('mass_id')->filter()->all()
+        );
+        if ($importedTargets !== []) {
+            $this->sendJsonError(
+                'Ez a javaslat a külső naptárból importált liturgiát érint, amit itt nem lehet módosítani.',
+                403
+            );
         }
-        
+
+
         $package->state = $input['state'];
         $package->save();
 
@@ -161,6 +163,24 @@ class Suggestions extends \Html\Calendar\CalendarApi
             } catch (\Throwable $e) {
                 Capsule::connection()->rollBack();                
                 $this->sendJsonError('Hiba történt a javaslatok alkalmazása során: ' . $e->getMessage(), 500);
+            }
+        }
+
+        // #543: a beküldő értesítése (ha adott meg emailt). Elfogadáskor automatikus
+        // köszönő-levél; elutasításkor csak ha a kezelő kéri (notify_sender flag — ezt
+        // az Angular felület küldheti; default: nem küldünk, mert néha látszik, hogy
+        // valaki véletlen többet küldött be). Ide csak a state-save + a sikeres ACCEPTED-
+        // apply UTÁN jutunk el (az apply hibája fentebb sendJsonError-rel kilép). Az
+        // email-hiba NE buktassa a már elmentett javaslat-státuszt.
+        if (!empty($package->sender_email)) {
+            try {
+                if ($input['state'] === 'ACCEPTED') {
+                    $package->sendMail('accepted_sender', $package->sender_email);
+                } elseif ($input['state'] === 'REJECTED' && !empty($input['notify_sender'])) {
+                    $package->sendMail('rejected_sender', $package->sender_email);
+                }
+            } catch (\Throwable $e) {
+                // csendben elnyeljük — a státusz már mentve, az email másodlagos
             }
         }
 
@@ -287,6 +307,15 @@ class Suggestions extends \Html\Calendar\CalendarApi
 
         if (!$input || !isset($input['churchId']) || !isset($input['suggestions']) || !isset($input['state'])) {
             $this->sendJsonError("Érvénytelen adat", 400);
+        }
+
+        // #592: importált misére ne lehessen javaslatot tenni — a szinkron felülírná.
+        $targetMassIds = array_filter(array_column($input['suggestions'] ?? [], 'massId'));
+        if (\Eloquent\CalMass::importedIdsAmong($targetMassIds) !== []) {
+            $this->sendJsonError(
+                'A külső naptárból importált liturgiákat itt nem lehet módosítani, azokat a napi szinkron kezeli.',
+                403
+            );
         }
 
         Capsule::connection()->transaction(function () use ($input) {

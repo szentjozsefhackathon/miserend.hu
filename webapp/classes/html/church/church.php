@@ -57,6 +57,8 @@ class Church extends \Html\Html {
     public $readAccess;
     public $writeAccess;
     public $accessibility;
+    public $cardDonation;
+    public $glutenFreeCommunion;
     public $hasWorkAccess;
     public $church;
     public $neighbours;
@@ -83,7 +85,8 @@ class Church extends \Html\Html {
         if(!$church) {
             throw new \Exception("Church with tid = '$tid' does not exist.");
         }
-        $church = $church->append(['readAccess','writeAccess','accessibility']);
+
+        $church = $church->append(['readAccess','writeAccess','accessibility','cardDonation','glutenFreeCommunion']);
         
         if (!$church->readAccess) {
             throw new \Exception("Read access denied to church tid = '$tid'");

@@ -194,6 +194,10 @@
   </div>
 
   @if (suggestionPackages.length > 0) {
+    <!-- #543: elutasításkor a kezelő eldöntheti, kapjon-e a beküldő email-értesítést -->
+    <mat-checkbox [(ngModel)]="notifySenderOnReject" [disabled]="!isSuggestionPending()" class="notify-sender-check">
+      Értesítsük a beküldőt az elutasításról (ha megadott e-mail címet)
+    </mat-checkbox>
     <div class="bottom-buttons">
       <button mat-flat-button class="reject" (click)="onReject()" [disabled]="!isSuggestionPending()">{{ 'SUGGESTION.REJECT' | translate }}</button>
       <button mat-flat-button class="approve" (click)="onApprove()" [disabled]="!isSuggestionPending()">{{ 'SUGGESTION.APPROVE' | translate }}</button>

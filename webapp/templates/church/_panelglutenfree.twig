@@ -1,0 +1,10 @@
+{% extends 'panel.twig' %}
+
+{% set title = '<i class="' ~ ICONS_GLUTENFREE ~ '"></i> Csökkentett gluténtartalmú szentáldozás' %}
+{% set panel = 'primary' %}
+{% set collapsible = 'collapsed' %}
+
+{% block body %}
+    <p><strong>Ünnepnapokon:</strong> {{ glutenFreeCommunion.holidays }}</p>
+    <p><strong>Hétköznapokon:</strong> {{ glutenFreeCommunion.weekdays }}</p>
+{% endblock %}

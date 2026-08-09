@@ -18,7 +18,13 @@ class Distance {
             $limit = 120;
         }
 
-        $query = \Eloquent\Church::has('osms')->take($limit)->orderBy('updated_at', 'desc');
+        // #172: a régi `has('osms')` egy 2018-ban megszűnt relációra hivatkozott (nincs
+        // `osms()` metódus / `osms` tábla) → a cron MINDEN futáskor BadMethodCallException-t
+        // dobott, ezért a distances tábla halott maradt. Helyette: valós koordinátájú
+        // templomok (ezekre van értelme távolságot számolni).
+        $query = \Eloquent\Church::whereNotNull('lat')->whereNotNull('lon')
+                ->where('lat', '!=', 0)->where('lon', '!=', 0)
+                ->take($limit)->orderBy('updated_at', 'desc');
         if ($church_id) {
             if (is_array($church_id)) {
                 $query = $query->whereIn('id', $church_id);

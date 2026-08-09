@@ -23,7 +23,7 @@ docker-compose -f docker/compose.yml -f docker/compose.dev.yml up
 # Mailcatcher: http://localhost:11080  Kibana: http://localhost:5601
 ```
 
-Port is configurable via `MISEREND_PORT` in `.env`.
+Port is configurable via `APP_PORT` in `.env`.
 
 ## Common Commands
 

@@ -2,13 +2,13 @@
 /**
  * #315: heti hét templom önkéntesség — CLI cron-entry pont.
  *
- * Telepítés:
- *   - Cron-bejegyzés: minden hétfő reggel 7-kor:
- *     0 7 * * 1 cd /path/to/miserend/webapp && /usr/bin/php cron/weekly-volunteers.php >> /var/log/miserend/volunteers.log 2>&1
+ * Ütemezésre NINCS rá szükség: a két munka (\Campaign::assignUpdates és
+ * ::clearoutVolunteers) be van jegyezve a webapp/fajlok/crons.php registrybe, tehát a
+ * rendes cron-futtató elindítja őket. Ez a fájl a kézi futtatásra való — akkor hasznos,
+ * ha egyben, bőbeszédűen és értelmes kilépési kóddal akarjuk látni az eredményt:
  *
- *   - Havonta egyszer inaktívak takarítása is ajánlott (külön cron, vagy ide
- *     bekapcsolható `--cleanup` flaggel a hónap első hétfőjén):
- *     0 7 1-7 * 1 cd /path/to/miserend/webapp && /usr/bin/php cron/weekly-volunteers.php --cleanup >> ...
+ *     docker compose exec miserend php cron/weekly-volunteers.php
+ *     docker compose exec miserend php cron/weekly-volunteers.php --cleanup
  *
  * Exit code:
  *   0 — sikeres futás (az `errors` is üres)

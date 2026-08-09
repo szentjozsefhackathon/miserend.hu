@@ -283,7 +283,11 @@
 	
 	<table class="table table-hover table-condensed table-striped">
 			<tr>
-				<td>Host:Port</td><td>{{ mailing.Host }}:{{ mailing.Port }}</td>
+				<td>Host:Port</td>
+				<td>
+					<span class="{% if mailing.warning %}table-danger{% endif %}">{{ mailing.Host|default('(nincs beállítva)') }}:{{ mailing.Port }}</span>
+					{% if mailing.warning %}<br/><span class="table-danger">{{ mailing.warning }}</span>{% endif %}
+				</td>
 			</tr>
 			<tr>
 				<td>debug level</td><td>{{ mailing.debug }}</td>
@@ -294,7 +298,7 @@
 					{% if foremail %}
 						It is the test email itself. ;)
 					{% else %}
-						<span class="{% if mailing.testresult != 'OK' %}table-danger{% endif%}">{{ mailing.testresult }}</span>
+						<span class="{% if not mailing.testaccepted %}table-danger{% endif%}">{{ mailing.testresult }}</span>
 					{% endif %}
 				</td>
 			</tr>

@@ -1,5 +1,5 @@
 <?php
-namespace Html\Calendar;
+namespace Html\Ajax\Calendar;
 
 use Carbon\Carbon;
 use ExternalApi\ElasticsearchApi;
@@ -17,7 +17,7 @@ if (!headers_sent()) {
     }
 }
 
-class Generate extends \Html\Calendar\CalendarApi {
+class Generate extends \Html\Ajax\Calendar\CalendarApi {
 
     protected $elastic;
     public $format = 'json';

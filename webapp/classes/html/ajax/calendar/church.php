@@ -1,5 +1,5 @@
 <?php
-namespace html\calendar;
+namespace Html\Ajax\Calendar;
 
 use ExternalApi\ElasticsearchApi;
 use Eloquent\CalMass;
@@ -9,7 +9,7 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
-class Church extends \Html\Calendar\CalendarApi {
+class Church extends \Html\Ajax\Calendar\CalendarApi {
 
     protected $elastic;
     public $tid;

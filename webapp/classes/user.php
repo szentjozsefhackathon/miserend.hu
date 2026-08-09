@@ -756,4 +756,124 @@ class User {
 		return true;
 		}
 
+	/**
+	 * #290: Ünnep-emlékeztető a templomgondnokoknak, 2 héttel a parancsolt ünnepek előtt.
+	 *
+	 * Parancsolt ünnepek a cal_periods seedből (verifikált ID-k): 22 Karácsony,
+	 * 25 Szent Három nap (húsvét), 21 Hamvazószerda, 40 Mindenszentek,
+	 * 41 Nagyboldogasszony, 42 Vízkereszt. (Pünkösd/12-31 borazslo szerint nem
+	 * külön periódus.) A napi cron megnézi, mely ünnep KEZDŐDIK pontosan 2 hét
+	 * múlva (materializált cal_generated_periods), és az érintett gondnokoknak küld.
+	 */
+	static function sendHolidayReminder() {
+		$feastIds = [22, 25, 21, 40, 41, 42];
+		$target = date('Y-m-d', strtotime('+2 weeks'));
+
+		$feasts = \Eloquent\CalGeneratedPeriod::whereIn('period_id', $feastIds)
+			->whereRaw('DATE(start_date) = ?', [$target])
+			// #290: a jegy szerint CSAK a NEM vasárnapra eső parancsolt ünnepekre
+			// emlékeztetünk (vasárnap úgyis mennek misére). DAYOFWEEK: 1 = vasárnap.
+			->whereRaw('DAYOFWEEK(start_date) <> 1')
+			->get();
+
+		foreach ($feasts as $feast) {
+			self::sendHolidayReminderForFeast($feast);
+		}
+		return true;
+	}
+
+	/** #290: egy konkrét, 2 hétre lévő ünnepre küld a gondnokoknak (gondnokonként 1 email). */
+	private static function sendHolidayReminderForFeast($feast) {
+		$type = 'holder_holiday_reminder';
+		$feastPeriodId = $feast->period_id;
+
+		// Gondnok-kiválasztás (a sendUpdateNotification query klónja) + type-alapú dedup.
+		$users2notify = DB::table('templomok')
+			->select('user.*')
+			->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
+			->join('user', 'user.uid', '=', 'church_holders.user_id')
+			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
+				[$type, date('Y-m-d H:i:s', strtotime('-2 weeks'))])
+			->where('church_holders.status', 'allowed')
+			->whereNull('church_holders.deleted_at')
+			->where('user.jogok', 'not like', '%miserend%')
+			->where('user.notifications', 1)
+			->whereNotNull('user.email')->where('user.email', '<>', '')
+			->where('templomok.ok', 'i')
+			->groupBy('user.email')
+			// #290: NINCS limit/RAND — egynapos trigger + napi cron mellett a limit(5)
+			// ünnepenként csak 5 gondnokot érne el. A rate-limitet az Email::sendQueued
+			// drainer intézi (külön cron), nem a kiválasztás.
+			->get();
+
+		$today = date('Y-m-d');
+
+		foreach ($users2notify as $user2notify) {
+			$user = new User($user2notify->uid);
+			$user->getResponsabilities();
+
+			// Csak azok a templomok, amelyeknek KELL az emlékeztető erre az ünnepre.
+			$churches = [];
+			foreach ($user->responsible['church'] as $churchID) {
+				$church = \Eloquent\Church::find($churchID);
+				if (!$church || $church->ok !== 'i') continue;
+				$filled = \Eloquent\CalMass::where('church_id', $churchID)
+					->where('period_id', $feastPeriodId)->exists();
+				if (!self::holidayReminderNeeded($filled, $church->frissites, $today)) continue;
+				$church->holidayFilled = $filled;
+				$churches[$churchID] = $church;
+			}
+			if (empty($churches)) continue;
+
+			// Tokenek (klón): per-templom + egy "minden naprakész".
+			$batchId = bin2hex(random_bytes(16));
+			$churchTokens = [];
+			foreach ($churches as $churchID => $church) {
+				$token = bin2hex(random_bytes(32));
+				\Eloquent\ChurchUpdateToken::create([
+					'token' => $token, 'uid' => $user->uid, 'church_id' => $churchID,
+					'email_batch_id' => $batchId,
+					'expires_at' => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+				]);
+				$churchTokens[$churchID] = $token;
+			}
+			$allToken = bin2hex(random_bytes(32));
+			\Eloquent\ChurchUpdateToken::create([
+				'token' => $allToken, 'uid' => $user->uid, 'church_id' => null,
+				'email_batch_id' => $batchId,
+				'expires_at' => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+			]);
+
+			$user->responsible['church'] = $churches;
+			$user->churchTokens = $churchTokens;
+			$user->allToken = $allToken;
+			$user->feastName = $feast->name;
+			$user->feastStart = $feast->start_date;
+
+			$email = new \Eloquent\Email();
+			$email->to = $user->email;
+			$email->render('holder_holiday_reminder', $user);
+			// #290: queue-ba tesszük (nem azonnali); az Email::sendQueued cron küldi ki.
+			$email->addToQueue();
+		}
+	}
+
+	/**
+	 * #290: Kell-e ünnep-emlékeztetőt küldeni erre a (templom, ünnep) párra? Tiszta logika.
+	 *
+	 * borazslo spec-je: Karácsony/Húsvét -> küldj, ha 6 hó nincs frissítés (kitöltöttségtől
+	 * függetlenül) VAGY nincs kitöltve. Többi ünnep -> küldj, ha nincs kitöltve; ha kitöltve,
+	 * csak ha 6 hó nincs frissítés. Mindkét szabály erre egyszerűsödik:
+	 *   küldj, ha (nincs kitöltve) VAGY (a frissítés 6 hónapnál régebbi).
+	 *
+	 * @param bool    $periodHasMass  van-e mise az adott ünnep-periódussal (kitöltött-e)
+	 * @param ?string $lastUpdate     templomok.frissites (Y-m-d) vagy null/üres
+	 * @param string  $today          mai dátum (Y-m-d) — teszthez injektálható
+	 */
+	static function holidayReminderNeeded(bool $periodHasMass, ?string $lastUpdate, string $today): bool {
+		if (!$periodHasMass) return true;
+		$sixMonthsAgo = date('Y-m-d', strtotime($today . ' -6 months'));
+		return empty($lastUpdate) || $lastUpdate < $sixMonthsAgo;
+	}
+
 }

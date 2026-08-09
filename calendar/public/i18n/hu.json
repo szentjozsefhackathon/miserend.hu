@@ -111,6 +111,7 @@
     "CONFESSION": "Gyóntatás",
     "BREVIARY": "Zsolozsma",
     "LITANY": "Litánia",
+    "STATIONS_OF_THE_CROSS": "Keresztút",
     "ROSARY": "Rózsafüzér",
     "DIVINE_LITURGY": "Szent Liturgia",
     "LITURGY_OF_THE_PRESANCTIFIED_GIFTS": "Előszenteltek liturgiája",
@@ -195,7 +196,9 @@
     "DELETE_ONE": "Ennek az egy alkalomnak a törlése",
     "DELETE_ALL": "Az összes ismétlődés törlése",
     "CLOSE": "Bezárás",
-    "SUGGEST": "Javaslat küldése"
+    "SUGGEST": "Javaslat küldése",
+    "IMPORTED_NOT_EDITABLE": "Ez a liturgia külső naptárból származik, ezért itt nem szerkeszthető. A módosítást a külső naptárban kell elvégezni, a napi szinkron átveszi.",
+    "IMPORTED_BADGE": "külső naptárból"
   },
 
   "RRULE": {

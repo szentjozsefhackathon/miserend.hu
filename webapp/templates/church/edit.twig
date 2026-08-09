@@ -270,6 +270,17 @@
             </tr>
             {{ _self.helptr(15,help) }}            
             <tr>
+                <td colspan="3"><hr/><h4>Csökkentett gluténtartalmú szentáldozás</h4></td>
+            </tr>
+            <tr>
+                <td class=kiscim align=right>Ünnepnapokon:</td>
+                <td colspan="2">{{ forms.select(form.gluten_free_holidays) }}</td>
+            </tr>
+            <tr>
+                <td class=kiscim align=right>Hétköznapokon:</td>
+                <td colspan="2">{{ forms.select(form.gluten_free_weekdays) }}</td>
+            </tr>
+            <tr>
                 <td colspan="3"><hr/><h4>Kapcsolat más misézőhelyekkel</h4></td>
             </tr>
 

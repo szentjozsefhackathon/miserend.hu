@@ -7,6 +7,8 @@ var/
 node_modules/
 dumper/01-dump.sql
 webapp/fajlok/git_hash
+# Az ExternalApi fájl-cache-e (Overpass/Nominatim/... válaszok) — futásidőben keletkezik.
+webapp/fajlok/tmp/
 
 .idea
 composer.phar

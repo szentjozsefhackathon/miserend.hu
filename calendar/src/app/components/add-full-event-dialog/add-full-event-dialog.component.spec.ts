@@ -1,7 +1,7 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {of} from 'rxjs';
 import {MAT_DIALOG_DATA, MatDialogRef} from '@angular/material/dialog';
-import {TranslateModule} from '@ngx-translate/core';
+import {provideTranslateService} from '@ngx-translate/core';
 
 import {AddFullEventDialogComponent} from './add-full-event-dialog.component';
 import {PeriodService} from '../../services/period.service';
@@ -65,8 +65,9 @@ describe('AddFullEventDialogComponent (#308 default period)', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [AddFullEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddFullEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: data},
         {provide: MatDialogRef, useValue: {close: jasmine.createSpy()}},
         {provide: PeriodService, useValue: periodServiceMock},
@@ -207,8 +208,9 @@ describe('AddFullEventDialogComponent (#428 manual experiod selector)', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [AddFullEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddFullEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: data},
         {provide: MatDialogRef, useValue: {close: jasmine.createSpy()}},
         {provide: PeriodService, useValue: periodServiceMock},
@@ -309,8 +311,9 @@ describe('AddFullEventDialogComponent (#450 egyszeri alkalom nem kap időszakot)
     };
 
     await TestBed.configureTestingModule({
-      imports: [AddFullEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddFullEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: data},
         {provide: MatDialogRef, useValue: {close: jasmine.createSpy()}},
         {provide: PeriodService, useValue: periodServiceMock},
@@ -384,8 +387,9 @@ describe('AddFullEventDialogComponent (#453 havi-n.-napja nap visszatöltése)',
     };
 
     await TestBed.configureTestingModule({
-      imports: [AddFullEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddFullEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: data},
         {provide: MatDialogRef, useValue: {close: jasmine.createSpy()}},
         {provide: PeriodService, useValue: periodServiceMock},
@@ -448,8 +452,9 @@ describe('AddFullEventDialogComponent (#458 szerkesztéskor nincs dátum-alapú 
     };
 
     await TestBed.configureTestingModule({
-      imports: [AddFullEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddFullEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: data},
         {provide: MatDialogRef, useValue: {close: jasmine.createSpy()}},
         {provide: PeriodService, useValue: periodServiceMock},

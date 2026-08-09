@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { MassUtil } from './mass-util';
 import { MassTitleCategory } from '../enum/mass-categories';
 import { MASS_DEFINITIONS_DATA } from '../data/mass-definitions';
@@ -18,12 +18,10 @@ describe('MassUtil - Category Classification', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [TranslateModule.forRoot()]
+      providers: [provideTranslateService({lang: 'hu'})]
     }).compileComponents();
 
     translate = TestBed.inject(TranslateService);
-    translate.setDefaultLang('hu');
-    translate.use('hu');
   });
 
   describe('getCategoryByTitle', () => {

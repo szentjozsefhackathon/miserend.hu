@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { MassTitleCategoryConfig } from './mass-title-category-config';
 import { MassTitleCategory } from '../enum/mass-categories';
 import { MASS_DEFINITIONS_DATA } from '../data/mass-definitions';
@@ -9,7 +9,7 @@ describe('MassTitleCategoryConfig', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [TranslateModule.forRoot()]
+      providers: [provideTranslateService({lang: 'hu'})]
     }).compileComponents();
 
     translate = TestBed.inject(TranslateService);
@@ -39,8 +39,6 @@ describe('MassTitleCategoryConfig', () => {
     };
     
     translate.setTranslation('hu', mockTranslations);
-    translate.setDefaultLang('hu');
-    translate.use('hu');
   });
 
   describe('CATEGORY_COLORS', () => {

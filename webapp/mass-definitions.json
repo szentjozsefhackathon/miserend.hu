@@ -172,6 +172,15 @@
       "specialUsage": null
     },
     {
+      "key": "STATIONS_OF_THE_CROSS",
+      "category": "OTHER",
+      "rites": [
+        "ROMAN_CATHOLIC"
+      ],
+      "description": "Stations of the Cross (Way of the Cross) devotion",
+      "specialUsage": null
+    },
+    {
       "key": "MATINS",
       "category": "OTHER",
       "rites": [
@@ -211,6 +220,7 @@
       "MASS_TITLE.BREVIARY",
       "MASS_TITLE.ROSARY",
       "MASS_TITLE.LITANY",
+      "MASS_TITLE.STATIONS_OF_THE_CROSS",
       "MASS_TITLE.MATINS",
       "MASS_TITLE.VESPRES"
     ]
@@ -226,7 +236,8 @@
       "MASS_TITLE.CONFESSION",
       "MASS_TITLE.BREVIARY",
       "MASS_TITLE.ROSARY",
-      "MASS_TITLE.LITANY"
+      "MASS_TITLE.LITANY",
+      "MASS_TITLE.STATIONS_OF_THE_CROSS"
     ],
     "GREEK_CATHOLIC": [
       "MASS_TITLE.DIVINE_LITURGY",

@@ -1,0 +1,121 @@
+name: 🚀 Deploy to production
+
+# A production branchre pusholt kód automatikusan kikerül a production.miserend.hu-ra.
+#
+# Elv (a staging-gel ellentétben — biztonságos, nem romboló):
+#  - NEM `git reset --hard`, hanem sima `git pull`. Ha ütközés van, a deploy MEGÁLL
+#    hibaüzenettel — soha nem írunk felül kézzel módosított fájlokat.
+#  - Deploy előtt MINDIG teljes mysqldump backup készül (gzip, timestamped).
+#  - A production compose: CSAK a compose.yml (nincs staging override).
+#  - A `.env` a szerveren él (gitignored) — SMTP, portok, stb.
+#  - Az image MINDEN deploynál újraépül (multi-stage Dockerfile: calendar + PHP).
+#
+# Előfeltételek (owner-teendő, egyszeri):
+#  1. A repó klónja a szerveren:  git clone <repo> /var/www/production.miserend.hu
+#     és checkout a production branchre.
+#  2. GitHub secretek (Settings → Secrets and variables → Actions):
+#       STAGING_SSH_HOST / STAGING_SSH_USER / STAGING_SSH_KEY / STAGING_SSH_PORT (opc.)
+#     (Ugyanaz a szerver, mint a staging — a secretek közösek.)
+#  3. A szerveren docker + docker compose; a user a docker csoportban.
+#  4. `.env` fájl a repó gyökerében a production értékekkel (SMTP, stb.)
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  # Production-ben NEM töröljük a futó deployt — megvárjuk, hogy befejezze.
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          command_timeout: 40m
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR=/var/www/production.miserend.hu
+            cd "$DEPLOY_DIR"
+
+            # ── .env betöltése (SMTP, portok, PROJECT, MISEREND_IMAGE stb.) ──
+            if [ -f .env ]; then
+              set -a
+              . .env
+              set +a
+            fi
+
+            COMPOSE="docker compose -f docker/compose.yml"
+
+            # ── 1) MySQL full backup ─────────────────────────────────────────
+            echo "▶ Creating MySQL backup..."
+            BACKUP_DIR="/home/github_action/backups"
+            mkdir -p "$BACKUP_DIR"
+            TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
+            BACKUP_FILE="$BACKUP_DIR/miserend-$TIMESTAMP.sql.gz"
+
+            $COMPOSE exec -T mysql mariadb-dump \
+              -u root -ppw \
+              --all-databases \
+              --single-transaction \
+              --routines \
+              --triggers \
+              --events \
+              | gzip > "$BACKUP_FILE"
+
+            # Ellenőrzés: a backup fájl nem üres
+            if [ ! -s "$BACKUP_FILE" ]; then
+              echo "❌ Backup file is empty or missing: $BACKUP_FILE"
+              exit 1
+            fi
+            BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+            echo "✅ Backup created: $BACKUP_FILE ($BACKUP_SIZE)"
+
+            # ── 2) git pull (nem force, nem reset) ──────────────────────────
+            echo "▶ Pulling latest changes..."
+            if ! git pull; then
+              echo "❌ git pull failed! Possible merge conflict or dirty working tree."
+              echo "   The production server has NOT been updated."
+              echo "   Resolve the issue manually on the server."
+              exit 1
+            fi
+            echo "✅ git pull succeeded"
+
+            # #652: a lábléc verzió-jelzéséhez kell. Eddig egy git post-checkout hookra
+            # bíztuk, de a hookok nem verziókövetettek, és a `git pull` amúgy sem indít
+            # post-checkoutot — ezért a fájl élesben soha nem jött létre, a lábléc üres volt.
+            bash scripts/write-git-hash.sh || echo "⚠ A git_hash kiírása nem sikerült — a lábléc verzió nélkül marad."
+
+            # ── 3) Docker image újraépítése ──────────────────────────────────
+            echo "▶ Building Docker image..."
+            docker build \
+              --build-arg NG_CONFIG=production \
+              -t "${MISEREND_IMAGE:-localhost/miserend:latest}" \
+              -f docker/miserend/Dockerfile .
+
+            # ── 4) Konténerek újraindítása ───────────────────────────────────
+            echo "▶ Starting containers..."
+            $COMPOSE up -d
+
+            # ── 5) Cron-registry szinkron (#638) ─────────────────────────────
+            # Új cron-függvénynél eddig kézzel kellett INSERT INTO-t nyomni az éles
+            # adatbázisba, mert az initdb seed nem fut újra. A registry
+            # (webapp/fajlok/crons.php) hiányzó sorait innentől a deploy veszi fel;
+            # meglévőt NEM módosít és nem töröl, tehát a lastsuccess_at megmarad.
+            # Ha most nem sikerül, nem baj: a következő cron-tick is elvégzi.
+            echo "▶ Cron registry szinkronizálása..."
+            $COMPOSE exec -T miserend php index.php q=cron cron_init=1 \
+              || echo "⚠ A cron-registry szinkron nem futott le most — a következő cron-futás pótolja."
+
+            echo "▶ Container status:"
+            $COMPOSE ps
+            echo "✅ Production deploy complete!"

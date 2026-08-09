@@ -106,6 +106,11 @@ Fejlesztői környezetben indul egy Mailcatcher is, ami a levelezés szimulálá
 
 Alapértelmezetten a http://localhost:11080/ oldalon lehet nyomon követni a kiküldött emaileket. 
 
+Éles (`production`) és `staging` környezetben viszont a mailcatcher **nem** alapértelmezés: ott az `SMTP_HOST` /
+`SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SECURE` env-változókat kötelező megadni (`docker/.env`, l.
+[docs/outgoing-connections.md](docs/outgoing-connections.md)). Ha nincs beállítva SMTP kiszolgáló, a rendszer nem
+küld ki levelet, és a `/health` oldal „Levelezőrendszer egészsége” blokkja pirosan jelzi az okát. (#610)
+
 
 ## Miserend web alkalmazás (PHP)
 
@@ -167,10 +172,10 @@ Egyes beállításokat, pl. portokat, az `.env.example` fájl tartalmának átm�
 Az alkamazásból helyben is lehet container image-t készíteni, ehhez a következő parancsot kell lefuttatni:
 
 ```sh
-docker build -t miserend:latest -f docker/miserend/Dockerfile .
+docker build -t localhost/miserend:latest -f docker/miserend/Dockerfile .
 ```
 
-Ha ki szeretnéd próbálni, hogyan működne a valóságban, akkor a [dev composer](docker/compose.dev.yml) fájlban írd ät a `miserend` service `image` attribútumát `localhost/miserend:latest`-re. 
+A [compose.yml](docker/compose.yml) a `miserend` service-t a `localhost/miserend:latest` image-ből indítja, ezért a fenti build után a szokásos `docker compose -f docker/compose.yml -f docker/compose.dev.yml up` a **helyben épített** image-et használja — nem kell semmit átírni.
 
 ## 🗃️ Dump készítés
 

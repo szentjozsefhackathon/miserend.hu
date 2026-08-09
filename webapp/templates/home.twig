@@ -566,6 +566,86 @@
                         <input type="hidden" name="rites[must_not]" id="rites_must_not" value="">
                     </div>
                 </div>
+                {# #644: a templom adottságai — akadálymentesség és gluténmentes áldozás. #}
+                <div class="form-group row">
+                    <label class="col-sm-4 control-label">Adottságok</label>
+                    <div class="col-sm-8">
+                        <div class="btn-group" role="group" aria-label="Adottság szűrők" style="display:flex; flex-wrap:wrap; gap:4px;">
+                            {# Körbekattintható: semleges -> akadálymentes -> részben akadálymentes -> semleges.
+                               A "nem akadálymentes" SZÁNDÉKOSAN nincs benne: arra nincs értelme keresni. #}
+                            <button type="button" class="btn btn-light facility-toggle" id="wheelchair_toggle"
+                                    data-state="0" title="Kerekesszékkel hozzáférhető" style="padding:6px 10px">
+                                <i class="{{ ICONS_WHEELCHAIR }}"></i>
+                                <span class="facility-label"></span>
+                            </button>
+
+                            {# A hétköznap és a vasárnap külön kérdés — külön gomb mindkettőre. #}
+                            <button type="button" class="btn btn-light facility-toggle gluten-toggle"
+                                    data-day="holidays" data-state="0"
+                                    title="Csökkentett gluténtartalmú áldozás ünnepnapokon" style="padding:6px 10px">
+                                <i class="{{ ICONS_GLUTENFREE }}"></i> ünnep
+                            </button>
+                            <button type="button" class="btn btn-light facility-toggle gluten-toggle"
+                                    data-day="weekdays" data-state="0"
+                                    title="Csökkentett gluténtartalmú áldozás hétköznapokon" style="padding:6px 10px">
+                                <i class="{{ ICONS_GLUTENFREE }}"></i> hétköznap
+                            </button>
+                        </div>
+
+                        <input type="hidden" name="wheelchair" id="wheelchair_list" value="">
+                        <input type="hidden" name="gluten_free" id="gluten_free_list" value="">
+                    </div>
+                </div>
+
+                <script>
+                    (function($){
+                        // #644: a kerekesszék-gomb három állapotú. 0 = nincs szűrés (semleges),
+                        // 1 = csak akadálymentes (zöld), 2 = a részben akadálymentes is jó (sárga).
+                        var WHEELCHAIR_STATES = [
+                            { value: '',            css: 'btn-light',   label: '' },
+                            { value: 'yes',         css: 'btn-success', label: 'akadálymentes' },
+                            { value: 'yes,limited', css: 'btn-warning', label: 'részben is jó' }
+                        ];
+
+                        function applyWheelchair(state) {
+                            var $btn = $('#wheelchair_toggle');
+                            var conf = WHEELCHAIR_STATES[state];
+                            $btn.data('state', state).attr('data-state', state);
+                            $btn.removeClass('btn-light btn-success btn-warning').addClass(conf.css);
+                            $btn.find('.facility-label').text(conf.label ? ' ' + conf.label : '');
+                            $('#wheelchair_list').val(conf.value);
+                        }
+
+                        function updateGlutenFree() {
+                            var days = [];
+                            $('.gluten-toggle').each(function(){
+                                if (Number($(this).data('state')) === 1) { days.push($(this).data('day')); }
+                            });
+                            $('#gluten_free_list').val(days.join(','));
+                        }
+
+                        $(function(){
+                            applyWheelchair(0);
+                            updateGlutenFree();
+
+                            $(document).on('click', '#wheelchair_toggle', function(e){
+                                e.preventDefault();
+                                var next = (Number($(this).data('state')) + 1) % WHEELCHAIR_STATES.length;
+                                applyWheelchair(next);
+                            });
+
+                            $(document).on('click', '.gluten-toggle', function(e){
+                                e.preventDefault();
+                                var $btn = $(this);
+                                var next = (Number($btn.data('state')) + 1) % 2;
+                                $btn.data('state', next).attr('data-state', next);
+                                $btn.removeClass('btn-light btn-success').addClass(next ? 'btn-success' : 'btn-light');
+                                updateGlutenFree();
+                            });
+                        });
+                    })(jQuery);
+                </script>
+
                 {# Button group for categories: simple toggle between neutral and green #}
                 <div class="form-group row">
                     <label class="col-sm-4 control-label">Kategóriák</label>

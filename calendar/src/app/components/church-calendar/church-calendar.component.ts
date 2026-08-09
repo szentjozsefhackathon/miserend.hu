@@ -622,9 +622,26 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     });
   }
 
+  /*
+   * #592: a külső naptárból importált liturgiákat a napi szinkron teljes cserével írja
+   * újra, ezért itt nem szerkeszthetők — a szerkesztés úgyis elveszne. A templom többi,
+   * kézzel felvitt miséje viszont változatlanul szerkeszthető: a kettő megfér egymás mellett.
+   */
+  public isImported(m: any): boolean {
+    return !!(m && m.imported);
+  }
+
+  private refuseImportedEdit(): void {
+    this.snackBarService.warning(this.translateService.instant('EVENT_VIEWER.IMPORTED_NOT_EDITABLE'));
+  }
+
   // Open the same event viewer popup when a mass row title is clicked in the editable mass list
   public openMassFromList(m: any): void {
     if (!m || !m.id) return;
+    if (this.isImported(m)) {
+      this.refuseImportedEdit();
+      return;
+    }
     this.selectedMassId = m.id;
     this.selectedEventStart = m.startDate ? new Date(m.startDate) : undefined;
 
@@ -1059,11 +1076,11 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       return this.eventService.simpleAcceptSuggestionPackage(selectedSuggestionPackage);
   }
 
-  onRejectSuggestion(selectedSuggestionPackage: SuggestionPackage) : Observable<{
+  onRejectSuggestion(selectedSuggestionPackage: SuggestionPackage, notifySender: boolean = false) : Observable<{
     suggestionPackages: SuggestionPackage[];
     calendarMasses: Mass[]
   }>  {
-    return this.eventService.simpleRejectSuggestionPackage(selectedSuggestionPackage);
+    return this.eventService.simpleRejectSuggestionPackage(selectedSuggestionPackage, notifySender);
   }
 
   public reLoadCalendar() {
@@ -1468,6 +1485,10 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
   // Open delete dialog for a mass from the mass list
   public openDeleteMassDialog(m: any): void {
     if (!m || !m.id) return;
+    if (this.isImported(m)) {
+      this.refuseImportedEdit();
+      return;
+    }
 
     // Get the original Mass object
     let mass: Mass | undefined;
@@ -2156,6 +2177,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         flag: flag,
         types: m.types ? m.types : [],
         comment: m.comment,
+        // #592: külső naptárból importált liturgia — a listában jelöljük, és nem szerkeszthető.
+        imported: !!m.imported,
         // #428: a mise-listában az auto + kézi kizárt időszakok UNIÓJA jelenjen meg
         experiod: MassUtil.getEffectiveExperiod(m),
         experiodNames: MassUtil.getEffectiveExperiod(m).map((pid: number) => this.periodService.getPeriodNameById(pid)).filter((n: any) => n),

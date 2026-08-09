@@ -84,12 +84,14 @@ export class EventService {
     );
   }
 
-  simpleRejectSuggestionPackage(suggestionPackage: SuggestionPackage): Observable<{
+  simpleRejectSuggestionPackage(suggestionPackage: SuggestionPackage, notifySender: boolean = false): Observable<{
     suggestionPackages: SuggestionPackage[];
     calendarMasses: Mass[]
   }> {
     const suffix = `suggestions/reject/${suggestionPackage.id}`;
-    const body = {state: SuggestionState.REJECTED};
+    // #543: notify_sender → a backend csak akkor küld elutasító emailt a beküldőnek,
+    // ha a kezelő bepipálta. Default false (néha látszik, hogy valaki véletlen többet küldött be).
+    const body = {state: SuggestionState.REJECTED, notify_sender: notifySender};
     return this.http.post<{ suggestionPackages: SuggestionPackage[]; calendarMasses: Mass[] }>(
       environment.apiUrl + suffix,
       body

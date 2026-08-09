@@ -89,6 +89,13 @@ export interface Mass {
    * Szöveges megjegyzés a miséhez.
    */
   comment?: string | null;
+
+  /**
+   * #592: külső naptárból (iCalendar) importált liturgia. Ezeket a napi szinkron
+   * teljes cserével írja újra, ezért itt nem szerkeszthetők — a szerkesztő
+   * felajánlás helyett magyarázatot mutat. A backend származtatja, nem tárolt mező.
+   */
+  imported?: boolean;
 }
 
 export interface Duration {

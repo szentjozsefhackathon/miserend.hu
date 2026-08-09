@@ -36,6 +36,10 @@ class Path {
     function convertAliases() {
 
         $replacementPatterns = [
+            // #316: a régi /calendar/X URL-ek (Angular naptár-frontend) most már
+            // az ajax/calendar/ namespace alá kerültek. Backward-compat alias,
+            // hogy a kliens-oldali kód ne törjön a refactor után.
+            ["^calendar\/(.+)$", "ajax/calendar/$1"],
             ["^templom\/([0-9]{1,5})\/widget$", "church/widget/$1"],
             ["^templom\/([0-9]{1,5})\/javaslatok$", "church/suggestionpackages/$1"],
             ["^templom\/([0-9]{1,5})\/eszrevetelek$", "remark/list/$1"],

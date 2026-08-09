@@ -480,7 +480,7 @@ INSERT INTO `church_relationships` (`id`, `parent_church_id`, `child_church_id`,
 SET FOREIGN_KEY_CHECKS=1;
 COMMIT;
 
-/*!40000 ALTER TABLE `boundaries` ENABLE KEYS */;
+/*!40000 ALTER TABLE `church_relationships` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
 SET AUTOCOMMIT=@OLD_AUTOCOMMIT;

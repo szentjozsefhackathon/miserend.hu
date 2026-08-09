@@ -1,6 +1,6 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MAT_DIALOG_DATA, MatDialogRef} from '@angular/material/dialog';
-import {TranslateModule} from '@ngx-translate/core';
+import {provideTranslateService} from '@ngx-translate/core';
 
 import {AddSimpleEventDialogComponent} from './add-simple-event-dialog.component';
 import {DialogResponse} from '../../enum/dialog-response';
@@ -14,8 +14,9 @@ describe('AddSimpleEventDialogComponent', () => {
     dialogRefMock = {close: jasmine.createSpy('close')};
 
     await TestBed.configureTestingModule({
-      imports: [AddSimpleEventDialogComponent, TranslateModule.forRoot()],
+      imports: [AddSimpleEventDialogComponent],
       providers: [
+        provideTranslateService(),
         {provide: MAT_DIALOG_DATA, useValue: dialogData},
         {provide: MatDialogRef, useValue: dialogRefMock},
       ],

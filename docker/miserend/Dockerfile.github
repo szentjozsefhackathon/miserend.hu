@@ -5,7 +5,7 @@ WORKDIR /legacy
 COPY webapp/package*.json ./
 RUN npm ci
 
-FROM node:18 AS calendar-build
+FROM node:22 AS calendar-build
 
 WORKDIR /calendar
 

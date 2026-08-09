@@ -20,7 +20,6 @@ export class AppComponent {
     private readonly translateService: TranslateService,
     public readonly spinnerService: SpinnerService,
   ) {
-    this.translateService.setDefaultLang('hu');
     this.translateService.use('hu');
   }
 }

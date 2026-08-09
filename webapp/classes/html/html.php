@@ -194,7 +194,9 @@ class Html {
     function getGitHash() {
         //GIT version        ;
         // exec('git rev-parse --verify --short HEAD 2> /dev/null', $v);
-        $gitHashFile = 'fajlok/git_hash';        
+        // #652: abszolút út — relatívként csak akkor talált célba, ha a futó folyamat
+        // munkakönyvtára épp a webapp volt (a webkiszolgálónál igen, CLI-ból nem).
+        $gitHashFile = PATH . 'fajlok/git_hash';
         // Ellenőrizni, hogy a fájl létezik-e
         if (!file_exists($gitHashFile)) {
             return false;

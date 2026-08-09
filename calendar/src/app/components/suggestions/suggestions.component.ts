@@ -14,6 +14,7 @@ import {MatFormField, MatLabel, MatOption, MatSelect} from '@angular/material/se
 import {SuggestionPackage, SuggestionState} from '../../model/suggestion-package';
 import {ChurchCalendarComponent} from '../church-calendar/church-calendar.component';
 import {MatButton} from '@angular/material/button';
+import {MatCheckbox} from '@angular/material/checkbox';
 import {FormsModule} from '@angular/forms';
 import {DatePipe, NgClass} from '@angular/common';
 import {MatSnackBarService} from '../../services/mat-snack-bar.service';
@@ -41,6 +42,7 @@ import {SpecialType} from "../../model/period";
     MatSelect,
     ChurchCalendarComponent,
     MatButton,
+    MatCheckbox,
     MatFormField,
     MatLabel,
     FormsModule,
@@ -74,6 +76,9 @@ export class SuggestionsComponent implements OnInit {
 
   public suggestionPackages: SuggestionPackage[] = [];
   public selectedSuggestionPackage?: SuggestionPackage;
+
+  // #543: elutasításkor a kezelő eldöntheti, kapjon-e a beküldő email-értesítést. Default: ne.
+  public notifySenderOnReject: boolean = false;
 
   public calendarsTitle: string = '';
 
@@ -285,9 +290,10 @@ export class SuggestionsComponent implements OnInit {
 
   onReject() {
     this.spinnerService.show();
-    this.calendarNew.onRejectSuggestion(this.selectedSuggestionPackage!).subscribe(
+    this.calendarNew.onRejectSuggestion(this.selectedSuggestionPackage!, this.notifySenderOnReject).subscribe(
       res => {
         this.snackBarService.success('Sikeres elutasítás!');
+        this.notifySenderOnReject = false;
 
         this.suggestionPackages = res.suggestionPackages.map(pkg => ({
           ...pkg,

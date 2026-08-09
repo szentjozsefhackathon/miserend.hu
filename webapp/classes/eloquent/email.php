@@ -7,6 +7,8 @@ use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
 class Email extends \Illuminate\Database\Eloquent\Model {
+
+    public const SMTP_ACCEPTED = 'Az SMTP-kiszolgáló elfogadta a tesztlevelet. Ez nem igazolja a címzetti kézbesítést; ellenőrizd a levelet és a relay naplóját.';
     
     public $debug;
     public $debugger;
@@ -16,15 +18,31 @@ class Email extends \Illuminate\Database\Eloquent\Model {
     function addToQueue($to = false) {
 		if($to) $this->to = $to;
         $this->status = 'queued';
-        return $this->save();        
+        return $this->save();
+    }
+
+    /**
+     * #290: A queue-ba tett ('queued') emailek kiküldése. Eddig NEM volt queue-drainer
+     * a rendszerben (mindenki send()-et hívott inline); a #290 az addToQueue()-t
+     * használja, ezt a metódust pedig cron hívja batchenként korlátozva.
+     */
+    static function sendQueued($limit = 20) {
+        $queued = self::where('status', 'queued')
+            ->orderBy('created_at')
+            ->limit($limit)
+            ->get();
+        foreach ($queued as $email) {
+            $email->send();
+        }
+        return true;
     }
     
     function send($to = false) {
         if($to) $this->to = $to;
-                        
+
         $this->status = 'sending';
         $this->save();
-        
+
         if ($this->debug == 1) {
             $this->header .= 'Bcc: ' . $this->debugger . "\r\n";
         } elseif ($this->debug == 2) {
@@ -35,43 +53,80 @@ class Email extends \Illuminate\Database\Eloquent\Model {
         if (isset($this->subject) AND isset($this->body) AND isset($this->to)) {
             if ($this->debug == 3) {
                 print_r($this);
+                $this->status = 'debug';
+                $this->save();
+                return true;
             } else if ($this->debug == 5) {
                 // black hole
+                $this->status = 'blackhole';
+                $this->save();
+                return true;
             } else {
-			
-				$mail = $this->createMailer(); 
+                // #610: konfigurálatlan SMTP-vel meg se próbálkozunk. Korábban ilyenkor a
+                // beégetett 'mailcatcher' hostra ment minden levél, ami production-ben vagy
+                // némán elnyelte a leveleket, vagy elszálló kivételt dobott a regisztráció
+                // közepén (a sor pedig örökre 'sending' státuszban ragadt).
+                if (!$this->isMailerConfigured()) {
+                    return $this->fail('Nincs beállítva SMTP kiszolgáló (SMTP_HOST).');
+                }
 
-				//$mail->addAddress('joe@example.net', 'Joe User');     //Add a recipient
-				$mail->addAddress($this->to);               //Name is optional
-				//$mail->addReplyTo('info@example.com', 'Information');
-				//$mail->addCC('cc@example.com');
-				//$mail->addBCC('bcc@example.com');
+                try {
+                    $mail = $this->createMailer();
 
-				//Attachments
-				//$mail->addAttachment('/var/tmp/file.tar.gz');         //Add attachments
-				//$mail->addAttachment('/tmp/image.jpg', 'new.jpg');    //Optional name
+                    //$mail->addAddress('joe@example.net', 'Joe User');     //Add a recipient
+                    $mail->addAddress($this->to);               //Name is optional
+                    //$mail->addReplyTo('info@example.com', 'Information');
+                    //$mail->addCC('cc@example.com');
+                    //$mail->addBCC('bcc@example.com');
 
-				//Content
-				$mail->isHTML(true);                                  //Set email format to HTML
-				$mail->Subject = $this->subject;
-				$mail->Body    = $this->body;
-				//$mail->AltBody = 'This is the body in plain text for non-HTML mail clients';
-						
-                if (!$mail->send()) {
-                    addMessage('Valami hiba történt az email elküldése közben.', 'danger');
-                    $this->status = "error";
-                    $this->save();
-                } else {
+                    //Attachments
+                    //$mail->addAttachment('/var/tmp/file.tar.gz');         //Add attachments
+                    //$mail->addAttachment('/tmp/image.jpg', 'new.jpg');    //Optional name
+
+                    //Content
+                    $mail->isHTML(true);                                  //Set email format to HTML
+                    $mail->Subject = $this->subject;
+                    $mail->Body    = $this->body;
+                    //$mail->AltBody = 'This is the body in plain text for non-HTML mail clients';
+
+                    if (!$mail->send()) {
+                        return $this->fail($mail->ErrorInfo);
+                    }
+
                     $this->status = 'sent';
                     return $this->save();
+                } catch (\Throwable $error) {
+                    // A PHPMailer exception-módban fut (new PHPMailer(true)), a hívók
+                    // viszont sehol nem kapják el: elszállt tőle az egész kérés.
+                    return $this->fail($error->getMessage());
                 }
             }
-        } else {            
-            addMessage('Nem tudtuk elküldeni az emailt. Kevés az adat.', 'danger');
         }
-        $this->status = "error";
+
+        return $this->fail(
+            'Kevés az adat (címzett, tárgy vagy törzs hiányzik).',
+            'Nem tudtuk elküldeni az emailt. Kevés az adat.'
+        );
+    }
+
+    /**
+     * #610: egységes hibaág — a levél státusza NE ragadjon 'sending'-ben, és a valódi
+     * SMTP-hibaüzenet kerüljön a szerver logjába (a felhasználónak csak jelzés megy).
+     */
+    protected function fail($reason, $userMessage = 'Valami hiba történt az email elküldése közben.') {
+        $this->status = 'error';
         $this->save();
+
+        error_log('miserend email hiba (id: ' . ($this->id ?: '-') . ', to: ' . $this->to . '): ' . $reason);
+        addMessage($userMessage, 'danger');
+
         return false;
+    }
+
+    function isMailerConfigured() {
+        global $config;
+
+        return isset($config['smtp']['Host']) AND trim((string) $config['smtp']['Host']) !== '';
     }
     
     function __construct() {   
@@ -127,29 +182,48 @@ class Email extends \Illuminate\Database\Eloquent\Model {
 	}
 	
 	function test($content = false) {
-        global $user;
+        global $user, $config;
+
+		// #610: a "nincs SMTP beállítva" eset korábban nem látszott, mert a config
+		// beégetett 'mailcatcher' alapértéke mindig adott valamit.
+		if(!$this->isMailerConfigured()) {
+			return "Nincs beállítva SMTP kiszolgáló (SMTP_HOST).";
+		}
+
+		// A dev mailcatcher elnyeli a leveleket: production/staging alatt a "sikeres"
+		// teszt ilyenkor is OK-ot mutatna, miközben senki nem kap levelet.
+		if(in_array($config['env'], ['production','staging']) AND $config['smtp']['Host'] == 'mailcatcher') {
+			return "A(z) ".$config['env']." környezet a dev mailcatcher-re küld: minden levél elveszik! Állítsd be az SMTP_HOST-ot.";
+		}
 
 		$mailer = $this->createMailer();
 		try {
 			$connection = $mailer->SmtpConnect();
-		} catch(Exception $error) {
-			return "PHPMailer Failed to connect : " . $error;
+		} catch(\Throwable $error) {
+			return "PHPMailer Failed to connect : " . $error->getMessage();
 		}
-		
-		$mailer->addAddress($this->debugger);               
-		$mailer->isHTML(true);                                  
+
+		$mailer->addAddress($this->debugger);
+		$mailer->isHTML(true);
 		$mailer->Subject = 'miserend.hu - egészség ellenőrzés';
 		$mailer->Body    = '';
 		if($content) {
             $mailer->Body .= "\n\n" . $content;
-        }   
+        }
 
-		if(!$mailer->send()) {
-			return "Valami hiba történt teszt email kiküldése közben.";
+		try {
+			if(!$mailer->send()) {
+				return "Valami hiba történt teszt email kiküldése közben: " . $mailer->ErrorInfo;
+			}
+		} catch(\Throwable $error) {
+			return "Valami hiba történt teszt email kiküldése közben: " . $error->getMessage();
 		}
-			
-		return "OK";
-	
+
+		// A send() sikere csak azt jelenti, hogy a következő SMTP relay átvette a
+		// levelet. A relay később még visszautasíthatja (például SPF/DKIM miatt), ezért
+		// a health oldal ne állítsa, hogy a címzetti kézbesítés rendben van.
+		return self::SMTP_ACCEPTED;
+
 	}
     
 }

@@ -135,6 +135,19 @@ class Table extends Api {
   
     function mapTemplomok() {
         $output = array();
+
+        // #542: a denomination az OSM-ből (attributes tábla 'denomination' kulcs,
+        // fromOSM=1) jön, nem a törékeny egyházmegye-id (17,18,34) heurisztikából.
+        // Egyszeri batch-load, hogy ne legyen N+1 az export során.
+        $churchIds = [];
+        foreach ($this->table as $r) {
+            if (isset($r->id)) { $churchIds[] = $r->id; }
+        }
+        $osmDenominations = empty($churchIds) ? [] :
+            \Eloquent\Attribute::whereIn('church_id', $churchIds)
+                ->where('key', 'denomination')
+                ->pluck('value', 'church_id')->toArray();
+
         foreach ($this->table as $row) {
             $tmp = array();
             foreach ($this->columns as $column) {
@@ -152,7 +165,12 @@ class Table extends Api {
                 switch ($column) {
                     case 'denomination':
                         //http://wiki.openstreetmap.org/wiki/Key:denomination#Christian_denominations
-                        if (in_array($row->egyhazmegye, array(17, 18, 34))) {
+                        // #542: elsődlegesen az OSM-denomination (attributes); ÁTMENETI
+                        // fallback az egyházmegye-heurisztika, amíg az OSM-sync nem fed le mindent.
+                        $cid = $row->id ?? null;
+                        if ($cid !== null && !empty($osmDenominations[$cid])) {
+                            $tmp[$column] = $osmDenominations[$cid];
+                        } elseif (in_array($row->egyhazmegye, array(17, 18, 34))) {
                             $tmp[$column] = 'greek_catholic';
                         } else {
                             $tmp[$column] = 'roman_catholic';

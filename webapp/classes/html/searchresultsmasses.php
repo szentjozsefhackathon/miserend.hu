@@ -30,6 +30,9 @@ class SearchResultsMasses extends Html {
             'types' => \Request::ArrayArray('types'),  // Be aware: this is a nested array with rite keys, e.g. types[rite1][should], types[rite1][must_not], types[rite2][should], etc.
             'rites' => \Request::StringArray('rites'), // Be aware: this is an array with 'should' and 'must_not' keys, e.g. rites[should], rites[must_not]
             'categories' => \Request::Text('categories'), // Simple comma-separated list of selected category keys
+            // #644: akadálymentesség és gluténmentes áldozás szűrők (vesszős lista).
+            'wheelchair' => \Request::Text('wheelchair'),
+            'gluten_free' => \Request::Text('gluten_free'),
             'start_date' => \Request::Text('start_date'),
             'start_time' => \Request::Text('start_time'),
             'end_date' => \Request::Text('end_date'),
@@ -99,6 +102,16 @@ class SearchResultsMasses extends Html {
             // Main keyword search
             if ($params['kulcsszo']) {
                 $search->keyword($params['kulcsszo']);
+            }
+
+            // #644: a templom adottságai (akadálymentesség, gluténmentes áldozás).
+            // BASE szűrők, tehát a 0-találatos fallback SEM dobja el őket: aki
+            // kerekesszékkel keres, annak nem segít egy nem akadálymentes templom.
+            if ($params['wheelchair']) {
+                $search->wheelchair(array_filter(array_map('trim', explode(',', $params['wheelchair']))));
+            }
+            if ($params['gluten_free']) {
+                $search->glutenFree(array_filter(array_map('trim', explode(',', $params['gluten_free']))));
             }
 
             // Time range
@@ -190,15 +203,7 @@ class SearchResultsMasses extends Html {
             if (!empty($categoriesReq)) {
                 $selectedCategories = array_filter(array_map('trim', explode(',', $categoriesReq)));
 
-                $massDefinitionsPath = dirname(__DIR__) . '/../mass-definitions.json';
-                $massDefinitions = json_decode(file_get_contents($massDefinitionsPath), true);
-                $titlesByCategory = $massDefinitions['titlesByCategory'] ?? [];
-                $allTitles = [];
-                foreach ($selectedCategories as $cat) {
-                    if (isset($titlesByCategory[$cat])) {
-                        $allTitles = array_merge($allTitles, $titlesByCategory[$cat]);
-                    }
-                }
+                $allTitles = (new \MassDefinitions())->titlesByCategories($selectedCategories);
                 if (!empty($allTitles)) {
                     foreach ($allTitles as $title) {
                         $cleanTitle = preg_replace('/^MASS_TITLE\./', '', $title);

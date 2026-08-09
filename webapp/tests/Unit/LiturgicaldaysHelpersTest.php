@@ -18,9 +18,9 @@ class LiturgicaldaysHelpersTest extends TestCase
 {
     private function invoke(string $method, $arg)
     {
-        $obj = (new \ReflectionClass(\Html\Calendar\Liturgicaldays::class))
+        $obj = (new \ReflectionClass(\Html\Ajax\Calendar\Liturgicaldays::class))
             ->newInstanceWithoutConstructor();
-        $m = new \ReflectionMethod(\Html\Calendar\Liturgicaldays::class, $method);
+        $m = new \ReflectionMethod(\Html\Ajax\Calendar\Liturgicaldays::class, $method);
         $m->setAccessible(true);
         return $m->invoke($obj, $arg);
     }

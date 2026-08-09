@@ -22,6 +22,13 @@ include_once('functions.php');
 $env = env('MISEREND_WEBAPP_ENVIRONMENT', 'staging'); /* testing, staging, production, vagrant */
 configurationSetEnvironment($env);
 
+// #547: nem-produkciós környezet (staging/testing) ne kerüljön be a keresőkbe.
+// A layout.twig noindex-metája csak a HTML-oldalakat fedi; ez a header MINDEN
+// válaszra rákerül (AJAX/JSON/kép/PDF is), és a crawlerek is tiszteletben tartják.
+if ($env !== 'production' && PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('X-Robots-Tag: noindex, nofollow');
+}
+
 error_reporting($config['error_reporting'] ? $config['error_reporting'] : 0);
 define('DOMAIN', $config['path']['domain']);
 

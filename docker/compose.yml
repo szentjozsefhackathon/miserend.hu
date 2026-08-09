@@ -1,8 +1,21 @@
+# #532: a projekt-nevet a top-level `name:` adja (docker compose spec). Ez prefixeli
+# a containereket, a volume-okat és a hálózatot — így ugyanez a compose-rendszer több
+# példányban futhat egy szerveren (pl. prod + staging) ütközés nélkül. A portokat és az
+# image-taget külön env-változó paraméterezi (default = a mostani érték → dev változatlan).
+# Docs: https://docs.docker.com/reference/compose-file/version-and-name/
+name: ${PROJECT:-miserend}
+
 services:
   tmp-init:
     image: busybox
     volumes:
       - tmp:/data
+    command: sh -c "chown -R 33:33 /data"
+    restart: "no"
+  sqlite-init:
+    image: busybox
+    volumes:
+      - sqlite:/data
     command: sh -c "chown -R 33:33 /data"
     restart: "no"
   data-init:
@@ -12,14 +25,13 @@ services:
     restart: "no"
   mysql:
     image: mariadb:12
-    container_name: mysql
     platform: linux/amd64
     volumes:
       - db_data:/var/lib/mysql
       - ./mysql/initdb.d:/docker-entrypoint-initdb.d
       - ./mysql/mysql.conf.d:/etc/mysql/mysql.conf.d
     ports:
-      - 3306:3306
+      - ${MYSQL_PORT:-3306}:3306
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: pw
@@ -34,9 +46,12 @@ services:
           - mysql
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.10.1
-    container_name: elasticsearch
     entrypoint: ["/entrypoint-wrapper.sh"]
     command: ["eswrapper"]
+    # #557: az ES-nek eddig NEM volt restart-policyja (a mysql/miserend-nek igen),
+    # ezért ha elhalt (crash/OOM), halva maradt, amíg valaki kézzel újra nem indította
+    # → a keresés leállt. Az always-szel a docker magától visszahozza.
+    restart: always
     environment:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
@@ -47,8 +62,8 @@ services:
         soft: -1
         hard: -1
     ports:
-      - 9200:9200
-      - 9300:9300
+      - ${ES_HTTP_PORT:-9200}:9200
+      - ${ES_TCP_PORT:-9300}:9300
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - ./elasticsearch/entrypoint.sh:/entrypoint-wrapper.sh:ro
@@ -66,23 +81,43 @@ services:
       retries: 30
       start_period: 40s
   miserend:
-    container_name: miserend
-
-    image: localhost/miserend:latest
-    volumes: 
+    image: ${MISEREND_IMAGE:-localhost/miserend:latest}
+    volumes:
+       - ../webapp:/miserend/webapp
+       - vendor_data:/miserend/webapp/vendor
+       - node_modules_data:/miserend/webapp/node_modules    
        - tmp:/miserend/webapp/fajlok/tmp
+       - sqlite:/miserend/webapp/fajlok/sqlite
        - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
+
     ports:
-      - 8000:8000
+      - ${APP_PORT:-8000}:8000
     user: "www-data"
     restart: "always"
     depends_on:
+      sqlite-init:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
-    environment: 
+
+    # #610: az SMTP-beállításokat át KELL adni a konténernek. A `.env` önmagában csak a
+    # compose-fájl interpolációjához kell, a PHP-hez nem jut el belőle semmi. Enélkül a
+    # config.php alapértéke érvényesült, ami a dev mailcatcher-be küldött minden levelet.
+    # A `.env` a compose.yml mellé (docker/.env) kerül.
+    environment:
       - MISEREND_WEBAPP_ENVIRONMENT=production
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-25}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-}
+      - OSM_URL=${OSM_URL:-}
+      - OSM_CLIENT=${OSM_CLIENT:-}
+      - OSM_CLIENT_SECRET=${OSM_CLIENT_SECRET:-}
+      - OSM_APPLICATION_CODE=${OSM_APPLICATION_CODE:-}
+      - OSM_ACCESS_TOKEN=${OSM_ACCESS_TOKEN:-}
 
     networks:
       inner:
@@ -95,3 +130,6 @@ volumes:
   db_data: {}
   elasticsearch_data: {}
   tmp: {}
+  sqlite: {}
+  vendor_data:
+  node_modules_data:

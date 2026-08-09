@@ -9,16 +9,19 @@ services:
     restart: "no"
   mailcatcher:
     image: dockage/mailcatcher
-    container_name: mailcatcher
+    # #532: container_name törölve — a top-level `name:` (compose.yml) prefixel.
     ports:
-      - 11025:1025
-      - 11080:1080
+      - ${MAILCATCHER_SMTP_PORT:-11025}:1025
+      - ${MAILCATCHER_WEB_PORT:-11080}:1080
     restart: on-failure:10
     networks:
       inner:
         aliases:
           - mailcatcher
   miserend:
+    build:
+      context: ..
+      dockerfile: docker/miserend/Dockerfile
     depends_on:
       npm-init:
         condition: service_completed_successfully
