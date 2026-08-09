@@ -72,6 +72,40 @@ class ApiEndpointsTest extends TestCase {
         }
     }
 
+    public function testNearbyMassesAreLimitedByRadiusAndSortedByDistance(): void {
+        $response = $this->apiRequest('/api/v4/nearbymasses', [
+            'lat' => 47.4979,
+            'lon' => 19.0402,
+            'radius' => 15.0,
+            'from' => date('Y-m-d') . 'T00:00:00+02:00',
+            'until' => date('Y-m-d', strtotime('+1 day')) . 'T00:00:00+02:00',
+            'limit' => 20,
+        ]);
+
+        $this->assertSame(0, $response['error']);
+        $this->assertNotEmpty($response['misek']);
+        $distances = array_column($response['misek'], 'distance_km');
+        $sortedDistances = $distances;
+        sort($sortedDistances, SORT_NUMERIC);
+        $this->assertSame($distances, $sortedDistances);
+        foreach ($distances as $distance) {
+            $this->assertLessThanOrEqual(15.0, $distance);
+        }
+    }
+
+    public function testNearbyMassesRejectAnInvertedTimeRange(): void {
+        $response = $this->apiRequest('/api/v4/nearbymasses', [
+            'lat' => 47.4979,
+            'lon' => 19.0402,
+            'radius' => 15.0,
+            'from' => '2026-08-08T12:00:00+02:00',
+            'until' => '2026-08-08T10:00:00+02:00',
+        ]);
+
+        $this->assertEquals(1, $response['error']);
+        $this->assertStringContainsString('until', $response['text']);
+    }
+
     /**
      * @dataProvider providerTestApiSignup
      */

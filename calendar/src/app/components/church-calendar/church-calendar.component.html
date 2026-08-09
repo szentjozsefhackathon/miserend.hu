@@ -86,8 +86,11 @@
     <div class="fc-list-item-main d-flex align-items-center" style="gap:6px;">
       <span class="fc-list-item-title">{{ title }}</span>
 
-      <ng-container *ngIf="lang && shouldShowFlag(lang)">
-        <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="('LANGUAGES.' + lang) | translate" [src]="'/cal_images/flags/' + (lang | lowercase) + '.svg'" [alt]="('LANGUAGES.' + lang) | translate" />
+      <!-- #334: a mise több nyelvű is lehet, ilyenkor mindegyikhez külön zászló. -->
+      <ng-container *ngFor="let l of languagesOf(lang)">
+        <ng-container *ngIf="shouldShowFlag(l)">
+          <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="('LANGUAGES.' + l) | translate" [src]="'/cal_images/flags/' + (l | lowercase) + '.svg'" [alt]="('LANGUAGES.' + l) | translate" />
+        </ng-container>
       </ng-container>
 
       <ng-container *ngIf="types && types.length">
@@ -264,8 +267,10 @@
                   <ng-container *ngFor="let t of m.types">
                     <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="t | translate" [src]="'/cal_images/types/' + t.toLowerCase() + '.png'" [alt]="t | translate" />
                   </ng-container>
-                  <ng-container *ngIf="shouldShowFlag(m.lang)">
-                    <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + m.lang) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + m.lang.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + m.lang) | translate) + ' nyelvű'" />
+                  <ng-container *ngFor="let l of languagesOf(m.lang)">
+                    <ng-container *ngIf="shouldShowFlag(l)">
+                      <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
+                    </ng-container>
                   </ng-container>
                 </td>
                 <td style="padding:10px">
@@ -348,8 +353,10 @@
                 <ng-container *ngFor="let t of m.types">
                   <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="t | translate" [src]="'/cal_images/types/' + t.toLowerCase() + '.png'" [alt]="t | translate" />
                 </ng-container>
-                <ng-container *ngIf="shouldShowFlag(m.lang)">
-                  <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + m.lang) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + m.lang.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + m.lang) | translate) + ' nyelvű'" />
+                <ng-container *ngFor="let l of languagesOf(m.lang)">
+                  <ng-container *ngIf="shouldShowFlag(l)">
+                    <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
+                  </ng-container>
                 </ng-container>
               </td>
               <td style="padding:10px">

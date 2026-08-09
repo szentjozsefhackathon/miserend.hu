@@ -308,7 +308,7 @@
                     "extra": ""
                 },
                 "lang": {
-                    "type": "varchar(3)",
+                    "type": "varchar(50)",
                     "nullable": false,
                     "default": null,
                     "extra": ""
@@ -3119,8 +3119,20 @@
         }
     },
     "_meta": {
-        "generated_at": "2026-08-09T19:06:13+02:00",
+        "generated_at": "2026-08-09T21:35:30+02:00",
         "source_schema": "miserend",
-        "initdb_fingerprint": "60d96d83d308bbf15c8184dd2e1db3e12bf0d5411bc0d2eb4a7c16c49975fe23"
+        "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
+        "initdb_files": {
+            "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
+            "01-create-database.sql": "dec66da6495a0d5ee007beda9e2be684b104cb4875b12ba0cf21ebae81874385",
+            "02-schema.sql": "40fdcedfd73cc57f8cb24e64c5785c91286de80d22c42700e0704cd42d657b7a",
+            "03-migrations.sql": "b17a6da4226a09f95c8249d6886802fe1087b944644f705d75a716a9a562f644",
+            "04-attributes-index.sql": "b2cf9ff6b616a8679c944fb6eb09baf6daeaa53793c0395e8d921525a91ea61a",
+            "04-mass-languages.sql": "9df189d0de091724f0b3119bd9fc088a5960885e4a35487df11d5a6422c2bcf5",
+            "05-data.sh": "5cf4dcd42e89288863792ed219c41937abcca249da22fbbf623d30dcd176874f",
+            "06-data-integrity.sql": "d0afff9288b6b7ccd60aae9e9f9e14c903732f4560e7eb7efde299ff946a944a",
+            "06-relationship-type-drop.sql": "04ac1538b42e0d9ad1f8106762013c8e9003965b70bc76ae1b27891273da938e",
+            "07-boundaries-iso.sql": "120cd5b6a656e754c8eef74d34415e03d987a09dce6ba998cb5c6ad1604fc03b"
+        }
     }
 }

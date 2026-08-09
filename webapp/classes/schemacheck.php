@@ -69,6 +69,60 @@ class SchemaCheck {
     }
 
     /**
+     * Fájlonkénti ujjlenyomat, hogy elavuláskor MEGMONDHASSUK, mi változott.
+     *
+     * A puszta „a könyvtár azóta változott" üzenet nem visz közelebb a megoldáshoz:
+     * borazslo élesben pontosan ezt kapta, és nem derült ki belőle, hogy valójában a
+     * referenciát generáltam elavult konténerből. Fájlszinten ez egy pillantás.
+     *
+     * @return array<string,string>|null  fájlnév => sha256, vagy null ha nem olvasható
+     */
+    static function initdbFileHashes(): ?array {
+        $dir = self::initdbDirectory();
+        if (!is_dir($dir) || !is_readable($dir)) return null;
+
+        $files = glob($dir . '/*.{sql,sh}', GLOB_BRACE);
+        if ($files === false || !$files) return null;
+
+        sort($files);
+
+        $hashes = [];
+        foreach ($files as $file) {
+            $hashes[basename($file)] = hash_file('sha256', $file);
+        }
+
+        return $hashes;
+    }
+
+    /**
+     * Mi változott a referencia készítése óta?
+     *
+     * @return string[] ember által olvasható sorok; üres tömb, ha nem tudjuk megmondani
+     */
+    static function initdbDifferences(array $reference): array {
+        $stored  = $reference['_meta']['initdb_files'] ?? null;
+        $current = self::initdbFileHashes();
+
+        if (!is_array($stored) || !is_array($current)) {
+            return [];
+        }
+
+        $lines = [];
+        foreach (array_diff_key($current, $stored) as $name => $_) {
+            $lines[] = 'új fájl: ' . $name;
+        }
+        foreach (array_diff_key($stored, $current) as $name => $_) {
+            $lines[] = 'eltűnt fájl: ' . $name;
+        }
+        foreach (array_intersect_key($current, $stored) as $name => $hash) {
+            if ($hash !== $stored[$name]) $lines[] = 'megváltozott: ' . $name;
+        }
+
+        sort($lines);
+        return $lines;
+    }
+
+    /**
      * Egy adatbázis szerkezete normalizált alakban, az information_schema-ból.
      *
      * Szándékosan NEM a `SHOW CREATE TABLE` szövegét hasonlítjuk: az tartalmaz
@@ -364,6 +418,9 @@ class SchemaCheck {
             'findings'     => $findings,
             'counts'       => self::summarise($findings),
             'stale'        => $stale,
+            // Elavulásnál a legfontosabb kérdés: MI változott. Enélkül az üzenet
+            // csak riaszt, de nem segít.
+            'stale_details' => $stale ? self::initdbDifferences($reference) : [],
             'generated_at' => $reference['_meta']['generated_at'] ?? null,
         ];
     }

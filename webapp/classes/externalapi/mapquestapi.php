@@ -10,6 +10,16 @@ class MapquestApi extends \ExternalApi\ExternalApi {
     public $apiUrl = "http://open.mapquestapi.com/directions/v2/";
 
     /**
+     * Szándékosan nincs testQuery: a Mapquestnél MINDEN hívás a fizetős havi keretből
+     * megy, egy útvonalkérés is. A /health-et kézzel is, cronból is nyitogatjuk, tehát
+     * az ellenőrzés magát a kvótát fogyasztaná el — pont azt, amit a #129 óta spórolunk.
+     *
+     * A tényleges állapotot úgyis a valódi használat mutatja meg: 403-nál a distance()
+     * megjegyzi a kvótafogyást, és 24 órán át meg sem próbálja újra.
+     */
+    public $testSkipReason = 'Nincs ingyenes tesztlekérdezés: minden hívás a fizetős keretből megy (#129). Az állapotot a valódi használat mutatja.';
+
+    /**
      * #129: ha a Mapquest free tier havi limitje elfogy, eddig minden hívás
      * elment, csak utána kaptunk 403-at - feleslegesen pazaroltuk az
      * erőforrást (CURL időt, hálózatot, kvótát).

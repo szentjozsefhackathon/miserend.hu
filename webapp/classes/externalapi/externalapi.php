@@ -322,6 +322,28 @@ class ExternalApi {
 		return $return;	
 	}
 	
+	/**
+	 * Van-e egyáltalán mit lefuttatni ezen a végponton?
+	 *
+	 * A „nem tudjuk ellenőrizni" NEM ugyanaz, mint a „hibás". A /health eddig
+	 * mindkettőt pirosra festette, így a Mapquest — aminek szándékosan nincs
+	 * testQuery-je, mert a hívás fizetős kvótát fogyaszt (#129) — hónapok óta
+	 * hibaként virított. Az állandó piros pedig pont azt öli meg, amiért az oldal
+	 * van: egy idő után senki nem nézi meg, mi az.
+	 */
+	function isTestable(): bool {
+		return isset($this->testQuery);
+	}
+
+	/**
+	 * Ha nincs ellenőrzés, itt mondhatja meg a leszármazott, hogy MIÉRT nincs.
+	 * Enélkül csak annyi látszik, hogy nem tudjuk — az meg gyanúsan hasonlít a
+	 * „valaki elfelejtette megírni"-ra.
+	 */
+	function testSkipReason(): ?string {
+		return isset($this->testSkipReason) ? $this->testSkipReason : null;
+	}
+
 	function curl_setopt($name, $value) {
 		$this->curl_opts[$name] = $value;
 	}

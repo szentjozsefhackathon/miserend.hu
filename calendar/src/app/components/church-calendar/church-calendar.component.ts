@@ -1989,10 +1989,17 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       const flagMap: Record<string, string> = { hu: '🇭🇺', en: '🇬🇧', de: '🇩🇪', sk: '🇸🇰', ro: '🇷🇴' };
 
       let flagHtml = '';
-      if (lang && this.shouldShowFlag(lang)) {
-        const langLower = String(lang).toLowerCase();
-        const src = `/cal_images/flags/${langLower}.svg`;
-        flagHtml = `<img class="type-icon" style="height:18px; margin-left:6px" title="${escapeAttr(lang)}" src="${src}" alt="${escapeAttr(lang)}" />`;
+      // #334: lang can be a comma-separated list (e.g. "hu,fr"), so split it
+      // and render a separate flag for each language — same as the list view template.
+      if (lang) {
+        for (const l of this.languagesOf(lang)) {
+          if (this.shouldShowFlag(l)) {
+            const lLower = String(l).toLowerCase();
+            const src = `/cal_images/flags/${lLower}.svg`;
+            const tooltip = this.translateService.instant('LANGUAGES.' + l);
+            flagHtml += `<img class="type-icon" style="height:18px; margin-left:6px" title="${escapeAttr(tooltip)}" src="${src}" alt="${escapeAttr(tooltip)}" />`;
+          }
+        }
       }
 
       let typesHtml = '';
@@ -2063,7 +2070,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         const detailsHtml = `<span class="material-icons" title="További információ" style="margin-left:6px; height:18px; font-size:18px; vertical-align:top;">info</span>`;
         const monthHtml = `${timeHtml} ${dotHtml} <span class="fc-event-title" style="font-weight:400">${escapeAttr(info.event.title)}</span>`;
         const shouldShowDetails =
-          (lang && this.shouldShowFlag(lang)) ||
+          (lang && this.languagesOf(lang).some(l => this.shouldShowFlag(l))) ||
           (Array.isArray(types) && types.length > 0) ||
           !!comment;
         return { html: shouldShowDetails ? `${monthHtml} ${detailsHtml}` : monthHtml };
@@ -2483,6 +2490,15 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
    * @param country Optional country code. Uses currentChurch.country if not provided
    * @returns true if flag should be displayed, false otherwise
    */
+  /**
+   * #334: a mise `lang` mezője vesszővel elválasztva több nyelvet is tartalmazhat
+   * ("sk,la"). A sablonok ezen keresztül kapják a listát, hogy ne az egész karakterlánccal
+   * próbáljanak zászlót keresni (/cal_images/flags/sk,la.svg — nem létezik).
+   */
+  languagesOf(lang: string | null | undefined): string[] {
+    return MassUtil.languageCodes(lang);
+  }
+
   shouldShowFlag(language: string, country?: string): boolean {
     const churchCountry = country || this.currentChurch?.country;
     

@@ -363,7 +363,7 @@ function makeDialogEvent(overrides: Partial<DialogEvent> = {}): DialogEvent {
     title: 'Szentmise',
     start: new Date('2026-03-01T07:00:00'),
     duration: {hours: 1},
-    language: LanguageCode.HU,
+    language: [LanguageCode.HU],
     renum: Renum.EVERY_WEEK,
     selectedDays: [Day.SU],
     comment: '',
@@ -504,5 +504,54 @@ describe('MassUtil.getRenumByMass', () => {
 
   it('weekly páratlan byweekno -> ODD_WEEK', () => {
     expect(MassUtil.getRenumByMass(massWithRrule({dtstart: '2026-03-01T07:00:00', freq: 'weekly', byweekno: [1, 3, 5]}))).toBe(Renum.ODD_WEEK);
+  });
+});
+
+/**
+ * #334: több nyelven bemutatott mise (szlovák-latin, német-magyar). A backend a `lang`
+ * mezőben vesszővel elválasztva tárolja a kódokat, a szerkesztő viszont listát kezel.
+ */
+describe('MassUtil nyelvlista (#334)', () => {
+
+  it('egyetlen nyelvből egyelemű lista lesz', () => {
+    expect(MassUtil.languageCodes('sk')).toEqual([LanguageCode.SK]);
+  });
+
+  it('vesszős listát szétbont', () => {
+    expect(MassUtil.languageCodes('sk,va')).toEqual([LanguageCode.SK, LanguageCode.VA]);
+  });
+
+  it('szóközöket tűr a vesszők körül', () => {
+    expect(MassUtil.languageCodes(' de , hu ')).toEqual([LanguageCode.DE, LanguageCode.HU]);
+  });
+
+  it('ismeretlen kódot eldob', () => {
+    expect(MassUtil.languageCodes('sk,xx')).toEqual([LanguageCode.SK]);
+  });
+
+  it('üres vagy csupa ismeretlen érték esetén magyarra esik vissza', () => {
+    expect(MassUtil.languageCodes('')).toEqual([LanguageCode.HU]);
+    expect(MassUtil.languageCodes(null)).toEqual([LanguageCode.HU]);
+    expect(MassUtil.languageCodes(undefined)).toEqual([LanguageCode.HU]);
+    expect(MassUtil.languageCodes('xx,yy')).toEqual([LanguageCode.HU]);
+  });
+
+  it('duplikátumot nem ad vissza kétszer', () => {
+    expect(MassUtil.languageCodes('hu,hu,de')).toEqual([LanguageCode.HU, LanguageCode.DE]);
+  });
+
+  it('vissza is alakítja a backend formájára', () => {
+    expect(MassUtil.languageCodesToLang([LanguageCode.SK, LanguageCode.VA])).toBe('sk,va');
+    expect(MassUtil.languageCodesToLang([LanguageCode.HU])).toBe('hu');
+  });
+
+  it('üres kiválasztásból magyar lesz — a mise nyelve nem maradhat üresen', () => {
+    expect(MassUtil.languageCodesToLang([])).toBe('hu');
+    expect(MassUtil.languageCodesToLang(null)).toBe('hu');
+  });
+
+  it('oda-vissza alakítás megőrzi a nyelveket', () => {
+    const codes = MassUtil.languageCodes('sk,va');
+    expect(MassUtil.languageCodes(MassUtil.languageCodesToLang(codes))).toEqual(codes);
   });
 });

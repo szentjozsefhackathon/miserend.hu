@@ -7,6 +7,10 @@ class Search {
 
     public $query =  ["bool" => ["must" => [], "must_not" => []]];
     public $sort = [];
+    // #608: melyik sort-slot hordozza a geo-távolságot. Vakon a sort[0]-ból olvasni
+    // hibás, mert idő szerinti rendezésnél az epoch-milliszekundum is numerikus.
+    public $distanceSortIndex = null;
+    public $runtimeMappings = [];
     public $total = 0; // Találatok száma
     public $searchFailed = false; // #575: true, ha az ES nem adott érvényes választ (nem elérhető ≠ 0 találat)
     public $filters = []; 
@@ -304,6 +308,42 @@ class Search {
         }
     }
 
+    /**
+     * #89: távolság-alapú szűrés egy pont körül.
+     *
+     * A `churches` index `location` mezője geo_point — a mappingben eddig is szerepelt,
+     * csak soha nem volt feltöltve, ezért a keresőben a „hely + távolság" páros néma
+     * no-op maradt: a találatok teljesen figyelmen kívül hagyták a megadott helyet
+     * (innen a jegy példája: Szentendre + 10 km -> Micske, Szirmabesenyő).
+     *
+     * A mise-indexben NINCS geo_point, ezért ott ez a szűrő nem használható közvetlenül —
+     * a hívó előbb templom-azonosítókat keres ezzel, majd churchIds()-szal szűkít.
+     *
+     * @param float  $lat
+     * @param float  $lon
+     * @param float  $km    sugár kilométerben
+     * @param string $label emberi felirat a szűrő-listához
+     */
+    function nearLocation(float $lat, float $lon, float $km, string $label = ''): void {
+        if ($this->massOrChurch === 'mass') {
+            throw new \Exception('A geo_distance szűrő csak a templom-indexen használható.');
+        }
+        if ($km <= 0) {
+            return;
+        }
+
+        $this->query['bool']['filter'][] = [
+            'geo_distance' => [
+                'distance' => $km . 'km',
+                'location' => ['lat' => $lat, 'lon' => $lon],
+            ],
+        ];
+
+        $this->filters[] = $label !== ''
+            ? 'Legfeljebb <b>' . (int) $km . ' km</b>-re innen: <b>' . htmlspecialchars($label) . '</b>'
+            : 'Legfeljebb <b>' . (int) $km . ' km</b>-re a megadott helytől';
+    }
+
     function timeRange($fromDatetime, $toDatetime) {
         // Keep human-readable filter text in the configured timezone
         $filter = "Időpont: <b>" . htmlspecialchars(twig_hungarian_date_format($fromDatetime)) . "</b> - <b>" . htmlspecialchars(twig_hungarian_date_format($toDatetime)) . "</b>";
@@ -330,6 +370,57 @@ class Search {
                 ]
             ]
         ];
+    }
+
+    /**
+     * @param bool $sortByDistance true → a legközelebbi templom az első (alap közeli keresés).
+     *                             false → a legkorábbi mise az első (#608: „legközelebbi mise" keresés).
+     */
+    function nearby(float $latitude, float $longitude, float $radiusKm, bool $sortByDistance = true): void {
+        if ($this->massOrChurch !== 'mass') {
+            throw new LogicException('Nearby mass search is only available on the mass index.');
+        }
+        if ($latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
+            throw new InvalidArgumentException('Invalid geographic coordinates.');
+        }
+        if ($radiusKm <= 0 || $radiusKm > 200) {
+            throw new InvalidArgumentException('Radius must be between 0 and 200 kilometres.');
+        }
+
+        $origin = ['lat' => $latitude, 'lon' => $longitude];
+        $locationField = 'church_runtime_location';
+        $this->runtimeMappings[$locationField] = [
+            'type' => 'geo_point',
+            'script' => [
+                'source' => "if (doc['church.lat'].size() != 0 && doc['church.lon'].size() != 0) { emit(doc['church.lat'].value, doc['church.lon'].value); }",
+            ],
+        ];
+        $this->query['bool']['filter'][] = [
+            'geo_distance' => [
+                'distance' => rtrim(rtrim(number_format($radiusKm, 3, '.', ''), '0'), '.') . 'km',
+                $locationField => $origin,
+            ],
+        ];
+        $geoSort = [
+            '_geo_distance' => [
+                $locationField => $origin,
+                'order' => 'asc',
+                'unit' => 'km',
+                'mode' => 'min',
+                'distance_type' => 'arc',
+                'ignore_unmapped' => true,
+            ],
+        ];
+        if ($sortByDistance) {
+            $this->sort = [$geoSort];
+            $this->distanceSortIndex = 0;
+        } else {
+            // Idő szerint rendezünk, a távolság csak holtversenyt dönt — de a sort
+            // értékéből továbbra is ki tudjuk olvasni a km-t.
+            $this->sort = [['start_date' => ['order' => 'asc']], $geoSort];
+            $this->distanceSortIndex = 1;
+        }
+        $this->filters[] = 'Legfeljebb <b>' . htmlspecialchars((string) $radiusKm) . ' km</b> távolságra';
     }
 
     function dateRange($fromDate, $toDate) {
@@ -433,6 +524,9 @@ class Search {
             "size"  => $size,
             "track_total_hits" => true
         ];
+        if (!empty($this->runtimeMappings)) {
+            $esQuery['runtime_mappings'] = $this->runtimeMappings;
+        }
     
         // Nagy adatkupacoknál jobb PIT-et nyitni ( openPit() ) és azt használva kérdezgetni le
         if ($this->pitId) {
@@ -452,12 +546,11 @@ class Search {
 
 
         if($this->massOrChurch === 'mass') {
-            
-            $esQuery['sort'] = [
+            $esQuery['sort'] = array_merge($this->sort, [
                 [ "start_date" =>  [ "order" => "asc" ] ],
                 [ "_score" =>  [ "order" => "desc" ] ],                
                 [ "church_id" => [ "order" => "asc" ] ]
-            ];        
+            ]);
         } else if ($this->massOrChurch === 'church') {
             
             $esQuery['sort'] = [
@@ -543,6 +636,11 @@ class Search {
 
             $source = $hit->_source;
             $source->score = $hit->_score;
+            if ($this->distanceSortIndex !== null
+                && isset($hit->sort[$this->distanceSortIndex])
+                && is_numeric($hit->sort[$this->distanceSortIndex])) {
+                $source->distance_km = round((float) $hit->sort[$this->distanceSortIndex], 2);
+            }
 
             $dateUtc = Carbon::parse($source->start_date)->setTimezone('UTC');
 

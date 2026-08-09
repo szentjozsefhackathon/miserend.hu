@@ -6,6 +6,10 @@
 
 {% block extraHead %}
     <script src="/js/unified-autocomplete.js"></script>
+    {% if nearbyOrigin %}
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    {% endif %}
     <script>
         window.boundaryDataFromUrl = {{ boundaryDataJson|raw|default('[]') }};
         window.churchDataFromUrl = {{ churchDataJson|raw|default('[]') }};
@@ -26,6 +30,44 @@
         .mass-row-freshness { margin-left: 6px; cursor: help; }
         .mass-row-freshness--stale { color: #b02a37; }
         .mass-row-freshness--medium { color: #997404; }
+        #nearby-masses-map { height: 420px; margin: 0 0 18px; border-radius: 4px; }
+        #nearby-church-card {
+            margin: -6px 0 18px;
+            padding: 14px 16px;
+            border-left: 4px solid #6f3b8f;
+            background: #f7f3f9;
+        }
+        .nearby-church-card-hint { margin: 0; color: #555; }
+        /* #608: a bejelentő kérése — háttér nélküli, pici betűs, csak időpontot mutató gombostű. */
+        .leaflet-tooltip.nearby-time-label {
+            background: none;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            color: #3b1a4d;
+            /* A térkép bármilyen színű lehet alatta, ezért fehér kontúr adja az olvashatóságot. */
+            text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+            white-space: nowrap;
+        }
+        .leaflet-tooltip.nearby-time-label::before { display: none; }
+        .mass-empty-state {
+            margin: 8px 0 18px;
+            padding: 16px 18px;
+            border-left: 4px solid #6f3b8f;
+            background: #f7f3f9;
+        }
+        .mass-empty-state p { margin: 0 0 8px; }
+        .mass-empty-state-title { font-weight: 700; }
+        .mass-empty-state-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .nearby-church-card-times { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 10px; }
+        .nearby-list-time { color: #333; font-weight: 700; white-space: nowrap; }
+        .mass-results-table tr.nearby-church-selected td {
+            background: #f7f3f9;
+            box-shadow: inset 0 1px #dacbe2, inset 0 -1px #dacbe2;
+        }
     </style>
 {% endblock %}
 
@@ -53,6 +95,69 @@
 
     {% if results %}
 
+            {% if nearbyOrigin %}
+                <div id="nearby-masses-map" aria-label="Közeli misék térképe"></div>
+                <section id="nearby-church-card" aria-live="polite">
+                    <p class="nearby-church-card-hint">Válassz egy templomot a térképen a miseidőpontjai megtekintéséhez. Az alábbi lista minden találatot mutat.</p>
+                </section>
+                <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    if (typeof L === 'undefined') return;
+                    var origin = {{ nearbyOrigin|json_encode|raw }};
+                    var radiusKm = {{ nearbyRadius|json_encode|raw }};
+                    var churches = {{ nearbyMapJson|raw }};
+                    var map = L.map('nearby-masses-map').setView([origin.lat, origin.lon], 12);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; OpenStreetMap közreműködők'
+                    }).addTo(map);
+                    var bounds = L.latLngBounds([[origin.lat, origin.lon]]);
+                    function escapeHtml(value) {
+                        var node = document.createElement('div');
+                        node.textContent = value == null ? '' : String(value);
+                        return node.innerHTML;
+                    }
+                    L.circle([origin.lat, origin.lon], { radius: radiusKm * 1000, color: '#5a2583', fillOpacity: 0.04 }).addTo(map);
+                    L.circleMarker([origin.lat, origin.lon], { radius: 6, color: '#135e96', fillOpacity: 1 })
+                        .bindTooltip('Kiindulópont').addTo(map);
+                    function selectChurch(church) {
+                        document.querySelectorAll('.mass-result-row').forEach(function (row) {
+                            row.classList.toggle('nearby-church-selected', Number(row.dataset.churchId) === Number(church.id));
+                        });
+                        var times = Array.from(new Set(church.times));
+                        var card = document.getElementById('nearby-church-card');
+                        card.innerHTML = '<strong>' + escapeHtml(church.name) + '</strong>'
+                            + '<div>' + escapeHtml(church.city) + ' · ' + church.distance_km + ' km légvonalban</div>'
+                            + '<div class="nearby-church-card-times">'
+                            + times.map(function (time) { return '<span class="nearby-list-time">' + time + '</span>'; }).join('')
+                            + '</div><a class="btn btn-sm btn-primary" href="/templom/' + church.id + '">Templom adatlapja</a>';
+                    }
+                    churches.forEach(function (church) {
+                        var marker = L.circleMarker([church.lat, church.lon], {
+                            radius: 7,
+                            color: '#fff',
+                            weight: 2,
+                            fillColor: '#6f3b8f',
+                            fillOpacity: 1
+                        });
+                        // #608: a gombostű felirata háttér nélküli, pici betűs, és csak az
+                        // időpontot tartalmazza — a fehér tooltip-téglalap takarta a térképet.
+                        if (church.times.length) marker.bindTooltip(church.times[0], {
+                            permanent: true,
+                            direction: 'top',
+                            offset: [0, -6],
+                            opacity: 1,
+                            className: 'nearby-time-label'
+                        });
+                        marker.on('click', function () { selectChurch(church); });
+                        marker.addTo(map);
+                        bounds.extend([church.lat, church.lon]);
+                    });
+                    if (churches.length) map.fitBounds(bounds.pad(0.15));
+                });
+                </script>
+            {% endif %}
+
             <div class="row" style="margin-bottom:12px">
                 <p>
                 Listázott találatok: <strong>{{ (pagination.active * pagination.take) + 1 }} - 
@@ -77,7 +182,7 @@
                     {% set currentDate = result.start_date|date('Y-m-d') %}
                     {% if previousDate is null or previousDate != currentDate %}
                         <tr class="date-header">
-                            <td colspan="5">
+                            <td colspan="{{ nearbyOrigin ? 6 : 5 }}">
                                 <span class="date-header-text">
                                     <span>{{ result.start_date|miserend_date('') }}</span>
                                     {% if liturgicalDays[currentDate].name %}
@@ -92,9 +197,13 @@
                     {% set rowClasses = [] %}
                     {% if rowCounter % 2 == 1 %}{% set rowClasses = rowClasses|merge(['table-light']) %}{% endif %}
                     {% if daysAgo is not null and daysAgo >= 1825 %}{% set rowClasses = rowClasses|merge(['mass-row--stale']) %}{% endif %}
-                    <tr{% if rowClasses|length %} class="{{ rowClasses|join(' ') }}"{% endif %}>
+                    <tr class="mass-result-row{% if rowClasses|length %} {{ rowClasses|join(' ') }}{% endif %}" data-church-id="{{ church.id }}">
                         <td class="align-middle">
-                            <span class="badge badge-primary">{{ "%02d:%02d"|format((result.start_minutes / 60)|round(0, 'floor'), (result.start_minutes % 60)) }}</span>
+                            {% if nearbyOrigin %}
+                                <span class="nearby-list-time">{{ "%02d:%02d"|format((result.start_minutes / 60)|round(0, 'floor'), (result.start_minutes % 60)) }}</span>
+                            {% else %}
+                                <span class="badge badge-primary">{{ "%02d:%02d"|format((result.start_minutes / 60)|round(0, 'floor'), (result.start_minutes % 60)) }}</span>
+                            {% endif %}
                         </td>
 
                         <td class="align-middle">
@@ -103,8 +212,14 @@
                         </td>
 
                         <td class="align-middle">
-                            {% if result.lang and result.lang != 'hu' %}
-                                <img src="/cal_images/flags/{{ result.lang|lower }}.svg" alt="{{ ('LANGUAGES.' ~ result.lang)|trans }}" title="{{ ('LANGUAGES.' ~ result.lang)|trans }}" style="height:1.3em; margin-right:6px; vertical-align:middle;">
+                            {# #334: a mise nyelve lista is lehet (szlovák-latin), ilyenkor
+                               mindegyikhez kiteszünk egy zászlót. A magyart továbbra sem
+                               jelöljük külön — egynyelvű magyar misénél az lenne a zaj. #}
+                            {% set massLangs = result.lang is iterable ? result.lang : (result.lang ? [result.lang] : []) %}
+                            {% if massLangs != ['hu'] %}
+                                {% for lang in massLangs %}
+                                    <img src="/cal_images/flags/{{ lang|lower }}.svg" alt="{{ ('LANGUAGES.' ~ lang)|trans }}" title="{{ ('LANGUAGES.' ~ lang)|trans }}" style="height:1.3em; margin-right:6px; vertical-align:middle;">
+                                {% endfor %}
                             {% endif %}
                             {% if result.types is iterable and result.types|length %}
                                 {% for type in result.types %}
@@ -141,11 +256,45 @@
                                 <span class="badge" style="background-color:{{ result.period.color ?? '' }}" title="{{ result.mass.rrule.readable }}">{{ result.period.name ?? 'Időszak nélkül' }}</span>
                             {% endif %}
                         </td>
+                        {% if nearbyOrigin %}
+                            <td class="align-middle text-nowrap mass-distance" data-distance="{{ result.distance_km }}"><strong>{{ result.distance_km|number_format(2, ',', ' ') }} km</strong></td>
+                        {% endif %}
                     </tr>
                     {% set rowCounter = rowCounter + 1 %}
                 {% endfor %}
                 </tbody>
             </table>
+        {% else %}
+            {# #608: a szűk időablak (pl. „következő két óra") gyakran üres — ne néma üres oldal fogadjon. #}
+            <div class="mass-empty-state">
+                {% if nearbyOrigin %}
+                    <p class="mass-empty-state-title">A megadott {{ nearbyRadius }} km-es körben ebben az időszakban nincs mise.</p>
+                    {% if nearbyNextMass %}
+                        <p>
+                            A legközelebbi mise a közelben:
+                            <a href="/templom/{{ nearbyNextMass.church_id }}"><strong>{{ nearbyNextMass.church_name }}</strong></a>
+                            {% if nearbyNextMass.church_city %}({{ nearbyNextMass.church_city }}){% endif %}
+                            — <strong>{{ nearbyNextMass.start_date|miserend_date }}</strong>
+                            {%- if nearbyNextMass.distance_km is not null -%}
+                                , {{ nearbyNextMass.distance_km|number_format(2, ',', ' ') }} km légvonalban
+                            {%- endif -%}
+                        </p>
+                        <a class="btn btn-sm btn-primary" href="{{ nearbyLookaheadUrl }}">
+                            A következő {{ nearbyLookaheadDays }} nap miséi itt ({{ nearbyNextMass.total }} találat)
+                        </a>
+                    {% else %}
+                        <p>A következő {{ nearbyLookaheadDays }} napban sincs mise ebben a körben. Próbáld nagyobb sugárral:</p>
+                        <p class="mass-empty-state-actions">
+                            {% for radius, url in nearbyWiderRadiusUrls %}
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url }}">{{ radius }} km</a>
+                            {% endfor %}
+                        </p>
+                    {% endif %}
+                {% else %}
+                    <p class="mass-empty-state-title">A megadott feltételekkel nem találtunk eseményt.</p>
+                    <p>Próbáld tágabb időszakkal, kevesebb szűrővel vagy más kulcsszóval.</p>
+                {% endif %}
+            </div>
         {% endif %}
 
         {% include '_pagination.twig' %}

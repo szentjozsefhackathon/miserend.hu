@@ -19,7 +19,8 @@ export interface DialogEvent {
   title: string;
   start: Date;
   duration: Duration;
-  language: LanguageCode;
+  /** #334: egy mise több nyelvű is lehet (szlovák-latin, német-magyar). */
+  language: LanguageCode[];
   renum: Renum;
   selectedDays: Day[];
   selectedChristmasDay?: ChristmasDay | null;

@@ -6,6 +6,23 @@ use Illuminate\Database\Capsule\Manager as DB;
 
 class SearchResultsChurches extends Html {
 
+    /**
+     * #89: helynév -> koordináta. Külön metódus, hogy a mise-kereső is ezt használja,
+     * és egy helyen dőljön el, mi történik, ha a geokóder nem érhető el.
+     *
+     * @return array{lat:float,lon:float}|false
+     */
+    public static function geocodePlace(string $place) {
+        try {
+            $nominatim = new \ExternalApi\NominatimApi();
+            return $nominatim->geocode($place);
+        } catch (\Throwable $e) {
+            // A geokóder kiesése ne döntse össze a keresést — a többi szűrő maradjon.
+            return false;
+        }
+    }
+
+
     public $template = 'search/resultsChurches.twig';
     public $form = [];
     public $filters;
@@ -26,6 +43,10 @@ class SearchResultsChurches extends Html {
 		    'boundaries' => \Request::StringArray('boundaries', []),
 		    'church_ids' => \Request::IntegerArray('church_ids') ?: [],
 		    'lang' => \Request::StringArray('lang'),
+		    // #89: hely + sugár. A mise-kereső eddig is beolvasta ezeket, de SOHA nem
+		    // alkalmazta; a templomkereső pedig nem is ismerte őket.
+		    'hely' => \Request::Text('hely'),
+		    'tavolsag' => \Request::IntegerwDefault('tavolsag', 0),
 		    // #667: a keresőűrlap rítus-gombjai (zöld/piros/semleges) eddig csak a
 		    // mise-keresőre hatottak; a templomkereső némán figyelmen kívül hagyta őket.
 		    'rites' => \Request::StringArray('rites'),
@@ -131,6 +152,21 @@ class SearchResultsChurches extends Html {
         // hibának hinné. Mondjuk meg, hány misézőhelyről tudunk egyáltalán valamit.
         foreach (\Eloquent\Church::facilityCoverageMessages((bool) $wheelchairFilter, (bool) $glutenFreeFilter) as $message) {
             addMessage($message, 'info');
+        }
+
+        // #89: hely körüli keresés. A `hely` szöveget geokódoljuk, majd geo_distance
+        // szűrőt teszünk a templom-index `location` mezőjére.
+        if (!empty($params['hely']) && (int) $params['tavolsag'] > 0) {
+            $point = self::geocodePlace($params['hely']);
+            if ($point === false) {
+                addMessage(
+                    'Nem találtuk meg ezt a helyet: „' . htmlspecialchars($params['hely'])
+                    . '”. A távolság szerinti szűrést kihagytuk.',
+                    'warning'
+                );
+            } else {
+                $search->nearLocation($point['lat'], $point['lon'], (float) $params['tavolsag'], $params['hely']);
+            }
         }
 
         //Let's do the search

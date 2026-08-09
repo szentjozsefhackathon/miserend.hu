@@ -749,7 +749,10 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 					'types' => $mass['types'],
 					'rite' => $mass['rite'],
 					'duration_minutes' => $mass['duration_minutes'],
-					'lang' => $mass['lang'],
+					// #334: tömbként indexeljük. Az ES keyword mezője natívan kezeli a több
+					// értéket, így a nyelvszűrő (terms lang.keyword) a többnyelvű misét is
+					// megtalálja bármelyik nyelvére keresve.
+					'lang' => \Eloquent\CalMass::splitLanguages(is_array($mass['lang']) ? implode(',', $mass['lang']) : $mass['lang']),
 					'comment' => $mass['comment'],
 					'church' => $churches[$mass['church_id']]
 				];

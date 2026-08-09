@@ -12,9 +12,10 @@ class Search extends Api {
 
     public $fields = [
         'q' => [
-            'required' => true, 
-            'validation' => 'string', 
-            'description' => 'a keresőkifejezés',
+            // #299: a kötelezőséget a validateInput() dönti el, mert az a `categories`
+            // értékétől függ. A hibaüzenet változatlan.
+            'validation' => 'string',
+            'description' => 'a keresőkifejezés. Kötelező, kivéve ha a `categories` mise nélküli szolgálatra szűkít (pl. csak szentségimádásra) — ott a kategória maga is elég szűk halmaz',
             'example' => 'Szent István'
         ],
         'offset' => [
@@ -44,8 +45,19 @@ class Search extends Api {
             ],
             'description' => 'csak az adott napi misék megjelenítése',
             'default' => false
+        ],
+        'categories' => [
+            'validation' => [
+                'list' => ['enum' => ['MASS', 'ADORATION', 'CONFESSION', 'OTHER']]
+            ],
+            'description' => 'mely eseményfajtákra keresünk: MASS (misefélék), ADORATION (szentségimádás), CONFESSION (gyóntatás), OTHER (egyéb imaalkalom). Megadás nélkül mindegyikre',
+            'example' => ['ADORATION'],
+            'default' => false
         ]
     ];
+
+    /** A `q` nélkül is értelmes kategóriák: ezek önmagukban elég szűk halmazt adnak. */
+    const CATEGORIES_WITHOUT_KEYWORD = ['ADORATION', 'CONFESSION'];
 
      public function docs() {
 
@@ -53,6 +65,11 @@ class Search extends Api {
 	 
         $docs['description'] = <<<HTML
         <p>Templomok között lehet keresni egy (akár összetett) keresőszó megadásával.</p>
+        <p>A <code>categories</code> megadásával nem csak misére kereshetsz, hanem
+        szentségimádásra (<code>ADORATION</code>), gyóntatásra (<code>CONFESSION</code>) vagy
+        egyéb imaalkalomra (<code>OTHER</code>) is — ezek ugyanolyan naptáresemények, mint a
+        mise, csak más a fajtájuk. Például <code>{"categories":["ADORATION"],"when":"today"}</code>
+        megadja, hol van ma szentségimádás.</p>
         HTML;
 
         $docs['response'] = <<<HTML
@@ -75,10 +92,23 @@ class Search extends Api {
 		$limit = isset($this->input['limit']) ? $this->input['limit'] : 10;
 		
         $search = new \Search('masses');
-        $search->keyword($this->input['q']);				
-        if (isset($this->input['when']) && $this->input['when']) {            
-            $search->day($this->input['when']);            
-        } 
+        $search->keyword(isset($this->input['q']) ? $this->input['q'] : '');
+        if (isset($this->input['when']) && $this->input['when']) {
+            $search->day($this->input['when']);
+        }
+
+        // #299: a szentségimádás és a gyóntatás ugyanolyan cal_masses-esemény, mint a mise
+        // — csak más a címe. Tehát nem külön adatforrás és nem külön válaszszerkezet kell,
+        // hanem egy cím-szűrő ugyanazon a mise-indexen. A cím-alakokat a \MassDefinitions
+        // adja, ugyanaz, amit a webes keresés (searchresultsmasses) használ.
+        $categories = $this->selectedCategories();
+        if (!empty($categories)) {
+            $titleFilters = (new \MassDefinitions())->titleFiltersByCategories($categories);
+            if (!empty($titleFilters)) {
+                $search->query['bool']['must'][] = [ 'terms' => ['title.keyword' => $titleFilters] ];
+            }
+        }
+
 		$results = $search->getResults($offset, $limit, true);
             
         $this->return = [
@@ -120,6 +150,38 @@ class Search extends Api {
         }
 
         return;
+    }
+
+    /**
+     * #299: a kulcsszó akkor hagyható el, ha a kategóriaszűrő önmagában elég szűk.
+     *
+     * Misére (és kategória nélkül, ami ugyanaz, csak tágabb) továbbra is kötelező: a
+     * mise-index több millió időpont, kulcsszó nélkül a találathalmaz értelmetlen — és
+     * a lapozás miatt drága is. Szentségimádásra és gyóntatásra viszont épp az a
+     * tipikus kérdés, hogy „hol van MA egyáltalán", tehát ott kulcsszó nélkül is
+     * értelmes a válasz.
+     */
+    public function validateInput() {
+        if (isset($this->input['q'])) {
+            return;
+        }
+
+        $categories = $this->selectedCategories();
+        if (empty($categories) || array_diff($categories, self::CATEGORIES_WITHOUT_KEYWORD)) {
+            // Ugyanaz a hibaüzenet, mint eddig — a meglévő kliensek nem vesznek észre semmit.
+            $this->requiredInput(['q']);
+        }
+    }
+
+    /**
+     * @return string[] a kért kategóriák; üres tömb, ha nincs szűkítés
+     */
+    private function selectedCategories(): array {
+        if (!isset($this->input['categories']) || !is_array($this->input['categories'])) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter($this->input['categories'], 'is_string')));
     }
 
 }

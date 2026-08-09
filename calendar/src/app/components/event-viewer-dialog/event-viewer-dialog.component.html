@@ -57,9 +57,12 @@
                [src]="'/cal_images/types/' + type.toLowerCase() + '.png'" [alt]="type | translate" />
         }
       }
-      <img class="type-icon"
-           [matTooltip]="(('LANGUAGES.' + data.mass.lang) | translate) + ' nyelvű'"
-           [src]="'/cal_images/flags/' + data.mass.lang.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + data.mass.lang) | translate) + ' nyelvű'" />
+      <!-- #334: a mise több nyelvű is lehet, ilyenkor mindegyikhez külön zászló. -->
+      @for (l of languagesOf(data.mass.lang); track l) {
+        <img class="type-icon"
+             [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'"
+             [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
+      }
     </p>
 
     @if (data.mass.comment && data.mass.comment.length > 0) {

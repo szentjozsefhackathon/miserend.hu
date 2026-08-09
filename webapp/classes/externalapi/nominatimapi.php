@@ -33,6 +33,54 @@ class NominatimApi extends \ExternalApi\ExternalApi {
         }
     }
 
+    /**
+     * #89: helynév -> koordináta (geokódolás).
+     *
+     * Az osztály eddig csak az OSM2GeoJson-t tudta (osmtype+osmid -> geometria), pedig a
+     * kereső épp ezt igényelte: a felhasználó beír egy településnevet, mi meg nem tudtuk
+     * hova tenni — a `hely` és `tavolsag` paraméter ezért volt néma no-op.
+     *
+     * Két hetes cache: a településnevek koordinátája nem változik, a Nominatim
+     * használati irányelve pedig kifejezetten kéri a gyorsítótárazást
+     * (https://operations.osmfoundation.org/policies/nominatim/).
+     *
+     * @param  string $place  a keresett hely neve
+     * @return array|false    ['lat' => float, 'lon' => float, 'name' => string] vagy false
+     */
+    function geocode($place) {
+        $place = trim((string) $place);
+        if ($place === '') {
+            return false;
+        }
+
+        $this->cache = '2 weeks';
+        // A runQuery() csak akkor hívja a buildQuery()-t, ha a rawQuery MÉG nincs
+        // beállítva — egy második hívás ugyanazon az objektumon tehát az ELSŐ lekérdezést
+        // ismételné meg (és annak a cache-fájlját olvasná). Ugyanaz a csapda, mint a
+        // #627-nél az Elasticsearch-kérés törzsével.
+        unset($this->rawQuery);
+        unset($this->rawData);
+
+        // Magyarország-központú találat: a miserend túlnyomórészt hazai helyeket keres,
+        // e nélkül a „Szentendre" simán lehetne egy amerikai utcanév is.
+        $this->query = 'search?format=json&limit=1&accept-language=hu'
+            . '&countrycodes=hu,sk,ro,rs,ua,at,si,hr'
+            . '&q=' . urlencode($place);
+
+        if (!$this->runQuery()) {
+            return false;
+        }
+        if (!isset($this->jsonData[0]->lat) || !isset($this->jsonData[0]->lon)) {
+            return false;
+        }
+
+        return [
+            'lat'  => (float) $this->jsonData[0]->lat,
+            'lon'  => (float) $this->jsonData[0]->lon,
+            'name' => (string) ($this->jsonData[0]->display_name ?? $place),
+        ];
+    }
+
     function buildQuery() {
         global $config;
         $this->rawQuery = $this->query;        

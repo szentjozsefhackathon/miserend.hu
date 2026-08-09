@@ -50,6 +50,34 @@ class CalMass extends CalModel
     protected $primaryKey = 'id';
     protected $keyType = 'int';
 
+    /**
+     * #334: egy mise több nyelven is lehet (szlovák-latin, német-magyar, ...). A `lang`
+     * oszlop ezért vesszővel elválasztva több kódot is tartalmazhat ("sk,la"). A nyers
+     * mező marad string — a sqlite export és a naptár-alkalmazás így olvassa —, ez az
+     * accessor pedig a tisztított listát adja.
+     *
+     * @return string[]
+     */
+    public function getLangsAttribute(): array {
+        return self::splitLanguages($this->lang);
+    }
+
+    /**
+     * A `lang` mező listává bontása. Tiszta függvény, hogy a szétbontás szabálya egy
+     * helyen legyen (ES-indexelés, templom-nyelvek, statisztika, megjelenítés).
+     *
+     * @param  string|null $lang
+     * @return string[]
+     */
+    public static function splitLanguages($lang): array {
+        if ($lang === null) {
+            return [];
+        }
+        $parts = array_map('trim', explode(',', (string) $lang));
+        $parts = array_filter($parts, static fn($p) => $p !== '');
+        return array_values(array_unique($parts));
+    }
+
     /*
      * #592: az importált miséket a külső naptár szinkronja írja és törli teljes
      * cserével, ezért a szerkesztő nem nyúlhat hozzájuk — a következő import úgyis
@@ -203,7 +231,7 @@ class CalMass extends CalModel
                             'types' => $mass->types,
                             'rite' => $mass->rite,
                             'duration_minutes' => $durationMinutes,
-                            'lang' => $mass->lang,
+                            'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                             'comment' => $mass->comment,
                         ];
                     }
@@ -318,7 +346,7 @@ class CalMass extends CalModel
                             'types' => $mass->types,
                             'rite' => $mass->rite,
                             'duration_minutes' => $durationMinutes,
-                            'lang' => $mass->lang,
+                            'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                             'comment' => $mass->comment,
                         ];
                     }
@@ -606,7 +634,7 @@ class CalMass extends CalModel
                         'types' => $mass->types,
                         'title' => $mass->title,
                         'duration_minutes' => $durationMinutes,
-                        'lang' => $mass->lang,
+                        'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                         'comment' => $mass->comment,
                         'rrule' => $rrule,
                     ];
@@ -651,7 +679,7 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
                     'types' => $mass->types,
                     'title' => $mass->title,
                     'duration_minutes' => 0, // A $mass->duration-ből ki tudnánk találni. TODO
-                    'lang' => $mass->lang,
+                    'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                     'comment' => "extra ".$mass->comment,
                     'rrule' => $mass->rrule, 
                     

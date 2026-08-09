@@ -67,7 +67,10 @@ class Home extends Html {
                 'size' => 1,
                 'id' => 'tavolsag',
                 'class' => 'keresourlap',
-                'value' => \Request::IntegerwDefault('tavolsag',4)
+                // #89: az alapértelmezés 0 („bárhol"). A 4 km-es korábbi alapérték
+                // sosem érvényesült — az űrlapon nem is volt mező hozzá —, viszont a
+                // legördülőben nem szerepel, tehát semmi nem látszana kiválasztva.
+                'value' => \Request::IntegerwDefault('tavolsag', 0)
             )
         );
         
@@ -88,16 +91,25 @@ class Home extends Html {
                     }                               
         
         // Összegyűjtés: hányféle calmass.lang van az eloquent-ben, csökkenő sorrend szerint
-        $langStats = \Eloquent\CalMass::select('lang')
+        // #334: a `lang` vesszővel elválasztva több nyelvet is tartalmazhat ("sk,la"),
+        // ezért a csoportosítás után szét kell bontani — különben a szűrősávban egy
+        // "sk,la" nevű álnyelv jelenne meg, zászló nélkül.
+        $langRows = \Eloquent\CalMass::select('lang')
             ->selectRaw('COUNT(*) as count')
             ->whereNotNull('lang')
             ->where('lang', '!=', '')
             ->groupBy('lang')
             ->orderBy('count', 'desc')
-            ->get()
-            ->pluck('lang')
-            ->toArray();
-        $this->langs = $langStats;
+            ->get();
+
+        $langCounts = [];
+        foreach ($langRows as $row) {
+            foreach (\Eloquent\CalMass::splitLanguages($row->lang) as $lang) {
+                $langCounts[$lang] = ($langCounts[$lang] ?? 0) + (int) $row->count;
+            }
+        }
+        arsort($langCounts);
+        $this->langs = array_keys($langCounts);
         
         $this->photo = \Eloquent\Photo::big()->vertical()->where('flag', 'i')->orderbyRaw('RAND()')->first();
         if($this->photo->church) //TODO: Van, hogy a random képhez nem is tartozik templom. Valami régi hiba miatt.
