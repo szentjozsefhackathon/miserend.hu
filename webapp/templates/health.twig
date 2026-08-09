@@ -181,9 +181,17 @@
 		</tr>
 		{% for externalapi in externalapis %}
 			<tr>
-				<td class="text-truncate {% if externalapi.testresult != 'OK' %}table-danger{% endif %}">
+				{# A „nem ellenőrizzük" nem hiba: az ne fesse pirosra a sort, mert az
+				   állandó piros egy idő után elveszi a kedvet az egész oldaltól. #}
+				<td class="text-truncate {% if externalapi.testresult != 'OK' and externalapi.testable is not same as(false) %}table-danger{% endif %}">
 					{% if externalapi.testresult == 'OK' %}
 						<span class="badge bg-success">OK</span>
+						{% if externalapi.attempts is defined and externalapi.attempts > 1 %}
+							<span class="badge bg-warning" title="Az első próbálkozás(ok) nem sikerültek – a végpont akadozik.">{{ externalapi.attempts }}. próbálkozásra</span>
+						{% endif %}
+					{% elseif externalapi.testable is same as(false) %}
+						<span class="badge bg-secondary">nincs ellenőrzés</span>
+						<span class="testresult-truncated kicsi" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Click to expand">{{ externalapi.testresult }}</span>
 					{% else %}
 						<span class="testresult-truncated" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Click to expand">{{ externalapi.testresult }}</span>
 					{% endif %}
@@ -210,8 +218,19 @@
 		   <code>schema-reference.json</code> készült{% if schemaCheck.generated_at %}
 		   ({{ schemaCheck.generated_at }}){% endif %} — ezért az összevetés eredménye
 		   <strong>nem megbízható</strong>, se a „rendben", se az eltérés-lista.</p>
-		<p><small class="text-muted">Újragenerálás:
-		   <code>docker compose exec miserend php /miserend/webapp/tools/schema-reference.php</code></small></p>
+		{% if schemaCheck.stale_details %}
+			<p>Ami változott:</p>
+			<ul class="kicsi">
+				{% for line in schemaCheck.stale_details %}<li><code>{{ line }}</code></li>{% endfor %}
+			</ul>
+		{% else %}
+			<p><small class="text-muted">Fájlszintű összevetés nincs: a referencia még a
+			   fájlonkénti ujjlenyomat bevezetése előtt készült. Egy újragenerálás után
+			   itt fog látszani, pontosan mi tér el.</small></p>
+		{% endif %}
+		<p><small class="text-muted">Újragenerálás — <strong>frissen épített konténerben</strong>,
+		   különben az ujjlenyomat megint nem fog egyezni:
+		   <code>docker exec &lt;konténer&gt; php /miserend/webapp/tools/schema-reference.php</code></small></p>
 	{% elseif schemaCheck.findings is empty %}
 		<p><span class="badge bg-success">Rendben</span>
 		   A(z) <code>{{ schemaCheck.schema }}</code> adatbázis szerkezete pontosan megegyezik azzal, amit a

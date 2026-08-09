@@ -6,6 +6,9 @@ use Illuminate\Database\Capsule\Manager as DB;
 use Carbon\Carbon;
 
 class Health extends Html {
+
+    /** Hányszor próbáljuk meg a külső végpontot, mielőtt kiesésnek minősítjük. */
+    const EXTERNAL_API_TEST_ATTEMPTS = 3;
     public $infos;
     public $cronjobs;
     public $stuckCronjobs;
@@ -171,17 +174,44 @@ class Health extends Html {
 				$this->externalapis[$apiToTest]['apiUrl'] = $externalapi->apiUrl ;
 				$this->externalapis[$apiToTest]['cache'] = $externalapi->cache ;
 				
-				if(!method_exists($externalapi,'test')) 
+				if(!method_exists($externalapi,'test'))
 					throw new \Exception('Hiányzik a tesztelő függvény!');
-				
-				
-				$testresult = $externalapi->test();
-				if($testresult !== true) 
+
+				// Amit szándékosan nem ellenőrzünk, az nem hiba. Külön jelöljük, hogy a
+				// piros tényleg csak a bajt jelentse.
+				if (method_exists($externalapi, 'isTestable') && !$externalapi->isTestable()) {
+					$this->externalapis[$apiToTest]['testable'] = false;
+					$this->externalapis[$apiToTest]['testresult'] = $externalapi->testSkipReason()
+						?? 'Nincs ellenőrző lekérdezés ehhez a végponthoz.';
+					continue;
+				}
+
+				/*
+				 * Újrapróbálkozás, mert egyetlen sikertelen kérés még nem jelent kiesést.
+				 *
+				 * Az Overpass például kimérhetően akadozik: egymás után ötször hívva
+				 * 200/504/200/200/429 jött vissza, és mindössze 2 párhuzamos slotot ad.
+				 * Havi ~29 000 hívásnál tehát rendszeresen belefutunk — miközben a
+				 * területi adatok frissülnek, azaz a szolgáltatás ÉL. Egy egy lövésű
+				 * ellenőrzés ilyenkor hazudik: pirosat mutat egy működő végpontra.
+				 *
+				 * Ha az első próbálkozás nem sikerül, de egy későbbi igen, azt is
+				 * megmutatjuk — az akadozás önmagában is információ.
+				 */
+				$attempts = 0;
+				$testresult = null;
+				while ($attempts < self::EXTERNAL_API_TEST_ATTEMPTS) {
+					$attempts++;
+					$testresult = $externalapi->test();
+					if ($testresult === true) break;
+					if ($attempts < self::EXTERNAL_API_TEST_ATTEMPTS) usleep(700000);
+				}
+
+				if($testresult !== true)
 					throw new \Exception($testresult);
-				
-				
-								
+
 				$this->externalapis[$apiToTest]['testresult'] = 'OK';
+				$this->externalapis[$apiToTest]['attempts'] = $attempts;
 			}
 			catch (\Exception $e) {
 				$this->externalapis[$apiToTest]['testresult'] = $e->getMessage();
