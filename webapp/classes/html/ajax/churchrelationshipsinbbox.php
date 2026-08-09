@@ -7,16 +7,13 @@ use Illuminate\Database\Capsule\Manager as DB;
 class ChurchRelationshipsInBBox extends Ajax {
 
     public function __construct() {
-        $bbox = explode(';', $_REQUEST['bbox']);
-        if (count($bbox) != 4) {
+        // #391: a kézi explode + is_numeric pontosan azt csinálta, amit a \Request::Bbox()
+        // — csak épp isset-ellenőrzés nélkül olvasta a $_REQUEST-et, tehát hiányzó `bbox`
+        // paraméternél PHP-figyelmeztetést hagyott a naplóban minden hívásnál.
+        $bbox = \Request::Bbox('bbox');
+        if ($bbox === false) {
             echo json_encode(['relationships' => []]);
             return;
-        }
-        foreach ($bbox as $int) {
-            if (!is_numeric($int)) {
-                echo json_encode(['relationships' => []]);
-                return;
-            }
         }
 
         // Lekérjük az összes templomot a bbox-ban
@@ -41,11 +38,6 @@ class ChurchRelationshipsInBBox extends Ajax {
             ->get();
 
         $return = [];
-        $typeLabels = [
-            'subordinate' => 'alá-fölé rendelt',
-            'associated' => 'mellérendelt',
-            'territorially_independent' => 'területileg ott van, de lényegében független'
-        ];
 
         foreach ($relationships as $rel) {
             $parentChurch = \Eloquent\Church::find($rel->parent_church_id);
@@ -68,8 +60,8 @@ class ChurchRelationshipsInBBox extends Ajax {
                     'lat' => (float) $childChurch->lat,
                     'lon' => (float) $childChurch->lon
                 ],
-                'type' => $rel->type,
-                'type_label' => isset($typeLabels[$rel->type]) ? $typeLabels[$rel->type] : $rel->type
+                // #663: a kapcsolat típusa kivezetésre került — minden kapcsolat
+                // alárendeltség, a térkép egységes stílussal rajzolja.
             ];
         }
 

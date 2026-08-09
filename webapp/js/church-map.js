@@ -1,0 +1,1294 @@
+/*
+ * #653: a térkép JS-e KÜLÖN FÁJLBAN.
+ *
+ * Korábban ez a ~67 KB a `_map_leaflet.twig`-ből egyenesen a HTML-be fordult bele.
+ * Mivel 5000+ külön templomoldalunk van, a böngésző MINDEN templomnál újra letöltötte
+ * ugyanazt — cache-elni nem tudta, mert a HTML része volt. Külön fájlként egyszer
+ * tölti le, utána a cache-ből jön.
+ *
+ * A sablonból jövő, oldalanként változó adat (koordináta, templom-azonosító, réteg-
+ * kapcsolók) a `window.miserendMapConfig` objektumban érkezik — ott, ahol korábban
+ * Twig-feltételek álltak a JS közepén.
+ *
+ * A térkép LUSTÁN indul: csak akkor épül fel, amikor a konténere a képernyőre kerül.
+ * Aki csak a miserendet nézi meg és sosem görget le a térképig, annak a Leaflet, a
+ * csempék és ez a fájl sem dolgozik feleslegesen.
+ */
+(function () {
+
+    var MAP_CONFIG = window.miserendMapConfig || {};
+    if (MAP_CONFIG.churchId === undefined) { MAP_CONFIG.churchId = null; }
+    if (MAP_CONFIG.boundary === undefined) { MAP_CONFIG.boundary = null; }
+    if (MAP_CONFIG.center === undefined) { MAP_CONFIG.center = null; }
+    if (MAP_CONFIG.location === undefined) { MAP_CONFIG.location = null; }
+    MAP_CONFIG.dioceses = !!MAP_CONFIG.dioceses;
+    MAP_CONFIG.autoGeoLocation = !!MAP_CONFIG.autoGeoLocation;
+
+    /*
+     * #640: a térkép felállását nehéz volt nyomon követni, mert a hiba csak az ELSŐ
+     * betöltéskor jött elő, frissítésre eltűnt. A dobott hibákat ezért gyűjtjük, hogy
+     * a funkcionális teszt (MapInitializationTest) számon tudja kérni őket.
+     * Ez AZONNAL fut, nem csak a térkép indításakor — különben pont az indítás hibái
+     * maradnának ki.
+     */
+    window.__mapErrors = window.__mapErrors || [];
+    window.addEventListener('error', function (event) {
+        window.__mapErrors.push(String(event.message || event.error));
+    });
+
+    function initMap() {
+
+
+        var mymap = L.map('mapid');
+        window.mymap = mymap;
+
+        var logo = L.control({position: 'bottomright'});
+        logo.onAdd = function(map){
+            var div = L.DomUtil.create('div', 'myclass');
+            div.innerHTML= '<div class="leaflet-bar"><a id="maplink" href="/map/">  <i class="fac fa-splat"></i><i class="fa fa-expand-arrows-alt" title=""></i></a></div>';
+            return div;
+        }
+        logo.addTo(mymap);
+        
+        //before .setView!
+        mymap.on('load', onMapMoved);
+        mymap.on('load', loadBoundary);
+
+        // Determine initial position: check autogeolocation first
+        var initialPosition = null;
+        var initialZoom = 13;
+
+        if (MAP_CONFIG.center) {
+            initialPosition = [MAP_CONFIG.center.lat, MAP_CONFIG.center.lon];
+            if (MAP_CONFIG.center.zoom) { initialZoom = MAP_CONFIG.center.zoom; }
+        } else if (MAP_CONFIG.location) {
+            initialPosition = [MAP_CONFIG.location.lat, MAP_CONFIG.location.lon];
+            if (MAP_CONFIG.location.zoom) { initialZoom = MAP_CONFIG.location.zoom; }
+        } else {
+            initialPosition = [47.5, 19.05]; // Budapest default
+        }
+
+        // Geolocation check - try to get user position before setView
+
+        /*
+         * #640: a nézet beállítása KÉSŐBB, a script legvégén történik — itt csak definiáljuk.
+         *
+         * A setView() szinkron elsüti a 'load' eseményt, arra pedig az onMapMoved() és a
+         * loadBoundary() van kötve (fentebb). Ha a nézetet még itt beállítjuk, ezek olyankor
+         * futnak le, amikor a rétegek (activeRomanLayer, ...) és az svgIcons még nem léteznek.
+         * Ezért kellett korábban a script végén egy külön onMapMoved() hívás — csakhogy az
+         * auto-geolokációs ágon fordítva sült el: a setView() egy aszinkron callbackben marad,
+         * így a végi hívás nézet NÉLKÜL futott, és a getBounds() eldobta a térképet
+         * ("Set map center and zoom first"). Frissítésre azért javult meg, mert akkor a
+         * gyorsítótárazott pozíció megnyerte a versenyt.
+         *
+         * A helyes sorrend: előbb minden réteg és ikon, utána kap nézetet a térkép.
+         * Az adatbetöltést így végig az események intézik ('load' + lentebb 'moveend'),
+         * nem kell külön onMapMoved()-ot hívogatni.
+         */
+        function setInitialView() {
+            if (MAP_CONFIG.autoGeoLocation && navigator.geolocation && !MAP_CONFIG.center && !MAP_CONFIG.location) {
+                // Try to get geolocation, but don't wait too long
+                var geolocationTimer = setTimeout(function() {
+                    // Fallback to initial position if geolocation takes too long
+                    mymap.setView(initialPosition, initialZoom);
+                }, 3000);
+
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        clearTimeout(geolocationTimer);
+                        mymap.setView([position.coords.latitude, position.coords.longitude], initialZoom);
+                    },
+                    function(error) {
+                        // Fallback to initial position on error
+                        clearTimeout(geolocationTimer);
+                        mymap.setView(initialPosition, initialZoom);
+                    }
+                );
+            } else {
+                // No autogeolocation or already have center/location
+                mymap.setView(initialPosition, initialZoom);
+            }
+        }
+
+        //https://leaflet-extras.github.io/leaflet-providers/preview/
+        var CartoDB_Voyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 19
+        });
+    	var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    		maxZoom: 19,
+    		attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    	});
+        /*
+         * #653: a Stamen Terrain réteg innen KIKERÜLT. A Stamen 2023-ban a Stadia Mapshez
+         * költözött, a régi végpont (stamen-tiles-*.a.ssl.fastly.net) mérve HTTP 503-at ad,
+         * tehát a réteg évek óta halott volt. Ráadásul soha nem is lehetett kiválasztani:
+         * definiálva volt, de sehol nem használtuk (a lenti control.layers baseLayers-e null).
+         *
+         * Visszahozni nem tudjuk csak úgy: az utód (tiles.stadiamaps.com/tiles/stamen_terrain)
+         * kulcs nélkül HTTP 401-et ad — regisztráció, API-kulcs és domain-engedélyezés kellene
+         * hozzá. Ha valaha kell egy terep-alapréteg, az külön döntés (és külön kulcs-kezelés).
+         */
+
+        // #376: a direkt tile.openstreetmap.org az OSM Tile Usage Policy szerint
+        // produkciós forgalomra tiltott → intermittensen „Access blocked" csempe
+        // (van akinek megy, van akinek nem, Referer/IP/forgalom alapján). A CARTO
+        // Voyager basemap (ingyenes, produkcióra való) a default — böngészőben mérve
+        // minden csempe 200-zal jön. Az OpenStreetMap_Mapnik fentebb definiálva
+        // marad, de nincs a réteg-választóban (baseLayers=null a lenti control.layers-nél).
+        CartoDB_Voyager.addTo(mymap);
+    
+    
+        var layerControls = new Array();
+
+        const pastelColors = [
+                    "#AEC6CF", // pasztell kék
+                    "#FFB347", // pasztell narancs
+                    "#77DD77", // pasztell zöld
+                    "#CBAACB", // pasztell lila
+                    "#FFFACD", // pasztell citromsárga
+                    "#FFD1DC", // pasztell rózsaszín
+                    "#B39EB5", // világoslila
+                    "#FF6961", // lágy piros
+                    "#FDFD96", // világossárga
+                    "#CB99C9", // pasztell lila (mélyebb)
+                    "#F49AC2", // pasztell rózsaszín (erősebb)
+                    "#B0E0E6", // halványkék
+                    "#E6E6FA", // levendula
+                    "#C1E1C1", // világos zöld
+                    "#FFDAC1", // barackszín
+                    "#E0BBE4", // halvány lila
+                    "#D5AAFF", // világoslila-pink
+                    "#B3E5FC", // világoskék
+                    "#FCEABB", // krémsárga
+                    "#D6F5D6"  // mentazöld
+                    ];
+
+        if (MAP_CONFIG.dioceses) {
+        /*
+         * #641: az egyházmegye neve eddig sehogy nem látszott a térképen (a válaszban sem
+         * volt benne). Kattintás helyett lebegő címke: a templom-gombostűk nem lopják el,
+         * és rögtön látszik, melyik egyházmegye fölött járunk.
+         */
+        function dioceseTooltip(feature, layer) {
+            var name = (feature.geometry && feature.geometry.name) || feature.properties && feature.properties.name;
+            if (name) {
+                layer.bindTooltip(name, { sticky: true, direction: 'top', className: 'diocese-tooltip' });
+            }
+        }
+
+        // Egyházmegyék rétegekhez tartozó ID-k nyilvántartása
+        var addedGreekCatholicIds = new Set();
+        var addedRomanCatholicIds = new Set();
+
+        // Egyházmegyék rétegek inicializálása
+        var diocesesGreekcatholicLayer = L.geoJSON(null, {
+           style: function (feature) {
+         
+                    //console.log('Feature properties:', feature.geometry);
+                    var hash = 0;
+                    for (var i = 0; i < feature.geometry.id.length; i++) {
+                        hash = feature.geometry.id.charCodeAt(i) + ((hash << 5) - hash);
+                    }
+                    var colorIndex = Math.abs(hash) % pastelColors.length;
+                    return {
+                        fillColor: pastelColors[colorIndex],
+                        weight: 3,
+                        opacity: 0.8,
+                        color: '#6D3C8D', 
+                        dashArray: '3',
+                        fillOpacity: 0.3
+                    };
+            
+            },
+            onEachFeature: dioceseTooltip
+        });
+
+        var diocesesRomanCatholicLayer = L.geoJSON(null, {
+           style: function (feature) {
+         
+                    //console.log('Feature properties:', feature.geometry);
+                    var hash = 0;
+                    for (var i = 0; i < feature.geometry.id.length; i++) {
+                        hash = feature.geometry.id.charCodeAt(i) + ((hash << 5) - hash);
+                    }
+                    var colorIndex = Math.abs(hash) % pastelColors.length;
+                    return {
+                        fillColor: pastelColors[colorIndex],
+                        weight: 3,
+                        opacity: 0.8,
+                        color: '#6D3C8D', 
+                        dashArray: '3',
+                        fillOpacity: 0.3
+                    };
+            
+            },
+            onEachFeature: dioceseTooltip
+        }).addTo(mymap);
+        layerControls['Római katolikus egyházmegyék'] = diocesesRomanCatholicLayer;  
+        layerControls['Görögkatolikus egyházmegyék'] = diocesesGreekcatholicLayer;  
+        }               
+    
+      
+      
+        /* Marker of current church */
+        if (MAP_CONFIG.location) {
+            var greenIcon = new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [27, 41],
+                iconAnchor: [13, 20],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            });
+            var marker = L.marker([MAP_CONFIG.location.lat, MAP_CONFIG.location.lon], {icon: greenIcon}).addTo(mymap);
+        }
+      
+        function loadBoundary(e) {
+            if (!MAP_CONFIG.boundary) { return; }
+                $.getJSON( "/ajax/boundarygeojson?osm=" + encodeURIComponent(MAP_CONFIG.boundary), function( data ) {
+                        if(data) {
+                            var boundaryLayer = L.geoJSON(data, { 
+                                style: {
+                                    /* Feltételes formázásra példa itt: http://jsfiddle.net/hx5pxdt8/ */
+                                    fillColor: 'blue',
+                                    weight: 2,
+                                    opacity: 1,
+                                    color: 'white',
+                                    dashArray: '3',
+                                    fillOpacity: 0.2,
+                                  }
+                            });
+                            var bounds = L.latLngBounds([]);
+                            boundaryLayer.addTo(mymap);
+                            mymap.fitBounds(boundaryLayer.getBounds());
+                            // mymap.setZoom(mymap.getZoom() - 1 );
+                        }
+                    });
+        }
+
+  
+
+        function layerIcon(feature, latlng, icon) {
+            let svgContent;
+            const churchType = feature.properties.church_type || 'other';
+        
+            // Select SVG based on church type
+            if (svgIcons[churchType]) {
+                svgContent = svgIcons[churchType];
+            } else {
+                // Fallback for old icons based on active/denomination for backward compatibility
+                if(feature.properties.active == 1 ) {
+                    if( feature.properties.denomination == 'roman_catholic') svgContent = svgIcons['rm_inv'];
+                    else if( feature.properties.denomination == 'greek_catholic') svgContent = svgIcons['gr_inv'];
+                    else svgContent = svgIcons['other'];
+                } else {
+                    if( feature.properties.denomination == 'roman_catholic') svgContent = svgIcons['rm'];
+                    else if( feature.properties.denomination == 'greek_catholic') svgContent = svgIcons['gr'];
+                    else svgContent = svgIcons['other'];
+                }
+            }
+
+            const coloredSvg = svgContent;
+
+            var customIcon = new L.divIcon({
+                    className: '', // Üres osztály, hogy ne legyen alapértelmezett stílus
+                    html: coloredSvg,
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [42, 60],
+                    iconAnchor: [21, 30],
+                    popupAnchor: [0, -35],
+                    shadowSize: [56, 60]
+                });
+            
+            return L.marker(latlng, {
+                icon: customIcon
+            });
+        };
+    
+    
+
+
+        var activeRomanLayer = L.geoJSON(null, {    
+            pointToLayer: function(feature, latlng) { return layerIcon(feature, latlng, "rm");}  , 
+            onEachFeature: onEachFeature
+        }).addTo(mymap);
+        var activeGreekLayer = L.geoJSON(null, {    
+            pointToLayer: function(feature, latlng) { return layerIcon(feature, latlng, "rm");}  , 
+            onEachFeature: onEachFeature
+        }).addTo(mymap);
+        var inactiveLayer = L.geoJSON(null, {    
+            pointToLayer: function(feature, latlng) { return layerIcon(feature, latlng, "ma");}  , 
+            onEachFeature: onEachFeature
+        }).addTo(mymap);
+    
+        layerControls['Római katolikus aktív templomok'] =  activeRomanLayer;
+        layerControls['Görögkatolikus aktív templomok'] = activeGreekLayer;
+        layerControls['Templomok és misézőhelyek rendszeres szentmisék nélkül'] = inactiveLayer;
+    
+        // Kapcsolatok réteg
+        var relationshipsLayer = L.featureGroup();
+        relationshipsLayer.addTo(mymap);
+        layerControls['Egyházi kapcsolatok'] = relationshipsLayer;
+    
+        // Relációs vonalak nyilvántartása az összehasonlításhoz
+        var currentRelationshipIds = new Set();
+
+        // #641: a már kirajzolt templomok, hogy mozgatáskor csak a különbséget rajzoljuk.
+        var renderedChurchIds = new Set();
+    
+        L.control.layers( null, layerControls ).addTo(mymap);
+       
+        function onMapMoved(e) {
+            var box = this.getBounds();                
+            var params = box['_southWest']['lat'] + ";" + box['_southWest']['lng']  + ";" + box['_northEast']['lat'] + ";" + box['_northEast']['lng'] ;                        
+
+           var link = "/terkep?map=" + this.getZoom()  + "/" + this.getCenter().lat  + "/" + this.getCenter().lng  + (MAP_CONFIG.churchId !== null ? "&tid=" + MAP_CONFIG.churchId : "") + (MAP_CONFIG.boundary ? "&boundary=" + MAP_CONFIG.boundary : "") ;
+                     
+       
+           $( "#maplink" ).attr("href", link);
+           if(window.location.pathname == '/terkep') {       
+                history.replaceState(null, '', link);
+           }
+
+           if( this.getZoom() < 11 ) {
+               if(activeRomanLayer) activeRomanLayer.clearLayers();
+               if(activeGreekLayer) activeGreekLayer.clearLayers();
+               if(inactiveLayer) inactiveLayer.clearLayers();
+               // #641: a nyilvántartást is ürítjük, különben visszazoomolva azt hinnénk,
+               // hogy a templomok még fent vannak, és üres maradna a térkép.
+               renderedChurchIds.clear();
+
+          } else {
+      
+            $.getJSON( "/ajax/churchesinbbox?bbox=" + params , function( data ) {
+                if(data) {
+
+                    /*
+                     * #641: eddig minden mozdításkor LETÖRÖLTÜNK minden templomot, majd
+                     * újrarajzoltuk az egészet — ettől villódzott a térkép, pedig a látható
+                     * templomok többsége ugyanaz maradt. Most csak a különbséget rajzoljuk:
+                     * a kikerülteket levesszük, az újakat feltesszük, a maradókhoz nem nyúlunk.
+                     * (A kapcsolatok rétege már így működött, innen a minta.)
+                     */
+                    var incomingIds = new Set();
+                    $.each( data, function( key, val ) { incomingIds.add( val.id ); });
+
+                    [ activeRomanLayer, activeGreekLayer, inactiveLayer ].forEach(function( group ) {
+                        var toRemove = [];
+                        group.eachLayer(function( layer ) {
+                            if ( !incomingIds.has( layer._churchId ) ) { toRemove.push( layer ); }
+                        });
+                        // Az eltávolítás külön menetben: iterálás közben ne módosítsuk a réteget.
+                        toRemove.forEach(function( layer ) {
+                            group.removeLayer( layer );
+                            renderedChurchIds.delete( layer._churchId );
+                        });
+                    });
+
+                    var items = [];
+                    var isFullMapView = (MAP_CONFIG.churchId === null);
+                
+                    // Helper function to generate admin links HTML from data
+                    var generateAdminLinks = function(adminLinks) {
+                        if (!adminLinks || !adminLinks.id) {
+                            return '';
+                        }
+                    
+                        var html = '';
+                        var churchId = adminLinks.id;
+                                        
+                        // Edit link
+                        html += '<a href="/templom/' + churchId + '/edit">';
+                        html += '<i class="fa fa-edit" style="font-size:medium" title="Adatlap szerkesztése"></i></a>';
+                    
+                        // OSM link
+                        html += '<a href="/templom/' + churchId + '/editosm">';
+                        html += '<i class="fas fa-map-marked-alt" style="font-size:medium" title="OSM adatok szerkesztése"></i></a>';
+                    
+                        // Schedule link
+                        html += '<a href="/templom/' + churchId + '/editschedule">';
+                        html += '<i class="far fa-clock" style="font-size:medium" title="Miserend szerkesztése"></i></a>';
+                                        
+                        return html;
+                    };
+                
+                    $.each( data, function( key, val ) {
+                        var current = (MAP_CONFIG.churchId !== null ? MAP_CONFIG.churchId : -1);
+                        // #641: ami már fent van a térképen, azzal nincs dolgunk — a popup
+                        // összeállítását se kezdjük el fölöslegesen.
+                        if ( renderedChurchIds.has( val.id ) ) { return; }
+                        if( current != val.id) {
+                            var popupContent = "<div class='map-popup-container'>";
+                            popupContent += "<h3><a href='/templom/" + val.id.toString() + "'>"  + val.nev + "</a></h3>";
+                        
+                            // Admin linkek megjelenítése
+                            if(val.adminLinks && val.adminLinks.id) {
+                                popupContent += "<div style='margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e7eb;'>";
+                                popupContent += generateAdminLinks(val.adminLinks);
+                                popupContent += "</div>";
+                            }
+                        
+                            //if(val.thumbnail) popupContent += "<img src='https://miserend.hu/" + val.thumbnail + "' class='popup-thumbnail'>";
+                        
+                            // Hétvégi miserendet hozzáadása badgek formájában (csak teljes nézeten)
+                            if(isFullMapView && val.weekend_masses && (val.weekend_masses.saturday.length > 0 || val.weekend_masses.sunday.length > 0)) {
+                                popupContent += "<div class='weekend-masses'>";
+                            
+                                // Szombati misék
+                                if(val.weekend_masses.saturday.length > 0) {
+                                    popupContent += "<div class='mass-day saturday-masses'>";
+                                    var saturdayDate = val.weekend_masses.saturday.length > 0 && val.weekend_masses.saturday[0].date ? val.weekend_masses.saturday[0].date : '';
+                                    var saturdayDateStr = '';
+                                    if(saturdayDate) {
+                                        var parts = saturdayDate.split('-');
+                                        if(parts.length === 3) {
+                                            saturdayDateStr = ' - ' + parseInt(parts[1]) + '. ' + parseInt(parts[2]) + '.';
+                                        }
+                                    }
+                                    popupContent += "<span class='day-label'>Szombat" + saturdayDateStr + "</span>";
+                                    popupContent += "<div class='mass-badges'>";
+                                    $.each(val.weekend_masses.saturday, function(idx, mass) {
+                                        popupContent += "<span class='mass-badge saturday' title='" + mass.title + "'>" + mass.time + "</span>";
+                                    });
+                                    popupContent += "</div></div>";
+                                }
+                            
+                                // Vasárnapi misék
+                                if(val.weekend_masses.sunday.length > 0) {
+                                    popupContent += "<div class='mass-day sunday-masses'>";
+                                    var sundayDate = val.weekend_masses.sunday.length > 0 && val.weekend_masses.sunday[0].date ? val.weekend_masses.sunday[0].date : '';
+                                    var sundayDateStr = '';
+                                    if(sundayDate) {
+                                        var parts = sundayDate.split('-');
+                                        if(parts.length === 3) {
+                                            sundayDateStr = ' - ' + parseInt(parts[1]) + '. ' + parseInt(parts[2]) + '.';
+                                        }
+                                    }
+                                    popupContent += "<span class='day-label'>Vasárnap" + sundayDateStr + "</span>";
+                                    popupContent += "<div class='mass-badges'>";
+                                    $.each(val.weekend_masses.sunday, function(idx, mass) {
+                                        popupContent += "<span class='mass-badge sunday' title='" + mass.title + "'>" + mass.time + "</span>";
+                                    });
+                                    popupContent += "</div></div>";
+                                }
+                            
+                                popupContent += "</div>";
+                            }
+                        
+                            popupContent += "</div>";
+                            var geojsonFeature = {
+                                "type": "Feature",
+                                "properties": {
+                                    "id": val.id,
+                                    "name": val.nev,
+                                    "popupContent": popupContent,
+                                    "active": val.active,
+                                    "denomination": val.denomination,
+                                    "church_type": val.church_type,
+                                },
+                                "geometry": {
+                                    "type": "Point",
+                                    "coordinates": [ val.lon , val.lat]
+                                },
+                            };
+
+                            if( val.active == 1 ) {
+                                if( val.denomination == 'roman_catholic') {
+                                    activeRomanLayer.addData(geojsonFeature);
+                                } else if ( val.denomination == 'greek_catholic') {
+                                    activeGreekLayer.addData(geojsonFeature);
+                                }
+                            } else {
+                                    inactiveLayer.addData(geojsonFeature);
+                            }
+                            renderedChurchIds.add( val.id );
+                        }
+                    });
+                }
+            });  
+            }
+             if (MAP_CONFIG.dioceses) {
+            /*
+             * #641: az egyházmegye-határokat MINDEN térképmozdításkor újra lekértük, pedig
+             * a réteg soha nem dob el semmit — a válasz nagy részét a kliens azonnal kiszűrte
+             * mint "már megvan". Mérve viszont a szerveroldal így is elvégezte a munkát:
+             * 2,3 s Budapestre, 17,9 s / 3,2 MB a Kárpát-medencére (a végpont Overpasst hív,
+             * majd egyházmegyénként Nominatimot — külső szolgáltatásokat, a térkép kritikus
+             * útján). Mostantól csak akkor kérünk, ha
+             *   - a réteg tényleg látszik, ÉS
+             *   - a nézet kilóg abból a területből, amit már egyszer lekértünk.
+             * A lekért területet megnöveljük, így a szokásos pásztázás már nem jár kéréssel.
+             */
+            var dioceseFetchedBounds = null;
+
+            function refreshDioceses(mapBounds) {
+                var visible = mymap.hasLayer(diocesesRomanCatholicLayer) || mymap.hasLayer(diocesesGreekcatholicLayer);
+                if (!visible) { return; }
+                if (dioceseFetchedBounds && dioceseFetchedBounds.contains(mapBounds)) { return; }
+
+                // A tényleges nézetnél nagyobb területet kérünk, hogy a pásztázás ne kérjen újra.
+                var padded = mapBounds.pad(0.5);
+                var box = padded.getSouthWest().lat + ";" + padded.getSouthWest().lng + ";"
+                        + padded.getNorthEast().lat + ";" + padded.getNorthEast().lng;
+
+                $.getJSON('/ajax/diocesesinbbox?bbox=' + box, function (data) {
+                    // Csak sikeres válasz után jegyezzük fel — különben hiba esetén
+                    // azt hinnénk, hogy megvan az a terület.
+                    dioceseFetchedBounds = padded;
+
+                    addDioceses(data['greekcatholic'], addedGreekCatholicIds, diocesesGreekcatholicLayer);
+                    addDioceses(data['roman_catholic'], addedRomanCatholicIds, diocesesRomanCatholicLayer);
+                });
+            }
+
+            function addDioceses(features, seenIds, layer) {
+                if (!features || !features.length) { return; }
+                var fresh = features.filter(function (feature) {
+                    var id = feature.id || (feature.properties && feature.properties.id);
+                    if (seenIds.has(id)) { return false; }
+                    seenIds.add(id);
+                    return true;
+                });
+                if (fresh.length) { layer.addData(fresh); }
+            }
+
+            refreshDioceses(box);
+            }
+
+
+            // Kapcsolatok réteg frissítése, ha be van kapcsolva
+            if (mymap.hasLayer(relationshipsLayer)) {
+                $.getJSON( "/ajax/churchrelationshipsinbbox?bbox=" + params , function( data ) {
+                    if(data && data.relationships) {
+                        /*
+                         * #663: a kapcsolatoknak eddig háromféle stílusuk volt a
+                         * church_relationships.type szerint. A type kivezetésre került —
+                         * minden kapcsolat alárendeltség —, ezért egyetlen, egységes stílus
+                         * maradt: lilás, folytonos vonal.
+                         */
+                        var relationshipStyle = { color: '#aa33aa', dashArray: null, weight: 4 };
+                    
+                        // Új vonalak ID-jainak gyűjtése
+                        var newRelationshipIds = new Set();
+                        var newRelationships = [];
+                    
+                        $.each(data.relationships, function(key, rel) {
+                            // Egyedi azonosító a relációhoz: parent_id-child_id (#663: a type kiesett)
+                            var relId = rel.parent.id + '-' + rel.child.id;
+                            newRelationshipIds.add(relId);
+                            newRelationships.push({
+                                id: relId,
+                                data: rel
+                            });
+                        });
+                    
+                        // Régi vonalak törlése, amelyek már nincsenek az új adatban
+                        currentRelationshipIds.forEach(function(oldRelId) {
+                            if (!newRelationshipIds.has(oldRelId)) {
+                                // Keressük meg és töröljük a vonalat
+                                relationshipsLayer.eachLayer(function(layer) {
+                                    if (layer._relId === oldRelId) {
+                                        relationshipsLayer.removeLayer(layer);
+                                    }
+                                });
+                            }
+                        });
+                    
+                        // Új vonalak hozzáadása, amelyek még nincsenek a térképen
+                        $.each(newRelationships, function(key, relObj) {
+                            if (!currentRelationshipIds.has(relObj.id)) {
+                                var rel = relObj.data;
+                                var style = relationshipStyle;
+                                var latlngs = [
+                                    [rel.child.lat, rel.child.lon],
+                                    [rel.parent.lat, rel.parent.lon]
+                                ];
+                            
+                                var polyline = L.polyline(latlngs, {
+                                    color: style.color,
+                                    dashArray: style.dashArray,
+                                    weight: style.weight,
+                                    opacity: 0.8
+                                });
+                            
+                                // Nyilak hozzáadása
+                                var decorator = L.polylineDecorator(polyline, {
+                                    patterns: [
+                                        {
+                                            offset: '50%',
+                                            repeat: 0,
+                                            symbol: L.Symbol.arrowHead({
+                                                pixelSize: 8,
+                                                polygon: false,
+                                                pathOptions: {
+                                                    color: style.color,
+                                                    weight: 2,
+                                                    opacity: 0.8
+                                                }
+                                            })
+                                        }
+                                    ]
+                                });
+                            
+                                // #663: popup nem kell — a nyíl iránya önmagában elmondja,
+                                // mi a kapcsolat, a típus-felirat pedig okafogyottá vált.
+
+                                // Azonosító tárolása a layer-en
+                                polyline._relId = relObj.id;
+                                decorator._relId = relObj.id;
+                            
+                                relationshipsLayer.addLayer(polyline);
+                                relationshipsLayer.addLayer(decorator);
+                            }
+                        });
+                    
+                        // Aktuális vonalak ID-jainak frissítése
+                        currentRelationshipIds = newRelationshipIds;
+                    }
+                });
+            }
+        }
+    
+        mymap.on('moveend', onMapMoved);
+
+        // Kapcsolatok réteg frissítése, amikor be/ki kapcsolják
+        // #641: az egyházmegye-rétegeket is csak akkor töltjük, ha tényleg bekapcsolják.
+        mymap.on('overlayadd', function(e) {
+            if (e.name === 'Egyházi kapcsolatok'
+                || e.name === 'Római katolikus egyházmegyék'
+                || e.name === 'Görögkatolikus egyházmegyék') {
+                onMapMoved.call(mymap);
+            }
+        });
+
+        // #640: minden réteg és eseménykezelő megvan — MOST kaphat nézetet a térkép.
+        // Innentől a 'load' (első setView) és a 'moveend' (minden további) tölti az adatot.
+        setInitialView();
+                
+        function onEachFeature(feature, layer) {
+            // #641: a templom azonosítója a rétegre kerül, hogy mozgatáskor pont a
+            // képernyőről kikerülteket tudjuk levenni (és csak azokat).
+            if (feature.properties && typeof feature.properties.id !== 'undefined') {
+                layer._churchId = feature.properties.id;
+            }
+            // does this feature have a property named popupContent?
+            if (feature.properties && feature.properties.popupContent) {
+            layer.bindPopup(feature.properties.popupContent,{
+                    maxWidth: "auto",
+                    autoPan: false
+                  });
+            }
+        }
+    
+
+
+     /*
+      * #640: FIGYELEM — ez `const`, tehát a deklarációja ELŐTT nem érhető el (TDZ), a
+      * layerIcon() viszont jóval fentebb használja. Ma ez rendben van, mert a layerIcon()
+      * kizárólag a $.getJSON válasz-callbackjeiből fut, azok pedig mindig e sor után.
+      * Ha valaki ide fentebb szinkron adatbetöltést tesz (pl. async:false vagy egy korai
+      * setView), visszajön a "Cannot access 'svgIcons' before initialization".
+      */
+     const svgIcons = {
+        rm: `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    	 width="100%" viewBox="0 0 346 513" enable-background="new 0 0 346 513" xml:space="preserve">
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none" 
+    	d="
+    M155.000000,0.999999 
+    	C167.354233,1.000000 179.708450,1.000000 192.721542,1.375834 
+    	C207.943634,2.928200 221.879517,6.531403 235.537857,11.740901 
+    	C269.337097,24.632429 296.560089,45.841335 317.012360,75.593605 
+    	C330.438507,95.124832 339.932770,116.423538 344.073425,139.924667 
+    	C344.961517,144.965179 346.019989,149.975677 347.000000,155.000000 
+    	C347.000000,167.687561 347.000000,180.375122 346.624146,193.721527 
+    	C345.499908,199.721344 344.984009,205.107346 343.959717,210.394867 
+    	C340.817352,226.616318 335.736328,242.269196 327.594177,256.643433 
+    	C317.487579,274.485779 306.587494,291.876984 296.151184,309.534607 
+    	C283.897736,330.266754 271.828583,351.107819 259.579956,371.842865 
+    	C245.921890,394.963959 232.159286,418.023346 218.428268,441.101288 
+    	C208.110168,458.443085 197.701355,475.731323 187.474136,493.126434 
+    	C183.451721,499.968048 179.813293,507.035431 176.000000,514.000000 
+    	C175.250000,514.000000 174.500000,514.000000 173.367065,513.632935 
+    	C170.133209,508.161255 167.389755,502.993011 164.413132,497.962708 
+    	C149.830887,473.319916 135.147522,448.736908 120.576675,424.087402 
+    	C109.150093,404.757111 97.880287,385.334106 86.458076,366.001221 
+    	C76.196083,348.632080 65.821594,331.329376 55.496372,313.997589 
+    	C45.171230,296.665894 34.830368,279.343536 24.524794,262.000214 
+    	C15.317183,246.504700 8.580790,230.028687 4.962336,212.328018 
+    	C3.645142,205.884613 2.320982,199.442627 1.000001,193.000000 
+    	C1.000000,180.645767 1.000000,168.291550 1.375834,155.278458 
+    	C2.928245,140.056396 6.520061,126.116570 11.743092,112.462975 
+    	C24.663044,78.688751 45.761246,51.387356 75.588120,30.979517 
+    	C95.149055,17.595728 116.423622,8.067207 139.924713,3.926604 
+    	C144.965225,3.038529 149.975693,1.980003 155.000000,0.999999 
+    M298.497711,242.996094 
+    	C318.465698,206.090408 321.797363,167.336090 307.971832,128.122665 
+    	C289.793396,76.563065 252.875534,44.352341 199.104752,34.674595 
+    	C145.334793,24.997004 99.758583,42.427170 64.374481,84.204788 
+    	C26.697132,128.690033 21.569275,194.005814 51.050232,243.939774 
+    	C90.388504,310.569733 129.790512,377.162109 169.173599,443.765594 
+    	C170.826065,446.560181 172.563858,449.304230 174.584503,452.597656 
+    	C216.003357,382.536957 257.064392,313.081482 298.497711,242.996094 
+    z"/>
+
+    <path fill="#FFFEFF" opacity="1.000000" stroke="none" 
+    	d="
+    M298.311584,243.311066 
+    	C257.064392,313.081482 216.003357,382.536957 174.584503,452.597656 
+    	C172.563858,449.304230 170.826065,446.560181 169.173599,443.765594 
+    	C129.790512,377.162109 90.388504,310.569733 51.050232,243.939774 
+    	C21.569275,194.005814 26.697132,128.690033 64.374481,84.204788 
+    	C99.758583,42.427170 145.334793,24.997004 199.104752,34.674595 
+    	C252.875534,44.352341 289.793396,76.563065 307.971832,128.122665 
+    	C321.797363,167.336090 318.465698,206.090408 298.311584,243.311066 
+    M196.550110,215.999039 
+    	C194.297562,215.999039 192.045029,215.999039 189.808365,215.999039 
+    	C189.808365,205.311859 189.808365,195.383667 189.808365,185.000977 
+    	C191.903183,185.000977 193.701340,185.000977 195.499496,185.000977 
+    	C212.328781,185.000931 229.158112,185.020264 245.987350,184.993561 
+    	C256.035248,184.977615 263.032715,178.540543 262.997681,169.431793 
+    	C262.962677,160.332993 255.978104,154.019058 245.850922,154.005325 
+    	C229.021652,153.982498 212.192352,153.999054 195.363052,153.999008 
+    	C193.601898,153.999008 191.840729,153.999008 190.093124,153.999008 
+    	C190.093124,145.017120 190.093124,136.749084 190.093124,128.001007 
+    	C191.964050,128.001007 193.586533,128.001038 195.209030,128.000992 
+    	C207.372772,128.000626 219.537186,128.078735 231.700027,127.973976 
+    	C240.745911,127.896065 247.361694,121.377785 247.484024,112.702545 
+    	C247.608658,103.863739 240.864822,97.113770 231.605377,97.021851 
+    	C221.775360,96.924255 211.943649,96.999306 202.112671,96.999039 
+    	C198.174774,96.998940 194.236877,96.999031 190.000961,96.999031 
+    	C190.000961,90.235275 190.000961,84.095932 190.000961,77.956589 
+    	C190.000961,57.337570 185.857590,49.923717 174.378387,50.002682 
+    	C163.042175,50.080662 158.999039,57.362087 158.999039,77.699944 
+    	C158.999039,83.984802 158.999039,90.269653 158.999039,96.998993 
+    	C156.887650,96.998993 155.265030,96.998947 153.642410,96.999008 
+    	C141.811920,96.999458 129.980499,96.909248 118.151237,97.029922 
+    	C109.161919,97.121628 102.544380,103.778168 102.512436,112.446213 
+    	C102.480484,121.116035 109.088165,127.808388 118.043777,127.975113 
+    	C124.706551,128.099152 131.373459,128.000641 138.038528,128.000900 
+    	C144.814331,128.001160 151.590149,128.000961 158.460388,128.000961 
+    	C158.460388,136.966690 158.460388,145.348648 158.460388,153.639404 
+    	C157.771439,153.806519 157.450653,153.952072 157.129684,153.952484 
+    	C139.134216,153.975708 121.138710,153.972961 103.143257,154.004547 
+    	C93.019569,154.022308 86.034271,160.338470 86.002266,169.437592 
+    	C85.970215,178.545776 92.967361,184.977585 103.018463,184.993637 
+    	C119.681084,185.020233 136.343781,185.000946 153.006439,185.001007 
+    	C154.744263,185.001007 156.482101,185.001007 158.167664,185.001007 
+    	C158.167664,195.736038 158.167664,205.656830 158.167664,215.998993 
+    	C156.212021,215.998993 154.577499,215.998978 152.942978,215.998993 
+    	C141.778992,215.999023 130.614990,215.986603 119.451027,216.002701 
+    	C108.988953,216.017776 101.934654,222.350510 102.002739,231.629700 
+    	C102.069473,240.724686 109.046158,246.969299 119.210564,246.996796 
+    	C126.875336,247.017532 134.540207,247.000931 142.205032,247.000946 
+    	C147.495209,247.000961 152.785385,247.000961 158.491302,247.000961 
+    	C158.491302,250.705322 158.502533,253.842285 158.489594,256.979156 
+    	C158.328110,296.129089 158.078766,335.279114 158.134094,374.428741 
+    	C158.139435,378.199463 159.251968,382.448822 161.217117,385.632446 
+    	C164.851425,391.520142 171.898209,393.332947 178.395752,391.165100 
+    	C185.032104,388.950958 188.966507,383.419403 188.985062,375.909241 
+    	C189.075211,339.419861 189.114883,302.930389 189.168823,266.440948 
+    	C189.178146,260.140839 189.170135,253.840698 189.170135,247.001022 
+    	C191.565903,247.001022 193.188705,247.001038 194.811508,247.001038 
+    	C206.475372,247.000992 218.139267,247.018280 229.803085,246.995636 
+    	C239.959290,246.975922 246.937668,240.711960 246.997360,231.616043 
+    	C247.057190,222.502808 240.057541,216.033417 230.035187,216.005890 
+    	C219.204529,215.976135 208.373734,215.999069 196.550110,215.999039 
+    z"/>
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none" 
+    	d="
+    M197.046555,215.999039 
+    	C208.373734,215.999069 219.204529,215.976135 230.035187,216.005890 
+    	C240.057541,216.033417 247.057190,222.502808 246.997360,231.616043 
+    	C246.937668,240.711960 239.959290,246.975922 229.803085,246.995636 
+    	C218.139267,247.018280 206.475372,247.000992 194.811508,247.001038 
+    	C193.188705,247.001038 191.565903,247.001022 189.170135,247.001022 
+    	C189.170135,253.840698 189.178146,260.140839 189.168823,266.440948 
+    	C189.114883,302.930389 189.075211,339.419861 188.985062,375.909241 
+    	C188.966507,383.419403 185.032104,388.950958 178.395752,391.165100 
+    	C171.898209,393.332947 164.851425,391.520142 161.217117,385.632446 
+    	C159.251968,382.448822 158.139435,378.199463 158.134094,374.428741 
+    	C158.078766,335.279114 158.328110,296.129089 158.489594,256.979156 
+    	C158.502533,253.842285 158.491302,250.705322 158.491302,247.000961 
+    	C152.785385,247.000961 147.495209,247.000961 142.205032,247.000946 
+    	C134.540207,247.000931 126.875336,247.017532 119.210564,246.996796 
+    	C109.046158,246.969299 102.069473,240.724686 102.002739,231.629700 
+    	C101.934654,222.350510 108.988953,216.017776 119.451027,216.002701 
+    	C130.614990,215.986603 141.778992,215.999023 152.942978,215.998993 
+    	C154.577499,215.998978 156.212021,215.998993 158.167664,215.998993 
+    	C158.167664,205.656830 158.167664,195.736038 158.167664,185.001007 
+    	C156.482101,185.001007 154.744263,185.001007 153.006439,185.001007 
+    	C136.343781,185.000946 119.681084,185.020233 103.018463,184.993637 
+    	C92.967361,184.977585 85.970215,178.545776 86.002266,169.437592 
+    	C86.034271,160.338470 93.019569,154.022308 103.143257,154.004547 
+    	C121.138710,153.972961 139.134216,153.975708 157.129684,153.952484 
+    	C157.450653,153.952072 157.771439,153.806519 158.460388,153.639404 
+    	C158.460388,145.348648 158.460388,136.966690 158.460388,128.000961 
+    	C151.590149,128.000961 144.814331,128.001160 138.038528,128.000900 
+    	C131.373459,128.000641 124.706551,128.099152 118.043777,127.975113 
+    	C109.088165,127.808388 102.480484,121.116035 102.512436,112.446213 
+    	C102.544380,103.778168 109.161919,97.121628 118.151237,97.029922 
+    	C129.980499,96.909248 141.811920,96.999458 153.642410,96.999008 
+    	C155.265030,96.998947 156.887650,96.998993 158.999039,96.998993 
+    	C158.999039,90.269653 158.999039,83.984802 158.999039,77.699944 
+    	C158.999039,57.362087 163.042175,50.080662 174.378387,50.002682 
+    	C185.857590,49.923717 190.000961,57.337570 190.000961,77.956589 
+    	C190.000961,84.095932 190.000961,90.235275 190.000961,96.999031 
+    	C194.236877,96.999031 198.174774,96.998940 202.112671,96.999039 
+    	C211.943649,96.999306 221.775360,96.924255 231.605377,97.021851 
+    	C240.864822,97.113770 247.608658,103.863739 247.484024,112.702545 
+    	C247.361694,121.377785 240.745911,127.896065 231.700027,127.973976 
+    	C219.537186,128.078735 207.372772,128.000626 195.209030,128.000992 
+    	C193.586533,128.001038 191.964050,128.001007 190.093124,128.001007 
+    	C190.093124,136.749084 190.093124,145.017120 190.093124,153.999008 
+    	C191.840729,153.999008 193.601898,153.999008 195.363052,153.999008 
+    	C212.192352,153.999054 229.021652,153.982498 245.850922,154.005325 
+    	C255.978104,154.019058 262.962677,160.332993 262.997681,169.431793 
+    	C263.032715,178.540543 256.035248,184.977615 245.987350,184.993561 
+    	C229.158112,185.020264 212.328781,185.000931 195.499496,185.000977 
+    	C193.701340,185.000977 191.903183,185.000977 189.808365,185.000977 
+    	C189.808365,195.383667 189.808365,205.311859 189.808365,215.999039 
+    	C192.045029,215.999039 194.297562,215.999039 197.046555,215.999039 
+    z"/>
+    </svg>`,
+
+
+
+        gr: `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    	 width="100%" viewBox="0 0 346 513" enable-background="new 0 0 346 513" xml:space="preserve">
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none" 
+    	d="
+    M155.000000,0.999999 
+    	C167.354233,1.000000 179.708450,1.000000 192.721542,1.375834 
+    	C207.943634,2.928200 221.879517,6.531403 235.537857,11.740901 
+    	C269.337097,24.632429 296.560089,45.841335 317.012360,75.593605 
+    	C330.438507,95.124832 339.932770,116.423538 344.073425,139.924667 
+    	C344.961517,144.965179 346.019989,149.975677 347.000000,155.000000 
+    	C347.000000,167.687561 347.000000,180.375122 346.624146,193.721527 
+    	C345.499908,199.721344 344.984009,205.107346 343.959717,210.394867 
+    	C340.817352,226.616318 335.736328,242.269196 327.594177,256.643433 
+    	C317.487579,274.485779 306.587494,291.876984 296.151184,309.534607 
+    	C283.897736,330.266754 271.828583,351.107819 259.579956,371.842865 
+    	C245.921890,394.963959 232.159286,418.023346 218.428268,441.101288 
+    	C208.110168,458.443085 197.701355,475.731323 187.474136,493.126434 
+    	C183.451721,499.968048 179.813293,507.035431 176.000000,514.000000 
+    	C175.250000,514.000000 174.500000,514.000000 173.367065,513.632935 
+    	C170.133209,508.161255 167.389755,502.993011 164.413132,497.962708 
+    	C149.830887,473.319916 135.147522,448.736908 120.576675,424.087402 
+    	C109.150093,404.757111 97.880287,385.334106 86.458076,366.001221 
+    	C76.196083,348.632080 65.821594,331.329376 55.496372,313.997589 
+    	C45.171230,296.665894 34.830368,279.343536 24.524794,262.000214 
+    	C15.317183,246.504700 8.580790,230.028687 4.962336,212.328018 
+    	C3.645142,205.884613 2.320982,199.442627 1.000001,193.000000 
+    	C1.000000,180.645767 1.000000,168.291550 1.375834,155.278458 
+    	C2.928245,140.056396 6.520061,126.116570 11.743092,112.462975 
+    	C24.663044,78.688751 45.761246,51.387356 75.588120,30.979517 
+    	C95.149055,17.595728 116.423622,8.067207 139.924713,3.926604 
+    	C144.965225,3.038529 149.975693,1.980003 155.000000,0.999999 
+    M287.537445,88.984039 
+    	C231.172485,14.657754 122.285149,12.844095 63.337448,85.249702 
+    	C26.889389,130.018936 21.848545,194.470032 51.038246,243.912567 
+    	C88.937729,308.108063 126.912178,372.259338 164.858612,436.427124 
+    	C167.954086,441.661591 171.082123,446.876801 174.444687,452.519958 
+    	C175.596573,450.699097 176.422501,449.465851 177.176987,448.190369 
+    	C209.454544,393.623291 241.761322,339.073425 273.976715,284.469635 
+    	C284.035767,267.419952 295.745087,251.027786 303.406555,232.940033 
+    	C324.672943,182.732697 319.568085,134.502411 287.537445,88.984039 
+    z"/>
+
+    <path fill="#FFFEFF" opacity="1.000000" stroke="none" 
+    	d="
+    M287.758087,89.267395 
+    	C319.568085,134.502411 324.672943,182.732697 303.406555,232.940033 
+    	C295.745087,251.027786 284.035767,267.419952 273.976715,284.469635 
+    	C241.761322,339.073425 209.454544,393.623291 177.176987,448.190369 
+    	C176.422501,449.465851 175.596573,450.699097 174.444687,452.519958 
+    	C171.082123,446.876801 167.954086,441.661591 164.858612,436.427124 
+    	C126.912178,372.259338 88.937729,308.108063 51.038246,243.912567 
+    	C21.848545,194.470032 26.889389,130.018936 63.337448,85.249702 
+    	C122.285149,12.844095 231.172485,14.657754 287.758087,89.267395 
+    M158.158630,253.500702 
+    	C158.128906,255.831909 158.077698,258.163055 158.072693,260.494324 
+    	C157.989441,299.308075 157.852386,338.121857 157.877823,376.935547 
+    	C157.883713,385.911652 164.659561,392.124329 173.640900,392.002716 
+    	C182.802078,391.878632 188.816254,385.048859 188.836655,374.661133 
+    	C188.956650,313.525238 189.062836,252.389313 189.173065,191.253403 
+    	C189.176559,189.310059 189.173508,187.366730 189.173508,185.003479 
+    	C191.573425,185.003479 193.371170,185.003479 195.168915,185.003479 
+    	C212.161362,185.003464 229.153870,185.024475 246.146179,184.974945 
+    	C248.116409,184.969208 250.176743,184.871338 252.038940,184.303452 
+    	C259.133362,182.140045 263.779999,174.741791 262.706360,167.664017 
+    	C261.497040,159.691635 255.360611,154.222305 247.215500,154.184219 
+    	C229.890244,154.103165 212.564362,154.158859 195.238724,154.158508 
+    	C193.464951,154.158478 191.691177,154.158524 189.512085,154.158524 
+    	C189.512085,151.515442 189.505173,149.542175 189.513123,147.568985 
+    	C189.621201,120.754066 189.721161,93.939110 189.847855,67.124268 
+    	C189.881592,59.983761 187.161072,54.416199 180.484543,51.423634 
+    	C169.947937,46.700912 158.922134,54.269516 158.846298,66.257347 
+    	C158.674561,93.406219 158.600708,120.555717 158.488922,147.704956 
+    	C158.480881,149.661346 158.487885,151.617783 158.487885,154.158554 
+    	C156.201660,154.158554 154.413483,154.158539 152.625305,154.158554 
+    	C135.799454,154.158646 118.973541,154.133408 102.147766,154.168549 
+    	C92.380470,154.188950 85.759338,160.580917 85.833496,169.800690 
+    	C85.905983,178.812973 92.442093,184.984497 102.008392,184.997162 
+    	C118.834213,185.019470 135.660095,185.003448 152.485947,185.003479 
+    	C154.258820,185.003479 156.031677,185.003479 158.158630,185.003479 
+    	C158.158630,207.910797 158.158630,230.205658 158.158630,253.500702 
+    z"/>
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none" 
+    	d="
+    M158.158630,253.000610 
+    	C158.158630,230.205658 158.158630,207.910797 158.158630,185.003479 
+    	C156.031677,185.003479 154.258820,185.003479 152.485947,185.003479 
+    	C135.660095,185.003448 118.834213,185.019470 102.008392,184.997162 
+    	C92.442093,184.984497 85.905983,178.812973 85.833496,169.800690 
+    	C85.759338,160.580917 92.380470,154.188950 102.147766,154.168549 
+    	C118.973541,154.133408 135.799454,154.158646 152.625305,154.158554 
+    	C154.413483,154.158539 156.201660,154.158554 158.487885,154.158554 
+    	C158.487885,151.617783 158.480881,149.661346 158.488922,147.704956 
+    	C158.600708,120.555717 158.674561,93.406219 158.846298,66.257347 
+    	C158.922134,54.269516 169.947937,46.700912 180.484543,51.423634 
+    	C187.161072,54.416199 189.881592,59.983761 189.847855,67.124268 
+    	C189.721161,93.939110 189.621201,120.754066 189.513123,147.568985 
+    	C189.505173,149.542175 189.512085,151.515442 189.512085,154.158524 
+    	C191.691177,154.158524 193.464951,154.158478 195.238724,154.158508 
+    	C212.564362,154.158859 229.890244,154.103165 247.215500,154.184219 
+    	C255.360611,154.222305 261.497040,159.691635 262.706360,167.664017 
+    	C263.779999,174.741791 259.133362,182.140045 252.038940,184.303452 
+    	C250.176743,184.871338 248.116409,184.969208 246.146179,184.974945 
+    	C229.153870,185.024475 212.161362,185.003464 195.168915,185.003479 
+    	C193.371170,185.003479 191.573425,185.003479 189.173508,185.003479 
+    	C189.173508,187.366730 189.176559,189.310059 189.173065,191.253403 
+    	C189.062836,252.389313 188.956650,313.525238 188.836655,374.661133 
+    	C188.816254,385.048859 182.802078,391.878632 173.640900,392.002716 
+    	C164.659561,392.124329 157.883713,385.911652 157.877823,376.935547 
+    	C157.852386,338.121857 157.989441,299.308075 158.072693,260.494324 
+    	C158.077698,258.163055 158.128906,255.831909 158.158630,253.000610 
+    z"/>
+    </svg>`,
+
+
+
+
+        gr_inv: `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    	 width="100%" viewBox="0 0 346 513" enable-background="new 0 0 346 513" xml:space="preserve">
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none" 
+    	d="
+    M155.000000,1.000001 
+    	C167.354233,1.000000 179.708450,1.000000 192.720886,1.376263 
+    	C207.942169,2.929981 221.878189,6.532648 235.536621,11.742140 
+    	C269.336151,24.633688 296.559540,45.842773 317.011536,75.595177 
+    	C330.437256,95.126114 339.931854,116.424820 344.071930,139.926025 
+    	C344.959839,144.966202 346.019470,149.976135 347.000000,155.000000 
+    	C347.000000,167.687561 347.000000,180.375122 346.623718,193.720886 
+    	C345.498840,199.720108 344.982544,205.106110 343.958252,210.393738 
+    	C340.816010,226.615250 335.734985,242.268188 327.592957,256.642456 
+    	C317.486481,274.484924 306.585968,291.876038 296.149658,309.533722 
+    	C283.896179,330.265930 271.827209,351.107208 259.578583,371.842285 
+    	C245.920425,394.963440 232.157623,418.022827 218.426529,441.100861 
+    	C208.108398,458.442688 197.699387,475.730927 187.472351,493.126221 
+    	C183.450119,499.967682 179.812683,507.035370 176.000000,514.000000 
+    	C175.250000,514.000000 174.500000,514.000000 173.367722,513.632935 
+    	C170.134750,508.161163 167.391724,502.992798 164.415146,497.962555 
+    	C149.832870,473.319672 135.149338,448.736633 120.578400,424.087036 
+    	C109.151779,404.756653 97.881927,385.333588 86.459671,366.000610 
+    	C76.197639,348.631378 65.823082,331.328674 55.497795,313.996826 
+    	C45.172562,296.665100 34.831322,279.342834 24.526001,261.999298 
+    	C15.318707,246.503647 8.581900,230.027740 4.963765,212.326874 
+    	C3.646756,205.883713 2.321495,199.442245 1.000000,193.000000 
+    	C1.000000,180.645767 1.000000,168.291550 1.376263,155.279114 
+    	C2.929978,140.057861 6.521249,126.117912 11.744307,112.464249 
+    	C24.664356,78.689804 45.761990,51.387463 75.589661,30.980293 
+    	C95.150581,17.597322 116.424927,8.068135 139.926071,3.928077 
+    	C144.966232,3.040182 149.976151,1.980531 155.000000,1.000001 
+    M246.993484,230.661392 
+    	C245.483307,220.877853 239.925766,216.032990 230.081329,216.004929 
+    	C219.249374,215.974060 208.417267,215.997803 197.585236,215.997787 
+    	C194.990784,215.997772 192.396347,215.997772 189.799667,215.997772 
+    	C189.799667,205.337784 189.799667,195.404785 189.799667,185.002243 
+    	C191.881943,185.002243 193.678864,185.002243 195.475800,185.002243 
+    	C212.307114,185.002197 229.138474,185.021133 245.969742,184.995010 
+    	C256.028931,184.979401 263.025238,178.557739 262.999084,169.448914 
+    	C262.972961,160.347473 255.986298,154.018097 245.867569,154.004166 
+    	C229.036301,153.980988 212.204956,153.997787 195.373642,153.997742 
+    	C193.611542,153.997742 191.849442,153.997726 190.093170,153.997726 
+    	C190.093170,145.021515 190.093170,136.753036 190.093170,128.002289 
+    	C191.962341,128.002289 193.584732,128.002335 195.207123,128.002289 
+    	C207.372330,128.001923 219.538223,128.080063 231.702530,127.975258 
+    	C240.751343,127.897293 247.365631,121.378830 247.486679,112.699905 
+    	C247.609940,103.862419 240.862137,97.108093 231.602524,97.020920 
+    	C221.271347,96.923645 210.938538,96.998039 200.606445,96.997772 
+    	C197.167969,96.997681 193.729492,96.997757 190.002182,96.997757 
+    	C190.002182,86.725914 190.014664,77.085876 189.998810,67.445892 
+    	C189.981583,56.985279 183.645996,49.930496 174.364624,50.001480 
+    	C165.268402,50.071041 159.025101,57.046955 159.002533,67.216721 
+    	C158.980820,76.998550 158.997849,86.780464 158.997849,96.997742 
+    	C156.704712,96.997742 154.913452,96.997551 153.122192,96.997772 
+    	C141.290283,96.999207 129.456192,96.861977 117.627182,97.048439 
+    	C108.979240,97.184761 102.526192,103.980713 102.509232,112.470917 
+    	C102.492294,120.955460 108.941055,127.737877 117.569283,127.957748 
+    	C125.063553,128.148712 132.566467,128.001053 140.065567,128.002045 
+    	C146.173599,128.002869 152.281647,128.002228 158.447128,128.002228 
+    	C158.447128,136.992386 158.447128,145.375381 158.447128,153.998047 
+    	C139.577957,153.998047 121.088654,153.968842 102.599518,154.009995 
+    	C92.934586,154.031509 86.009598,160.547287 86.000633,169.481903 
+    	C85.991661,178.420944 92.915359,184.961105 102.563324,184.989929 
+    	C117.728043,185.035217 132.892990,185.002121 148.057846,185.002228 
+    	C151.353577,185.002243 154.649307,185.002228 158.140717,185.002228 
+    	C158.140717,195.533127 158.140717,205.569031 158.140717,216.001343 
+    	C144.325089,216.001343 130.854233,215.896347 117.386009,216.038544 
+    	C108.526527,216.132080 101.907051,223.046631 102.001900,231.695892 
+    	C102.094170,240.110062 108.657951,246.813293 117.278076,246.963364 
+    	C126.274292,247.120010 135.275314,247.001053 144.274231,247.002121 
+    	C148.892838,247.002670 153.511444,247.002228 158.488571,247.002228 
+    	C158.488571,250.759018 158.499817,253.906860 158.486877,257.054626 
+    	C158.325897,296.209290 158.075729,335.364075 158.135101,374.518402 
+    	C158.140823,378.284180 159.285645,382.534241 161.267776,385.705688 
+    	C164.931366,391.567566 171.999084,393.342804 178.483826,391.144531 
+    	C185.096191,388.903015 188.969894,383.375885 188.987915,375.818634 
+    	C189.074997,339.324860 189.116486,302.830994 189.170547,266.337158 
+    	C189.179855,260.052338 189.171860,253.767502 189.171860,247.002289 
+    	C191.658234,247.002289 193.290558,247.002319 194.922867,247.002304 
+    	C206.754776,247.002182 218.586838,247.037613 230.418564,246.990891 
+    	C240.238129,246.952118 246.138885,241.392303 246.993484,230.661392 
+    z"/>
+    <path fill="#FEFEFE" opacity="1.000000" stroke="none" 
+    	d="
+    M246.996490,231.080688 
+    	C246.138885,241.392303 240.238129,246.952118 230.418564,246.990891 
+    	C218.586838,247.037613 206.754776,247.002182 194.922867,247.002304 
+    	C193.290558,247.002319 191.658234,247.002289 189.171860,247.002289 
+    	C189.171860,253.767502 189.179855,260.052338 189.170547,266.337158 
+    	C189.116486,302.830994 189.074997,339.324860 188.987915,375.818634 
+    	C188.969894,383.375885 185.096191,388.903015 178.483826,391.144531 
+    	C171.999084,393.342804 164.931366,391.567566 161.267776,385.705688 
+    	C159.285645,382.534241 158.140823,378.284180 158.135101,374.518402 
+    	C158.075729,335.364075 158.325897,296.209290 158.486877,257.054626 
+    	C158.499817,253.906860 158.488571,250.759018 158.488571,247.002228 
+    	C153.511444,247.002228 148.892838,247.002670 144.274231,247.002121 
+    	C135.275314,247.001053 126.274292,247.120010 117.278076,246.963364 
+    	C108.657951,246.813293 102.094170,240.110062 102.001900,231.695892 
+    	C101.907051,223.046631 108.526527,216.132080 117.386009,216.038544 
+    	C130.854233,215.896347 144.325089,216.001343 158.140717,216.001343 
+    	C158.140717,205.569031 158.140717,195.533127 158.140717,185.002228 
+    	C154.649307,185.002228 151.353577,185.002243 148.057846,185.002228 
+    	C132.892990,185.002121 117.728043,185.035217 102.563324,184.989929 
+    	C92.915359,184.961105 85.991661,178.420944 86.000633,169.481903 
+    	C86.009598,160.547287 92.934586,154.031509 102.599518,154.009995 
+    	C121.088654,153.968842 139.577957,153.998047 158.447128,153.998047 
+    	C158.447128,145.375381 158.447128,136.992386 158.447128,128.002228 
+    	C152.281647,128.002228 146.173599,128.002869 140.065567,128.002045 
+    	C132.566467,128.001053 125.063553,128.148712 117.569283,127.957748 
+    	C108.941055,127.737877 102.492294,120.955460 102.509232,112.470917 
+    	C102.526192,103.980713 108.979240,97.184761 117.627182,97.048439 
+    	C129.456192,96.861977 141.290283,96.999207 153.122192,96.997772 
+    	C154.913452,96.997551 156.704712,96.997742 158.997849,96.997742 
+    	C158.997849,86.780464 158.980820,76.998550 159.002533,67.216721 
+    	C159.025101,57.046955 165.268402,50.071041 174.364624,50.001480 
+    	C183.645996,49.930496 189.981583,56.985279 189.998810,67.445892 
+    	C190.014664,77.085876 190.002182,86.725914 190.002182,96.997757 
+    	C193.729492,96.997757 197.167969,96.997681 200.606445,96.997772 
+    	C210.938538,96.998039 221.271347,96.923645 231.602524,97.020920 
+    	C240.862137,97.108093 247.609940,103.862419 247.486679,112.699905 
+    	C247.365631,121.378830 240.751343,127.897293 231.702530,127.975258 
+    	C219.538223,128.080063 207.372330,128.001923 195.207123,128.002289 
+    	C193.584732,128.002335 191.962341,128.002289 190.093170,128.002289 
+    	C190.093170,136.753036 190.093170,145.021515 190.093170,153.997726 
+    	C191.849442,153.997726 193.611542,153.997742 195.373642,153.997742 
+    	C212.204956,153.997787 229.036301,153.980988 245.867569,154.004166 
+    	C255.986298,154.018097 262.972961,160.347473 262.999084,169.448914 
+    	C263.025238,178.557739 256.028931,184.979401 245.969742,184.995010 
+    	C229.138474,185.021133 212.307114,185.002197 195.475800,185.002243 
+    	C193.678864,185.002243 191.881943,185.002243 189.799667,185.002243 
+    	C189.799667,195.404785 189.799667,205.337784 189.799667,215.997772 
+    	C192.396347,215.997772 194.990784,215.997772 197.585236,215.997787 
+    	C208.417267,215.997803 219.249374,215.974060 230.081329,216.004929 
+    	C239.925766,216.032990 245.483307,220.877853 246.996490,231.080688 
+    z"/>
+    </svg>`,
+
+
+        rm_inv: `<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+     width="100%" viewBox="0 0 346 513" enable-background="new 0 0 346 513" xml:space="preserve">
+    <path fill="#6D3C8D" opacity="1.000000" stroke="none"
+    d="
+    M155.000000,1.000000
+    C167.354233,1.000000 179.708450,1.000000 192.720856,1.376287
+    C207.942093,2.930115 221.878128,6.532729 235.536575,11.742210
+    C269.336151,24.633724 296.559387,45.842972 317.011475,75.595268
+    C330.437256,95.126198 339.931763,116.424934 344.071838,139.926117
+    C344.959778,144.966278 346.019440,149.976166 347.000000,155.000000
+    C347.000000,167.687561 347.000000,180.375122 346.623718,193.720856
+    C345.498779,199.720001 344.982391,205.105988 343.958191,210.393600
+    C340.816040,226.615158 335.734863,242.268066 327.592896,256.642365
+    C317.486420,274.484863 306.585846,291.875946 296.149506,309.533661
+    C283.895996,330.265900 271.827026,351.107178 259.578400,371.842316
+    C245.920273,394.963470 232.157486,418.022858 218.426376,441.100830
+    C208.108215,458.442657 197.699280,475.730927 187.472244,493.126221
+    C183.450043,499.967682 179.812637,507.035339 176.000000,514.000000
+    C175.250000,514.000000 174.500000,514.000000 173.367752,513.632935
+    C170.134842,508.161163 167.391861,502.992737 164.415283,497.962555
+    C149.832993,473.319641 135.149506,448.736633 120.578568,424.087067
+    C109.151932,404.756653 97.882057,385.333588 86.459778,366.000610
+    C76.197731,348.631409 65.823174,331.328613 55.497868,313.996765
+    C45.172623,296.665039 34.831348,279.342804 24.526043,261.999237
+    C15.318766,246.503601 8.581955,230.027679 4.963840,212.326813
+    C3.646843,205.883667 2.321524,199.442215 1.000001,193.000000
+    C1.000000,180.645767 1.000000,168.291550 1.376287,155.279144
+    C2.930066,140.057938 6.521317,126.117981 11.744375,112.464317
+    C24.664423,78.689842 45.762028,51.387459 75.589745,30.980328
+    C95.150665,17.597395 116.424995,8.068182 139.926147,3.928150
+    C144.966293,3.040262 149.976181,1.980557 155.000000,1.000000
+    M158.825058,75.506332
+    C158.825058,101.581718 158.825058,127.657097 158.825058,154.157135
+    C155.969116,154.157135 154.168777,154.157135 152.368439,154.157135
+    C135.708954,154.157211 119.049446,154.138718 102.389999,154.164352
+    C92.508698,154.179565 85.857544,160.395935 85.830406,169.556427
+    C85.803001,178.805710 92.360336,184.990509 102.261978,185.000061
+    C119.088043,185.016281 135.914124,185.004562 152.740204,185.004593
+    C154.484528,185.004593 156.228851,185.004608 157.953918,185.004608
+    C158.056732,186.459808 158.145096,187.122757 158.144485,187.785629
+    C158.097931,237.429352 158.052536,287.073059 157.985901,336.716797
+    C157.968018,350.042725 157.776794,363.369324 157.867126,376.694244
+    C157.928558,385.757812 164.486832,392.051575 173.397842,392.004120
+    C182.665573,391.954773 188.814407,385.195892 188.835434,374.906158
+    C188.960648,313.602844 189.064255,252.299545 189.174530,190.996246
+    C189.177979,189.075134 189.174973,187.154007 189.174973,185.004532
+    C208.603210,185.004532 227.254761,185.011002 245.906311,185.001953
+    C255.962830,184.997070 262.993530,178.503601 262.834930,169.398209
+    C262.678864,160.436890 255.772034,154.174103 245.960297,154.162704
+    C228.967636,154.142990 211.974960,154.164093 194.982300,154.146469
+    C193.240082,154.144669 191.498032,153.996216 189.514236,153.904663
+    C189.514236,141.463104 189.474487,129.642532 189.523636,117.822342
+    C189.595673,100.502800 189.862442,83.182953 189.787109,65.864365
+    C189.746750,56.587368 182.839706,50.013840 173.925385,50.159260
+    C165.216751,50.301323 158.992508,56.823914 158.834381,66.013985
+    C158.785675,68.845268 158.825668,71.678078 158.825058,75.506332
+    z"/>
+
+    <path fill="#FEFDFE" opacity="1.000000" stroke="none"
+    d="
+    M158.825043,75.008263
+    C158.825668,71.678078 158.785675,68.845268 158.834381,66.013985
+    C158.992508,56.823914 165.216751,50.301323 173.925385,50.159260
+    C182.839706,50.013840 189.746750,56.587368 189.787109,65.864365
+    C189.862442,83.182953 189.595673,100.502800 189.523636,117.822342
+    C189.474487,129.642532 189.514236,141.463104 189.514236,153.904663
+    C191.498032,153.996216 193.240082,154.144669 194.982300,154.146469
+    C211.974960,154.164093 228.967636,154.142990 245.960297,154.162704
+    C255.772034,154.174103 262.678864,160.436890 262.834930,169.398209
+    C262.993530,178.503601 255.962830,184.997070 245.906311,185.001953
+    C227.254761,185.011002 208.603210,185.004532 189.174973,185.004532
+    C189.174973,187.154007 189.177979,189.075134 189.174530,190.996246
+    C189.064255,252.299545 188.960648,313.602844 188.835434,374.906158
+    C188.814407,385.195892 182.665573,391.954773 173.397842,392.004120
+    C164.486832,392.051575 157.928558,385.757812 157.867126,376.694244
+    C157.776794,363.369324 157.968018,350.042725 157.985901,336.716797
+    C158.052536,287.073059 158.097931,237.429352 158.144485,187.785629
+    C158.145096,187.122757 158.056732,186.459808 157.953918,185.004608
+    C156.228851,185.004608 154.484528,185.004593 152.740204,185.004593
+    C135.914124,185.004562 119.088043,185.016281 102.261978,185.000061
+    C92.360336,184.990509 85.803001,178.805710 85.830406,169.556427
+    C85.857544,160.395935 92.508698,154.179565 102.389999,154.164352
+    C119.049446,154.138718 135.708954,154.157211 152.368439,154.157135
+    C154.168777,154.157135 155.969116,154.157135 158.825058,154.157135
+    C158.825058,127.657097 158.825058,101.581718 158.825043,75.008263
+    z"/>
+    </svg>`,
+
+       // 5 Church Type Variants - Optimized Icons with Font Awesome Church Icon
+       parish: `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 180" xml:space="preserve">
+    <!-- White border circle -->
+    <circle cx="70" cy="70" r="56" fill="none" stroke="#FFFEFF" stroke-width="15"/>
+    <!-- Primary color filled circle -->
+    <circle cx="70" cy="70" r="48" fill="#6D3C8D"/>
+    <!-- White church icon from Font Awesome (40% larger) -->
+    <g transform="translate(34.16, 34.16) scale(0.112)">
+    <path fill="#FFFEFF" d="M344 56C344 42.7 333.3 32 320 32C306.7 32 296 42.7 296 56L296 80L264 80C250.7 80 240 90.7 240 104C240 117.3 250.7 128 264 128L296 128L296 176L197.4 241.8C184 250.7 176 265.6 176 281.7L176 320L96.2 365.6C76.3 377 64 398.2 64 421.1L64 512C64 547.3 92.7 576 128 576C202.7 576 213.4 576 448 576L512 576C547.3 576 576 547.3 576 512L576 421.1C576 398.1 563.7 376.9 543.8 365.5L464 320L464 281.7C464 265.7 456 250.7 442.6 241.8L344 176L344 128L376 128C389.3 128 400 117.3 400 104C400 90.7 389.3 80 376 80L344 80L344 56zM320 384C355.3 384 384 412.7 384 448L384 528L256 528L256 448C256 412.7 284.7 384 320 384z"/>
+    </g>
+    </svg>`,
+
+       auxiliary: `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 180" xml:space="preserve">
+    <!-- Primary color filled circle (no border) -->
+    <circle cx="70" cy="70" r="56" fill="#6D3C8D"/>
+    <!-- White church icon from Font Awesome (40% larger) -->
+    <g transform="translate(34.16, 34.16) scale(0.112)">
+    <path fill="#FFFEFF" d="M344 56C344 42.7 333.3 32 320 32C306.7 32 296 42.7 296 56L296 80L264 80C250.7 80 240 90.7 240 104C240 117.3 250.7 128 264 128L296 128L296 176L197.4 241.8C184 250.7 176 265.6 176 281.7L176 320L96.2 365.6C76.3 377 64 398.2 64 421.1L64 512C64 547.3 92.7 576 128 576C202.7 576 213.4 576 448 576L512 576C547.3 576 576 547.3 576 512L576 421.1C576 398.1 563.7 376.9 543.8 365.5L464 320L464 281.7C464 265.7 456 250.7 442.6 241.8L344 176L344 128L376 128C389.3 128 400 117.3 400 104C400 90.7 389.3 80 376 80L344 80L344 56zM320 384C355.3 384 384 412.7 384 448L384 528L256 528L256 448C256 412.7 284.7 384 320 384z"/>
+    </g>
+    </svg>`,
+
+       filial: `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 180" xml:space="preserve">
+    <!-- Primary color border (extra thick) -->
+    <circle cx="70" cy="70" r="56" fill="none" stroke="#6D3C8D" stroke-width="13"/>
+    <!-- White filled circle -->
+    <circle cx="70" cy="70" r="49" fill="#FFFEFF"/>
+    <!-- Primary color church icon from Font Awesome (40% larger) -->
+    <g transform="translate(34.16, 34.16) scale(0.112)">
+    <path fill="#6D3C8D" d="M344 56C344 42.7 333.3 32 320 32C306.7 32 296 42.7 296 56L296 80L264 80C250.7 80 240 90.7 240 104C240 117.3 250.7 128 264 128L296 128L296 176L197.4 241.8C184 250.7 176 265.6 176 281.7L176 320L96.2 365.6C76.3 377 64 398.2 64 421.1L64 512C64 547.3 92.7 576 128 576C202.7 576 213.4 576 448 576L512 576C547.3 576 576 547.3 576 512L576 421.1C576 398.1 563.7 376.9 543.8 365.5L464 320L464 281.7C464 265.7 456 250.7 442.6 241.8L344 176L344 128L376 128C389.3 128 400 117.3 400 104C400 90.7 389.3 80 376 80L344 80L344 56zM320 384C355.3 384 384 412.7 384 448L384 528L256 528L256 448C256 412.7 284.7 384 320 384z"/>
+    </g>
+    </svg>`,
+
+       rectoral: `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 180" xml:space="preserve">
+    <!-- White filled circle (no border) -->
+    <circle cx="70" cy="70" r="56" fill="#FFFEFF"/>
+    <!-- Primary color church icon from Font Awesome (40% larger) -->
+    <g transform="translate(34.16, 34.16) scale(0.112)">
+    <path fill="#6D3C8D" d="M344 56C344 42.7 333.3 32 320 32C306.7 32 296 42.7 296 56L296 80L264 80C250.7 80 240 90.7 240 104C240 117.3 250.7 128 264 128L296 128L296 176L197.4 241.8C184 250.7 176 265.6 176 281.7L176 320L96.2 365.6C76.3 377 64 398.2 64 421.1L64 512C64 547.3 92.7 576 128 576C202.7 576 213.4 576 448 576L512 576C547.3 576 576 547.3 576 512L576 421.1C576 398.1 563.7 376.9 543.8 365.5L464 320L464 281.7C464 265.7 456 250.7 442.6 241.8L344 176L344 128L376 128C389.3 128 400 117.3 400 104C400 90.7 389.3 80 376 80L344 80L344 56zM320 384C355.3 384 384 412.7 384 448L384 528L256 528L256 448C256 412.7 284.7 384 320 384z"/>
+    </g>
+    </svg>`,
+
+       other: `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 180" xml:space="preserve">
+    <!-- Primary color church icon only from Font Awesome (40% larger) -->
+    <g transform="translate(5.488, 5.488) scale(0.2016)">
+    <path fill="#6D3C8D" d="M344 56C344 42.7 333.3 32 320 32C306.7 32 296 42.7 296 56L296 80L264 80C250.7 80 240 90.7 240 104C240 117.3 250.7 128 264 128L296 128L296 176L197.4 241.8C184 250.7 176 265.6 176 281.7L176 320L96.2 365.6C76.3 377 64 398.2 64 421.1L64 512C64 547.3 92.7 576 128 576C202.7 576 213.4 576 448 576L512 576C547.3 576 576 547.3 576 512L576 421.1C576 398.1 563.7 376.9 543.8 365.5L464 320L464 281.7C464 265.7 456 250.7 442.6 241.8L344 176L344 128L376 128C389.3 128 400 117.3 400 104C400 90.7 389.3 80 376 80L344 80L344 56zM320 384C355.3 384 384 412.7 384 448L384 528L256 528L256 448C256 412.7 284.7 384 320 384z"/>
+    </g>
+    </svg>`
+    };
+
+
+    }
+
+    /*
+     * #653: lusta indítás. Ha a böngésző tudja, IntersectionObserverrel várunk, amíg a
+     * térkép konténere látótávolságba kerül; ha nem tudja, azonnal indítunk (a régi
+     * viselkedés). A `window.miserendInitMap()` kézzel is meghívható — a funkcionális
+     * teszt és a debug ezt használhatja.
+     */
+    var started = false;
+    function startOnce() {
+        if (started) { return; }
+        started = true;
+        initMap();
+    }
+    window.miserendInitMap = startOnce;
+
+    function bootstrap() {
+        var container = document.getElementById('mapid');
+        if (!container) { return; }
+
+        if (typeof IntersectionObserver !== 'function') {
+            startOnce();
+            return;
+        }
+
+        var observer = new IntersectionObserver(function (entries) {
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].isIntersecting) {
+                    observer.disconnect();
+                    startOnce();
+                    return;
+                }
+            }
+        }, { rootMargin: '200px' });   // kicsit előbb induljon, mint ahogy odaérünk
+
+        observer.observe(container);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap);
+    } else {
+        bootstrap();
+    }
+})();

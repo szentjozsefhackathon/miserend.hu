@@ -380,6 +380,39 @@ class ApiTest extends TestCase {
         $api->validateVariable('date', 'testField', [], '2026-13-45');
     }
 
+    /**
+     * #393: az API dátumellenőrzése puszta reguláris kifejezés volt, ezért elfogadta a
+     * naptárban nem létező napokat is — miközben ugyanezeket a \Request helyesen
+     * visszautasította. A közös \Validate óta ugyanazt a szigorú ellenőrzést kapja.
+     *
+     * @dataProvider nemLetezoDatumok
+     */
+    public function testValidateVariableRejectsNonExistentDate($value) {
+        $api = new Api();
+
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage("Field 'testField' should be a date (yyyy-mm-dd).");
+
+        $api->validateVariable('date', 'testField', [], $value);
+    }
+
+    public static function nemLetezoDatumok(): array {
+        return [
+            'nem szökőév'     => ['2023-02-29'],
+            'február 31.'     => ['2023-02-31'],
+            'április 31.'     => ['2026-04-31'],
+            'november 31.'    => ['2026-11-31'],
+        ];
+    }
+
+    public function testValidateVariableAcceptsLeapDay() {
+        $api = new Api();
+
+        $api->validateVariable('date', 'testField', [], '2024-02-29');
+
+        $this->assertTrue(true); // nem dobott
+    }
+
     public function testValidateVariableValidatesList() {
         $api = new Api();
         

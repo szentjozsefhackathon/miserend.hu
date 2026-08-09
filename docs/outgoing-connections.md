@@ -10,7 +10,7 @@
 | Cél | Host | Port | Mire kell | Forrás (osztály) |
 |---|---|---|---|---|
 | **OSM Nominatim** | `nominatim.openstreetmap.org` | 443 | Cím vagy terület neve → koordináta keresés (geocoding) | `\ExternalApi\NominatimApi` |
-| **OSM Overpass** | `overpass-api.de` | 80 | Templom-elemek és határok lekérése OSM-ből (`url:miserend` tag) | `\ExternalApi\OverpassApi` |
+| **OSM Overpass** | `overpass-api.de` | 443 | Templom-elemek és határok lekérése OSM-ből (`url:miserend` tag) | `\ExternalApi\OverpassApi` |
 | **OSM opening_hours evaluator** | `openingh.openstreetmap.de` | 443 | `opening_hours` mező parse / evaluate | `\ExternalApi\OpeninghApi` |
 | **OSM OAuth** | fejlesztéshez `master.apis.dev.openstreetmap.org`, élesen:  `api.openstreetmap.org` | 443 | OSM adatok módosítása | `\ExternalApi\OpenStreetMapApi` |
 | **Mapquest Directions** | `open.mapquestapi.com` | 80 | Útvonal-távolság számítás templomok között (cron) | `\ExternalApi\MapquestApi` |
@@ -72,18 +72,17 @@ kimenő címet.
 
 | Cél | Host | Mire kell | Hol |
 |---|---|---|---|
-| **Leaflet** (JS + CSS) | `unpkg.com` | a térkép motorja | `_map_leaflet.twig` (1.7.1), `stat.twig` (1.9.3), `church/create.twig` (1.9.4) |
-| **Leaflet.PolylineDecorator** | `unpkg.com` | a kapcsolat-vonalak nyilai | `_map_leaflet.twig` |
-| **Leaflet.TextPath** | `makinacorpus.github.io` | vonalra írt felirat | `_map_leaflet.twig` |
 | **CARTO Voyager csempék** | `{a,b,c,d}.basemaps.cartocdn.com` | a térkép alaprétege | `_map_leaflet.twig` |
 | html5shiv, respond.js | `oss.maxcdn.com` | régi IE-polyfillek | `layout.twig` |
 | OpenLayers | `openlayers.org` | régi térkép-kód | (legacy) |
 
 Amit érdemes tudni róluk:
 
-- **Három különböző Leaflet-verziót** töltünk be három sablonból (1.7.1 / 1.9.3 / 1.9.4). Ezt
-  egységesíteni kellene.
-- A `makinacorpus.github.io` egy GitHub Pages, **nem CDN** — nincs rendelkezésre állási ígéret rá.
+- **A Leaflet és bővítményei már NEM külső forrásból jönnek** (#661): a `webapp/package.json`-ból
+  telepítjük és magunk szolgáljuk ki őket (`/node_modules/leaflet/...`), egységesen **1.9.4**
+  verzióban. Korábban három sablon háromféle verziót töltött be az unpkg-ról (1.7.1 / 1.9.3 /
+  1.9.4), a Leaflet.TextPath pedig egy GitHub Pages-ről (`makinacorpus.github.io`) — az nem is CDN.
+  Ezzel öt külső kérés és két idegen hoszt esett ki a térképes oldalak kritikus útjáról.
 - A `leaflet.polylinedecorator.css` hivatkozás **HTTP 404** volt (nem létezik az unpkg-n); a #653-ban
   töröltük.
 - A **Stamen csempeszerver** (`stamen-tiles-*.a.ssl.fastly.net`) mérve **HTTP 503**-at adott: a Stamen

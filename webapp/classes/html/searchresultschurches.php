@@ -26,7 +26,15 @@ class SearchResultsChurches extends Html {
 		    'boundaries' => \Request::StringArray('boundaries', []),
 		    'church_ids' => \Request::IntegerArray('church_ids') ?: [],
 		    'lang' => \Request::StringArray('lang'),
-		    'ehm' => \Request::IntegerwDefault('ehm', 0)
+		    // #667: a keresőűrlap rítus-gombjai (zöld/piros/semleges) eddig csak a
+		    // mise-keresőre hatottak; a templomkereső némán figyelmen kívül hagyta őket.
+		    'rites' => \Request::StringArray('rites'),
+		    'ehm' => \Request::IntegerwDefault('ehm', 0),
+		    // #666: az „Adottságok" szűrő eddig csak a misekeresésre hatott, pedig a
+		    // címlap ugyanabból az űrlapból indítja a templomkeresést is — a paraméterek
+		    // tehát megérkeztek, csak nem használtuk fel őket.
+		    'wheelchair' => \Request::Text('wheelchair'),
+		    'gluten_free' => \Request::Text('gluten_free')
 		];
                         
         $search = new \Search('churches');
@@ -82,6 +90,49 @@ class SearchResultsChurches extends Html {
             }
         }
         
+        // #667: rítus-szűrő. A `ritusok` a templom származtatott mezője az indexben:
+        // mely rítusokban van (bármikor) liturgia nála. Ugyanaz a should/must_not
+        // hármas-állapot, mint a nyelveknél.
+        //
+        // A `.keyword` alváltozatra szűrünk, nem a mezőre magára: az elemzett `text`
+        // mezőben a "GREEK_CATHOLIC" kisbetűsen áll, tehát a terms-lekérdezés nulla
+        // találatot adna. (A nyelveknél ez csak azért nem gond, mert a kódok eleve
+        // kisbetűsek.)
+        $rites = $params['rites'];
+        if (!empty($rites)) {
+            $ritesShould = isset($rites['should']) ? array_filter(array_map('trim', explode(',', $rites['should']))) : [];
+            $ritesMustNot = isset($rites['must_not']) ? array_filter(array_map('trim', explode(',', $rites['must_not']))) : [];
+
+            if (!empty($ritesShould)) {
+                $search->addMust([ 'terms' => ['ritusok.keyword' => $ritesShould] ]);
+                $translated = array_map(function($r){ return t($r); }, $ritesShould);
+                $search->filters[] = "Amelyik templomban van <b>" . implode('</b> vagy <b>', $translated) . "</b> liturgia.";
+            }
+
+            if (!empty($ritesMustNot)) {
+                $search->addMustNot([ 'terms' => ['ritusok.keyword' => $ritesMustNot] ]);
+                $translated = array_map(function($r){ return t($r); }, $ritesMustNot);
+                $search->filters[] = "Amelyik templomban nincs <b>" . implode('</b> se <b>', $translated) . "</b> liturgia.";
+            }
+        }
+
+        // #666: adottságok (akadálymentesség, gluténmentes áldozás). A Search metódusai
+        // index-függetlenek — a misekeresőben `church.` prefixszel, itt anélkül szűrnek.
+        $wheelchairFilter = array_filter(array_map('trim', explode(',', (string) $params['wheelchair'])));
+        $glutenFreeFilter = array_filter(array_map('trim', explode(',', (string) $params['gluten_free'])));
+        if ($wheelchairFilter) {
+            $search->wheelchair($wheelchairFilter);
+        }
+        if ($glutenFreeFilter) {
+            $search->glutenFree($glutenFreeFilter);
+        }
+
+        // #671: az adottság-adat még nagyon hiányos, a nulla találatot a felhasználó
+        // hibának hinné. Mondjuk meg, hány misézőhelyről tudunk egyáltalán valamit.
+        foreach (\Eloquent\Church::facilityCoverageMessages((bool) $wheelchairFilter, (bool) $glutenFreeFilter) as $message) {
+            addMessage($message, 'info');
+        }
+
         //Let's do the search
         $offset = $this->pagination->take * $this->pagination->active;
         $limit = $this->pagination->take;        		        

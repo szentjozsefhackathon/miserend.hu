@@ -14,8 +14,20 @@
       {{ calendarsTitle }}
     </div>
     <div class="right-controls">
+      <!-- #358: heti nézet idősáv-tömörítés toggle. Csak timeGridWeek nézetben látható.
+           Az ikon a tömörítés állapotát mutatja, a tooltip a diagnosztikát. -->
+      @if (currentViewType === 'timeGridWeek') {
+        <button mat-button
+                class="week-compression-toggle"
+                [class.active]="weekCompressionEnabled && weekCompressionResult?.shouldCompress"
+                [matTooltip]="getWeekCompressionTooltip()"
+                (click)="toggleWeekCompression()"
+                aria-label="Heti nézet idősáv-tömörítés">
+          <mat-icon>{{ weekCompressionEnabled ? 'unfold_less' : 'unfold_more' }}</mat-icon>
+        </button>
+      }
       <mat-button-toggle-group [hideSingleSelectionIndicator]="true">
-        <mat-button-toggle (click)="changeView('listWeek')">{{ 'SUGGESTION.HEADER.LIST' | translate }}</mat-button-toggle>        
+        <mat-button-toggle (click)="changeView('listWeek')">{{ 'SUGGESTION.HEADER.LIST' | translate }}</mat-button-toggle>
         <mat-button-toggle [checked]="true" (click)="changeView('timeGridWeek')">{{ 'SUGGESTION.HEADER.WEEK' | translate }}</mat-button-toggle>
         <mat-button-toggle (click)="changeView('dayGridMonth')">{{ 'SUGGESTION.HEADER.MONTH' | translate }}</mat-button-toggle>
       </mat-button-toggle-group>
@@ -42,6 +54,10 @@
   [options]="calendarOptions"
   [events]="eventsPromise | async"
 ></full-calendar>
+
+<!-- #358: a középső üres sáv mostantól a rácsban VALÓDIAN össze van húzva
+     (törött időtengely), ezért a korábbi out-of-range footer-panel megszűnt -
+     a középső alkalmak (pl. nagyszombat) a helyükön, a rácsban jelennek meg. -->
 
 <!-- Kategória szűrés komponens -->
 @if (showFilterComponent) {

@@ -125,6 +125,20 @@ class OSM {
                 $changed = true;
             }
 
+            /*
+             * #498: az országkód. A fenti hurok nem tudja átvenni, mert az OSM-tag
+             * neve kötőjeles (`ISO3166-1`), az oszlopnév viszont nem lehet az.
+             * Csak a level-2 határokon van értelme; ott viszont mindig ott van.
+             */
+            $isoTag = $element->tags->{'ISO3166-1'} ?? $element->tags->{'ISO3166-1:alpha2'} ?? null;
+            if($isoTag !== null) {
+                $iso = strtoupper(substr(trim((string) $isoTag), 0, 2));
+                if($iso !== '' AND $iso != $boundary->iso3166_1) {
+                    $boundary->iso3166_1 = $iso;
+                    $changed = true;
+                }
+            }
+
             // Ensure name is set - use boundary type as default if no name is provided
             if(empty($boundary->name)) {
                 $boundary->name = $boundary->boundary ?: 'Unnamed Boundary';

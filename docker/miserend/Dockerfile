@@ -76,4 +76,8 @@ RUN a2dissite 000-default \
     
 # Entrypoint
 COPY docker/miserend/entrypoint.sh /entrypoint.sh
+# #171: a konténeren belüli cron-kopogtató. Nem a cron démon: az roothoz kötött, a
+# konténer viszont www-data-ként fut. Alapból ki van kapcsolva, l. CRON_ENABLED.
+COPY docker/miserend/cron-loop.sh /cron-loop.sh
+RUN chmod +x /entrypoint.sh /cron-loop.sh
 ENTRYPOINT ["/entrypoint.sh"]

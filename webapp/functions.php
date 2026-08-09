@@ -14,8 +14,8 @@ function dbconnect() {
 			'database' => $config['connection']['database'],
 			'username' => $config['connection']['user'],
 			'password' => $config['connection']['password'],
-			'charset' => 'utf8',
-			'collation' => 'utf8_unicode_ci',
+			'charset' => 'utf8mb4',
+			'collation' => 'utf8mb4_unicode_ci',
 			'prefix' => '',
 				], 'default');
 		// Make this Capsule instance available globally via static methods... (optional)

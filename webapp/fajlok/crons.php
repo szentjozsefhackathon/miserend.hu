@@ -36,7 +36,13 @@ return [
     ['class' => '\Api\NearBy',                    'function' => 'cleanOldLogs',               'frequency' => '1 day'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateChurches',             'frequency' => '6 hours'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateMasses',               'frequency' => '6 hours'],
+    // A teljes indexépítés akkor is hagyhat lyukat, ha közben elhasal valami; ez varrja
+    // össze. Élesben 631 misézőhely maradt ki így a keresésből.
+    ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'reindexMissingMasses',       'frequency' => '6 hours'],
     ['class' => '\ExternalCalendarImporter',      'function' => 'importAllExternalCalendars', 'frequency' => '1 day'],
+    // #239: éles adatbázisban régóta fut (id 39), de a registryből kimaradt — egy
+    // újrahúzott adatbázisban tehát soha nem jött volna létre.
+    ['class' => '\ExternalApi\szentsegimadasApi', 'function' => 'cron',                       'frequency' => '1 day',      'from' => '2am', 'until' => '5am'],
     ['class' => '\Crons',                         'function' => 'cleanExternalApiStats',      'frequency' => '1 day'],
     ['class' => '\Crons',                         'function' => 'cleanNotificationEmails',    'frequency' => '1 day'],
     ['class' => '\Crons',                         'function' => 'rollPeriodYears',            'frequency' => '1 month'],

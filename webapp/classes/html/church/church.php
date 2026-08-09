@@ -92,10 +92,16 @@ class Church extends \Html\Html {
             throw new \Exception("Read access denied to church tid = '$tid'");
         }
 
-        if($church->ok == 'n') {
-            addMessage('Ez a templom le van tiltva! Csak adminisztrátorok számára látható ez az oldal.', 'warning');
-        } elseif($church->ok == 'f') {
-            addMessage('Ez a templom áttekintésre vár. Csak adminisztrátorok számára látható ez az oldal.', 'warning');
+        // #409: a gondnok eddig is szerkeszthette a nem-publikus templomát, de azt
+        // olvasta közben, hogy „Csak adminisztrátorok számára látható" — neki mást kell
+        // mondani, mint egy adminisztrátornak.
+        $notice = \Eloquent\Church::visibilityNotice(
+            (string) $church->ok,
+            (bool) $user->checkRole('miserend'),
+            (bool) $church->writeAccess
+        );
+        if ($notice !== null) {
+            addMessage($notice[0], $notice[1]);
         }
 
         $church->photos = $church->photos()->get();

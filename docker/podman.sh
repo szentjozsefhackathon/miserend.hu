@@ -6,7 +6,10 @@ podman run -d \
   --name mariadb \
   -it \
   --network host \
-  -e MYSQL_ROOT_PASSWORD=pw \
+  -e MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-pw}" \
+  -e MYSQL_DATABASE=miserend \
+  -e MYSQL_USER="${MYSQL_USER:-user}" \
+  -e MYSQL_PASSWORD="${MYSQL_PASSWORD:-pw}" \
   -v "$(pwd)/mysql/mysql.conf.d:/etc/mysql/mysql.conf.d" \
   -v "/tmp/db_data:/var/lib/mysql" \
   -v "$(pwd)/mysql/initdb.d:/docker-entrypoint-initdb.d" \
@@ -38,4 +41,6 @@ podman run -d \
   -it \
   --network host \
   -e MYSQL_MISEREND_HOST=127.0.0.1 \
+  -e MYSQL_MISEREND_USER="${MYSQL_MISEREND_USER:-root}" \
+  -e MYSQL_MISEREND_PASSWORD="${MYSQL_MISEREND_PASSWORD:-pw}" \
   miserend:latest

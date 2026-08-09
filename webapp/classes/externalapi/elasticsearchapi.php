@@ -13,6 +13,15 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 	
 	public $q; // Ez a solr keresőben a query, nem pedig az API-ban a query
     public $data;
+
+	/**
+	 * Az Elasticsearch a SAJÁT infrastruktúránk (compose-hálózat), nem harmadik fél —
+	 * az EXTERNAL_APIS_OFFLINE kapcsoló nem vonatkozik rá. Enélkül a tesztek alatt a
+	 * kereső is elnémulna.
+	 */
+	protected function isInternalService(): bool {
+		return true;
+	}
 			
 	function run() {					
 		$this->curl_setopt(CURLOPT_HTTPHEADER ,['Content-Type: application/json']);		 	
@@ -184,9 +193,22 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		return true;
 	}
 
+	/**
+	 * Az imént beírt dokumentumokat azonnal kereshetővé teszi. Alapból ~1 másodperc telik
+	 * el, addig egy visszaellenőrző lekérdezés hamis "üres" eredményt adna.
+	 */
+	function refreshIndex($name) {
+		$this->clearRequestBody();
+		$this->curl_setopt(CURLOPT_CUSTOMREQUEST, "POST");
+		$this->buildQuery($name . '/_refresh');
+		$this->run();
+
+		return $this->responseCode == 200;
+	}
+
 	function deleteIndex($name) {
-		
-		$this->curl_setopt(CURLOPT_CUSTOMREQUEST ,"DELETE");		
+
+		$this->curl_setopt(CURLOPT_CUSTOMREQUEST ,"DELETE");
 		$this->buildQuery($name);
 		$this->run();
 
@@ -452,11 +474,130 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			$elastic->setIndexMeta('mass_index', [
 				'full_reindex_at' => date('Y-m-d H:i:s'),
 				'years' => array_values(array_map('intval', $years)),
+				// A "tényleg nincs idei miséje" lista szándékosan NEM öröklődik át: friss
+				// teljes indexépítés után újra ellenőrizzük, hátha közben lett miséjük.
+				'churches_without_masses' => [],
 			]);
 		} catch (\Throwable $e) {
 			// A vízjel hiánya csak annyit jelent, hogy legközelebb újra lefutunk.
 			$log("#627: az index vízjelét nem sikerült kiírni (" . $e->getMessage() . ").");
 		}
+	}
+
+	/**
+	 * Mely templomokat érdemes pótindexelni?
+	 *
+	 * A /health régóta mutatja, hogy vannak misézőhelyek, amiknek van miserendjük az
+	 * adatbázisban, de az idei évre egyetlen dokumentumuk sincs a mass_indexben (élesben
+	 * 631 ilyen volt). Ez a kereséseikből egyszerűen kihagyja őket.
+	 *
+	 * A lista nem tisztán hiba: van, akinek tényleg nincs idei miséje (lejárt vagy csak
+	 * múltbeli miserend). Ezeket a pótindexelés után megjegyezzük, és nem próbálkozunk
+	 * velük újra és újra — különben minden futás ugyanazon a néhány száz templomon
+	 * pörögne feleslegesen.
+	 *
+	 * Szándékosan tiszta függvény (se DB, se ES), hogy unit-tesztelhető legyen.
+	 *
+	 * @param  int[] $churchIdsWithRules  templomok, amiknek VAN miserendjük
+	 * @param  int[] $indexedChurchIds    templomok, amiknek van idei indexelt miséjük
+	 * @param  int[] $knownEmptyChurchIds akikről már tudjuk, hogy tényleg nincs idei miséjük
+	 * @param  int   $limit               egy futásban ennyivel próbálkozunk
+	 * @return int[]
+	 */
+	public static function massReindexCandidates(
+		array $churchIdsWithRules,
+		array $indexedChurchIds,
+		array $knownEmptyChurchIds,
+		int $limit = 100
+	): array {
+		if ($limit <= 0) {
+			return [];
+		}
+
+		$skip = array_flip(array_map('intval', array_merge($indexedChurchIds, $knownEmptyChurchIds)));
+
+		$candidates = [];
+		foreach ($churchIdsWithRules as $id) {
+			$id = (int) $id;
+			if (isset($skip[$id])) {
+				continue;
+			}
+			$candidates[$id] = $id;
+			if (count($candidates) >= $limit) {
+				break;
+			}
+		}
+
+		return array_values($candidates);
+	}
+
+	/**
+	 * Pótolja a hiányzó mise-dokumentumokat: megkeresi azokat a templomokat, amiknek van
+	 * miserendjük, de nincs idei indexelt miséjük, és csak őket indexeli újra.
+	 *
+	 * Nem a teljes újraindexelés helyett van, hanem mellette: a teljes futás akkor is
+	 * hagyhat lyukat, ha közben elhasal valami, ez pedig magától összevarrja.
+	 *
+	 * @return array{candidates:int,reindexed:int,still_empty:int}
+	 */
+	static function reindexMissingMasses(int $limit = 100, ?callable $logger = null): array {
+		$log = $logger ?? function($msg) {};
+		$elastic = new \ExternalApi\ElasticsearchApi();
+
+		if (!$elastic->isexistsIndex('mass_index')) {
+			$log("Nincs mass_index — a pótindexelésnek nincs mit tennie.");
+			return ['candidates' => 0, 'reindexed' => 0, 'still_empty' => 0];
+		}
+
+		$yearStart = date('Y-01-01');
+		$yearEnd   = date('Y-12-31');
+
+		$indexed = $elastic->churchIdsWithMassesInPeriod($yearStart, $yearEnd);
+		$meta = $elastic->getIndexMeta('mass_index');
+		$knownEmpty = array_map('intval', $meta['churches_without_masses'] ?? []);
+
+		$withRules = \Eloquent\Church::where('ok', 'i')->has('massrules')->orderBy('id')->pluck('id')->toArray();
+
+		$candidates = self::massReindexCandidates($withRules, $indexed, $knownEmpty, $limit);
+		if (empty($candidates)) {
+			$log("Nincs pótolni való: minden miserenddel rendelkező templomnak van idei indexelt miséje.");
+			return ['candidates' => 0, 'reindexed' => 0, 'still_empty' => 0];
+		}
+
+		$log("Pótindexelés " . count($candidates) . " templomra.");
+		self::updateMasses([], $candidates, $logger);
+
+		// A bulk insert alapból ~1 másodperc múlva válik kereshetővé, addig a
+		// visszaellenőrzés hamis "üres" eredményt adna.
+		$elastic->refreshIndex('mass_index');
+
+		$indexedAfter = array_flip(array_map('intval', $elastic->churchIdsWithMassesInPeriod($yearStart, $yearEnd)));
+		$stillEmpty = [];
+		$reindexed = 0;
+		foreach ($candidates as $id) {
+			if (isset($indexedAfter[$id])) {
+				$reindexed++;
+			} else {
+				$stillEmpty[] = $id;
+			}
+		}
+
+		if (!empty($stillEmpty)) {
+			$log(count($stillEmpty) . " templomnak a pótindexelés után sincs idei miséje — ezekkel nem próbálkozunk újra a következő teljes indexépítésig.");
+			$merged = array_values(array_unique(array_merge($knownEmpty, $stillEmpty)));
+			sort($merged);
+			$meta['churches_without_masses'] = $merged;
+			if (!$elastic->setIndexMeta('mass_index', $meta)) {
+				$log("A vízjelet nem sikerült frissíteni — legközelebb újra megpróbáljuk ezeket.");
+			}
+		}
+
+		$log("Pótindexelés kész: " . $reindexed . " templom került be, " . count($stillEmpty) . " maradt üres.");
+		return [
+			'candidates'  => count($candidates),
+			'reindexed'   => $reindexed,
+			'still_empty' => count($stillEmpty),
+		];
 	}
 
 	/*
@@ -532,9 +673,31 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 
 		$chunksize = 100;
 		if (is_array($tids) && count($tids) > $chunksize) {
-			foreach (array_chunk($tids,  $chunksize) as $chunk) {
-				static::updateMasses($years, $chunk, $logger);
+			// Egy elhasaló templom eddig az EGÉSZ hátralévő újraindexelést megölte: a
+			// rekurzív hívás kivétele kibuborékolt, a soron következő több ezer templom
+			// pedig sosem került sorra. Mostantól a hibás darab kimarad, a többi lefut,
+			// és a végén dobunk — így a cron továbbra is hibásnak látszik, de nem
+			// hagyunk magunk után nagy lyukat az indexben.
+			$failedChunks = [];
+			foreach (array_chunk($tids,  $chunksize) as $index => $chunk) {
+				try {
+					static::updateMasses($years, $chunk, $logger);
+				} catch (\Throwable $e) {
+					$failedChunks[] = ($index + 1) . '. darab (templomok: '
+						. implode(', ', array_slice($chunk, 0, 5))
+						. (count($chunk) > 5 ? ', …' : '') . '): ' . $e->getMessage();
+					$log("Hibás darab kihagyva: " . end($failedChunks));
+				}
 			}
+
+			if (!empty($failedChunks)) {
+				// Vízjelet ilyenkor SZÁNDÉKOSAN nem írunk: az index hiányos, a következő
+				// futásnak újra neki kell futnia.
+				throw new \Exception(
+					count($failedChunks) . " darab újraindexelése hibázott:\n" . implode("\n", $failedChunks)
+				);
+			}
+
 			if ($isFullRun) self::markFullReindex($years, $log);
 			return;
 		}

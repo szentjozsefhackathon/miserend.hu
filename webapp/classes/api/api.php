@@ -148,13 +148,12 @@ class Api {
         if($type == 'integer') {
             $this->validateInteger($name, $details, $input);
         } elseif($type == 'boolean') {
-            if(!is_bool($input)) {
-                throw new \Exception("Field '".$name."' should be a boolean.");
-            }
+            $this->throwIf($name, \Validate::booleanError($input));
         } elseif($type == 'date') {
-            if(!preg_match("/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$/", $input)) {
-                throw new \Exception("Field '".$name."' should be a date (yyyy-mm-dd).");
-            }
+            // #393: eddig puszta reguláris kifejezés volt, ezért az API elfogadta a
+            // 2023-02-29-et, a 2023-02-31-et és a 2026-04-31-et is — miközben ugyanezeket
+            // a \Request naptár-tudatos ellenőrzése helyesen visszautasította.
+            $this->throwIf($name, \Validate::dateError($input));
         } elseif($type == 'float') {
             $this->validateFloat($name, $details, $input);
         } elseif($type == 'string') {
@@ -176,43 +175,27 @@ class Api {
         }
     }
 
-    public function validateFloat($field, $details, $input) {        
-        if(!is_numeric($input) || floatval($input) != $input) {
-            throw new \Exception("Field '".$field."' should be a float.");
+    /**
+     * #393: a tényleges ellenőrzés a közös \Validate-ben él (ugyanazt a tudást a
+     * \Request is használja). Itt már csak a hibaüzenet formája marad, hogy az API
+     * válaszai változatlanok legyenek.
+     */
+    private function throwIf($field, ?string $error) {
+        if ($error !== null) {
+            throw new \Exception("Field '".$field."' ".$error);
         }
-        if(isset($details['minimum']) && $input < $details['minimum']) {
-            throw new \Exception("Field '".$field."' should be at least ".$details['minimum'].".");
-        }
-        if(isset($details['maximum']) && $input > $details['maximum']) {
-            throw new \Exception("Field '".$field."' should be at most ".$details['maximum'].".");
-        }
-    }   
+    }
 
-    public function validateInteger($fieldName, $details, $input) {        
-        if(!is_numeric($input) || intval($input) != $input) {
-            throw new \Exception("Field '".$fieldName."' should be an integer.");
-        }
-        if(isset($details['minimum']) && $input < $details['minimum']) {
-            throw new \Exception("Field '".$fieldName."' should be at least ".$details['minimum'].".");
-        }
-        if(isset($details['maximum']) && $input > $details['maximum']) {
-            throw new \Exception("Field '".$fieldName."' should be at most ".$details['maximum'].".");
-        }
-    }   
+    public function validateFloat($field, $details, $input) {
+        $this->throwIf($field, \Validate::floatError($input, (array) $details));
+    }
+
+    public function validateInteger($fieldName, $details, $input) {
+        $this->throwIf($fieldName, \Validate::integerError($input, (array) $details));
+    }
 
     public function validateString($field, $details, $input) {
-        if(!is_string($input)) {
-            throw new \Exception("Field '".$field."' should be a string.");
-        }
-        if(isset($details['minLength']) && strlen($input) < $details['minLength']) {
-            throw new \Exception("Field '".$field."' should be at least ".$details['minLength']." characters long.");
-        }
-        if(isset($details['maxLength']) && strlen($input) > $details['maxLength']) {
-            throw new \Exception("Field '".$field."' should be at most ".$details['maxLength']." characters long.");
-        }
-        if(isset($details['pattern']) && !preg_match('/'.$details['pattern'].'/', $input)) {
-            throw new \Exception("Field '".$field."' does not match the required pattern.");
-        }
+        $this->throwIf($field, \Validate::stringError($input, (array) $details));
     }
 
     public function validateEnum($field, $details, $input) {

@@ -8,7 +8,16 @@ class NominatimApi extends \ExternalApi\ExternalApi {
 
     public $name = 'nominatim';
     public $apiUrl = "https://nominatim.openstreetmap.org/" ;    
-    public $testQuery = 'search?q=Szent%20József%20jezsuita&format=json';
+    /*
+     * #706: a /health-en ez a lekérdezés pirosan bukott ("ResponseCode: 400"),
+     * miközben a Nominatim maga rendben volt. A hiba nálunk volt: az ékezetes
+     * betűk NYERSEN álltak az URL-ben, azokat a Nominatim 400-zal utasítja el.
+     * Kimérve, ugyanazzal a User-Agenttel:
+     *   ...q=Szent%20József%20jezsuita   -> 400
+     *   ...q=Szent%20J%C3%B3zsef%20...   -> 200
+     * Ezért teljesen url-kódolva tesszük be.
+     */
+    public $testQuery = 'search?q=Szent%20J%C3%B3zsef%20jezsuita&format=json';
 
     function OSM2GeoJson($osmtype, $osmid) {
         

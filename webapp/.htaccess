@@ -5,9 +5,6 @@
 
     RewriteEngine On
 
-    # Redirect Trailing Slashes...
-    RewriteRule ^(.*)/$ /$1 [L,R=301]
-
     RewriteBase /
 
     # #642: az OSM-ben sok helyen a régi `?templom=1254` alakú link szerepel. Erre
@@ -31,6 +28,16 @@
 
     RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
     RewriteRule ^(.*)$ %{ENV:PROTO}://%1/$1 [R=301,L]
+
+    # #658: a záró perjel levágása ugyanabba a csapdába esett, amit a #642 fentebb
+    # már megoldott: relatív cél + R=301 esetén az Apache maga építi fel az abszolút
+    # URL-t, és ODATESZI a saját fizikai portját meg a lecsupaszított sémát:
+    #   https://miserend.hu/templom/452/  ->  http://miserend.hu:8000/templom/452
+    # ami kívülről elérhetetlen. Ráadásul a szabály a PROTO beállítása ELŐTT állt,
+    # így az %{ENV:PROTO} akkor sem lett volna kitöltve. Ezért lejjebb hoztam, és a
+    # célt a kliens Host fejlécéből állítom össze.
+    # `.+` (nem `.*`): a puszta gyökeret ("/") nem szabad átirányítani.
+    RewriteRule ^(.+)/$ %{ENV:PROTO}://%{HTTP_HOST}/$1 [R=301,L]
 
     # Redirect query parameter ?templom=ID to path /templom/ID for Angular
     # Case 1: Only ?templom=ID (no other parameters)

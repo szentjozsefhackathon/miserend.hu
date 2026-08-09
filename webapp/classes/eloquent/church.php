@@ -63,7 +63,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     /**
      * Rekurziv felfelé járás: az összes ős-lánc.
      * Max 10 szint, ciklus-védelem visited set-tel.
-     * Visszatér: [ ['church' => Church, 'type' => '...', 'children' => [...]], ... ]
+     * Visszatér: [ ['church' => Church, 'children' => [...]], ... ]
      */
     public function getAncestorsAttribute(): array {
         return $this->_getAncestors([$this->id]);
@@ -80,7 +80,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $newVisited = array_merge($visited, [$rel->parent_church_id]);
             $result[] = [
                 'church'   => $parent,
-                'type'     => $rel->type,
                 'children' => $parent->_getAncestors($newVisited, $depth + 1),
             ];
         }
@@ -106,7 +105,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $newVisited = array_merge($visited, [$rel->child_church_id]);
             $result[] = [
                 'church'   => $child,
-                'type'     => $rel->type,
                 'children' => $child->_getDescendants($newVisited, $depth + 1),
             ];
         }
@@ -118,7 +116,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * Egy flat lista, amely az indentálást és nyilakat a template-ben jeleníti meg.
      *
      * Struktura: [
-     *   ['church' => Church, 'type' => 'type', 'level' => 0, 'isCurrent' => false, 'isLast' => true],
+     *   ['church' => Church, 'level' => 0, 'isCurrent' => false, 'isLast' => true],
      *   ...
      * ]
      */
@@ -134,7 +132,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         foreach ($ancestors as $ancestor) {
             $network[] = [
                 'church' => $ancestor['church'],
-                'type' => $ancestor['type'],
                 'level' => $level,
                 'isCurrent' => false,
                 'isLast' => false
@@ -146,7 +143,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $currentChurch = Church::find($this->id);
         $network[] = [
             'church' => $currentChurch,
-            'type' => null,
             'level' => $level,
             'isCurrent' => true,
             'isLast' => false
@@ -157,7 +153,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         foreach ($descendants as $descendant) {
             $network[] = [
                 'church' => $descendant['church'],
-                'type' => $descendant['type'],
                 'level' => $descendant['level'],
                 'isCurrent' => false,
                 'isLast' => false
@@ -199,8 +194,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             
             // Majd az őt magát
             $result[] = [
-                'church' => $parent,
-                'type' => $rel->type
+                'church' => $parent
             ];
         }
         return $result;
@@ -220,7 +214,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             
             $result[] = [
                 'church' => $child,
-                'type' => $rel->type,
                 'level' => $depth
             ];
             
@@ -706,6 +699,24 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $massTypeKeys;
     }
     
+    /**
+     * #667: mely rítusokban van (bármikor) liturgia ebben a templomban?
+     *
+     * A rítus nem a templom tulajdonsága, hanem a miséké — a keresőnek viszont
+     * templomonként kell tudnia, hogy „van-e itt valaha görögkatolikus liturgia".
+     * Pontosan úgy származtatjuk, ahogy a nyelveket (l. getLanguagesAttribute).
+     *
+     * @return string[]
+     */
+    public function getRitusokAttribute() {
+        return $this->massrules()
+                    ->pluck('rite')
+                    ->filter(function($v) { return $v !== null && $v !== ''; })
+                    ->unique()
+                    ->values()
+                    ->toArray();
+    }
+
     public function getLanguagesAttribute() {
         // Grab the 'lang' column from related massrules, remove empty values, unique and return as array
         return $this->massrules()
@@ -976,6 +987,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
              * ha nincs adat), így a churches indexbe ÉS a mass_index church-részébe is
              * bekerül — a kereső mindkettőn tud szűrni.
              */
+            // #667: mely rítusokban van itt liturgia — a `nyelvek` mintájára, hogy a
+            // templomkereső rítusra is tudjon szűrni (eddig a felület gombjai megvoltak,
+            // de a templom-index nem tudott róluk semmit).
+            $return['ritusok'] = $this->ritusok;
+
             $return['wheelchair'] = (string) ($this->wheelchair ?? '');
             $return['gluten_free_holidays'] = (string) ($this->{\GlutenFreeCommunion::HOLIDAYS_KEY} ?? '');
             $return['gluten_free_weekdays'] = (string) ($this->{\GlutenFreeCommunion::WEEKDAYS_KEY} ?? '');
@@ -1320,19 +1336,96 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         /* Adminisrative Boundaries(Country,County, City, District) */
         $boundaries = $this->boundaries()
                 ->where('boundary','administrative')
-                ->whereIn('admin_level',[2,6,8,9,10])
-                ->orderBy('admin_level')              
+                ->whereIn('admin_level',[2,4,6,8,9,10])
+                ->orderBy('admin_level')
                 ->get()->toArray();
+
+        $boundaries = self::pickAdministrativeBoundaries($boundaries);
 
         if(array_key_exists(0, $boundaries)) $location->country = $boundaries[0];
         if(array_key_exists(1, $boundaries)) $location->county = $boundaries[1];
-        if(array_key_exists(2, $boundaries)) $location->city = $boundaries[2];   
-        if(array_key_exists(3, $boundaries)) $location->district = $boundaries[3];        
-                
+        if(array_key_exists(2, $boundaries)) $location->city = $boundaries[2];
+        if(array_key_exists(3, $boundaries)) $location->district = $boundaries[3];
+
         return $location;
     }
-	
-	
+
+    /**
+     * #496/#497/#498: az admin_level ország/megye/település sorrendbe rendezése.
+     *
+     * A location() pozíció szerint címkéz: a rendezett lista 0., 1., 2., 3. eleme
+     * lesz az ország, megye, település, kerület. Ez addig működik, amíg minden
+     * ország ugyanazokat a szinteket használja — de nem használják:
+     *
+     *   Magyarország  2 ország | 4 nagyrégió | 6 vármegye | 8 település | 9 kerület
+     *   Szlovákia     2 ország | 4 kraj      | 6 okres    | 8 obec
+     *   Szerbia       2 ország | 4 tartomány | 6 okrug    | 8 opstina    | 9 település
+     *   Ukrajna       2 ország | 4 oblaszty  | 6 rajon    |              | 9 település
+     *   Románia       2 ország | 4 judet     |    -       | 8 comuna/oras
+     *
+     * Romániában NINCS 6-os szint: a megyét a 4-es hordozza. A korábbi
+     * whereIn([2,6,8,9,10]) ezt kizárta, így a román templomoknál a lista
+     * [ország, település] lett — vagyis a TELEPÜLÉS csúszott a megye helyére,
+     * a location->city pedig NULL maradt. Ez 538 templomot érint (a határon túli
+     * állomány 80%-a), és mindenhová továbbgyűrűzik, ahol location.city-t
+     * használunk (home.twig ajánló, szomszédos templomok panel, Angular naptár).
+     *
+     * Ezért a 4-es szintet is behúzzuk, de CSAK akkor hagyjuk bent, ha nincs
+     * 6-os. Magyarországon van 6-os (vármegye), így a nagyrégió kiesik és a
+     * viselkedés bitre azonos marad a korábbival — a templomok 87%-át ez a
+     * változás nem érinti.
+     *
+     * @param array $boundaries admin_level szerint növekvőn rendezve
+     */
+    static function pickAdministrativeBoundaries(array $boundaries): array {
+        $hasCounty = false;
+        foreach ($boundaries as $boundary) {
+            if ((int) ($boundary['admin_level'] ?? 0) === 6) {
+                $hasCounty = true;
+                break;
+            }
+        }
+
+        if (!$hasCounty) {
+            return array_values($boundaries);
+        }
+
+        return array_values(array_filter(
+            $boundaries,
+            fn($boundary) => (int) ($boundary['admin_level'] ?? 0) !== 4
+        ));
+    }
+
+    /**
+     * #498: a templom országkódja (ISO 3166-1 alpha-2) az OSM-határból.
+     *
+     * A `templomok.orszag` oszlop kivezetésének az volt az egyik akadálya, hogy az
+     * „ország -> kód" leképezés kizárólag rajta keresztül létezett: az `orszagok`
+     * táblában nincs ISO-kód, csak `telkod`. A statisztika (`stat.php`, orszag=12)
+     * és az Angular naptárnak átadott országkód is emiatt ragadt hozzá.
+     *
+     * Az OSM országrelációi hordozzák az `ISO3166-1` taget, ezt a boundary-szinkron
+     * mostantól eltárolja. Itt csak kiolvassuk.
+     *
+     * NULL-t ad, ha a templomnak nincs országhatára (nincs koordinátája, vagy a
+     * szinkron még nem ért oda), illetve ha a szinkron az oszlop bevezetése óta még
+     * nem futott le rá. A hívónak KEZELNIE kell a NULL-t — ezért nem esünk vissza
+     * csendben a régi oszlopra, hogy a hiányzó lefedettség látható maradjon.
+     */
+    public function countryCode(): ?string {
+        $code = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->where('admin_level', 2)
+                ->whereNotNull('iso3166_1')
+                ->orderBy('boundaries.id')
+                ->value('iso3166_1');
+
+        $code = strtoupper(trim((string) $code));
+
+        return $code === '' ? null : $code;
+    }
+
+
 	public function getKozossegekAttribute($value) {
 		$api = new \ExternalApi\KozossegekApi();		
 		$api->query = "miserend/".$this->id;
@@ -1399,6 +1492,67 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         );
 
     }
+
+    /*
+     * #671: hány aktív misézőhelyről tudunk EGYÁLTALÁN valamit az adott témában.
+     *
+     * Akadálymentességnél a „nem akadálymentes" IS adat — azt is tudjuk. Ezért itt
+     * bármilyen kitöltött érték számít, nem csak a pozitív.
+     *
+     * Azért kell, mert a szűrő ma szinte üres adathalmazon dolgozik (a seedben egyetlen
+     * templomnak sincs `wheelchair` attribútuma), és a felhasználó a nulla találatot
+     * hibának hinné. Inkább mondjuk meg neki, hol tartunk.
+     */
+    public static function facilityCoverage(): array {
+        $count = function (array $keys): int {
+            return (int) \Eloquent\Attribute::whereIn('key', $keys)
+                ->whereIn('church_id', function ($q) {
+                    $q->select('id')->from('templomok')
+                      ->where('ok', 'i')->whereNull('deleted_at');
+                })
+                ->distinct()
+                ->count('church_id');
+        };
+
+        return [
+            'wheelchair' => $count(['wheelchair']),
+            'gluten_free' => $count([
+                \GlutenFreeCommunion::HOLIDAYS_KEY,
+                \GlutenFreeCommunion::WEEKDAYS_KEY,
+            ]),
+        ];
+    }
+
+    /**
+     * #671: a keresési eredményhez tartozó tájékoztató üzenetek — csak azokra a
+     * témákra, amikre a felhasználó ténylegesen szűrt.
+     *
+     * @param  bool $wheelchair  aktív-e az akadálymentesség-szűrő
+     * @param  bool $glutenFree  aktív-e a gluténmentes szűrő
+     * @return string[]
+     */
+    public static function facilityCoverageMessages(bool $wheelchair, bool $glutenFree): array {
+        if (!$wheelchair && !$glutenFree) {
+            return [];
+        }
+
+        $coverage = self::facilityCoverage();
+        $messages = [];
+
+        if ($wheelchair) {
+            $messages[] = 'Az akadálymentességi adatokat még gyűjtjük, ez nálunk új dolog: eddig '
+                . '<strong>' . $coverage['wheelchair'] . ' misézőhelyről</strong> tudjuk, hogy '
+                . 'akadálymentes-e. Most ezek között keresünk. Ha tudsz másról, küldd el nekünk észrevételként!';
+        }
+
+        if ($glutenFree) {
+            $messages[] = 'A csökkentett gluténtartalmú áldozás lehetőségeit csak nemrég kezdtük gyűjteni, '
+                . 'ezért eddig <strong>' . $coverage['gluten_free'] . ' misézőhelynek</strong> van ilyen adata. '
+                . 'Most ezek között keresünk. Ha tudsz másról, küldd el nekünk észrevételként!';
+        }
+
+        return $messages;
+    }
 	
     /*
      * What does 'M' mean?
@@ -1419,6 +1573,52 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $parish = new \Parish();
         $parish->getByChurchId($this->id);
         $this->religious_administration->parish = $parish;
+    }
+
+    /**
+     * #409: mit írjunk ki a nem-publikus templom oldalán, és kinek?
+     *
+     * A jogosultság maga rendben volt: a checkWriteAccess() SOHA nem nézi az `ok`-ot,
+     * tehát egy `allowed` gondnok (vagy ős-templom gondnoka, vagy egyházmegyei felelős)
+     * eddig is szerkeszthette a nem-publikus templomát. Csak épp azt olvasta közben, hogy
+     * „Csak adminisztrátorok számára látható ez az oldal" — ami neki egyszerűen nem igaz,
+     * és pont az ellenkezőjét hitette el vele.
+     *
+     * Szándékosan tiszta, statikus függvény (se DB, se globális), hogy tesztelhető legyen.
+     *
+     * @param  string $ok             a templom `ok` mezője: i = nyilvános, f = áttekintésre vár, n = letiltva
+     * @param  bool   $isAdmin        van-e `miserend` jogosultsága
+     * @param  bool   $hasWriteAccess szerkesztheti-e (gondnok / egyházmegyei felelős / admin)
+     * @return array{0:string,1:string}|null  [üzenet, szint] vagy null, ha nincs mit mondani
+     */
+    public static function visibilityNotice(string $ok, bool $isAdmin, bool $hasWriteAccess): ?array {
+        if ($ok === 'i') {
+            return null;
+        }
+
+        // Akinek nincs írási joga, az ide amúgy sem jut be (checkReadAccess), de ha
+        // mégis, maradjon a régi, semleges szöveg.
+        if ($isAdmin || !$hasWriteAccess) {
+            if ($ok === 'n') {
+                return ['Ez a templom le van tiltva! Csak adminisztrátorok számára látható ez az oldal.', 'warning'];
+            }
+            return ['Ez a templom áttekintésre vár. Csak adminisztrátorok számára látható ez az oldal.', 'warning'];
+        }
+
+        if ($ok === 'n') {
+            return [
+                'Ez a misézőhely jelenleg le van tiltva, ezért a látogatók nem látják. '
+                . 'Te gondnokként látod és szerkesztheted; ha szerinted tévedés, jelezd az adminisztrátoroknak.',
+                'warning'
+            ];
+        }
+
+        return [
+            'Ez a misézőhely még nem nyilvános: áttekintésre vár, ezért egyelőre csak te '
+            . 'és az adminisztrátorok látjátok. Nyugodtan szerkeszd — a jóváhagyás után '
+            . 'ezek az adatok jelennek meg a látogatóknak.',
+            'info'
+        ];
     }
 
     function checkReadAccess($_user) {
@@ -1627,6 +1827,45 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         } else {
             // Ha a templom nem engedélyezett (ok != 'i'), akkor töröljük az Elasticsearchből
             ElasticsearchApi::deleteChurches([$this->id]);
+        }
+
+        // A parent::save() visszatérési értéke eddig elveszett: a save() null-lal tért
+        // vissza bool helyett, tehát a hívó nem tudta megnézni, sikerült-e a mentés.
+        return $return;
+    }
+
+    /*
+     * #670: a templom adatai a mise-indexbe is BE VANNAK ÁGYAZVA (a mass_index minden
+     * dokumentumában ott ül a templom `church` alobjektumként). A save() csak a
+     * `churches` indexet frissíti, ezért mentés után a MISE-kereső még a régi
+     * templom-adatot látta — pl. az újonnan felvitt gluténmentes vagy akadálymentességi
+     * adatra nem talált rá, amíg a napi cron le nem futott.
+     *
+     * SZÁNDÉKOSAN NEM a save()-ben van: azt az OSM-szinkron (akár több ezer templom) és a
+     * boundary-cron (50 templom / 5 perc) is hívja, a mise-újraindexelés viszont mérve
+     * ~0,5 másodperc templomonként — ott ez órákat jelentene. A felhasználói mentés-
+     * útvonalak (/edit, /editosm) hívják, ahol egy ember épp most írt át valamit, és
+     * joggal várja, hogy a kereső is tudjon róla.
+     *
+     * Hiba esetén csak naplózunk: egy ES-akadás ne buktassa a templom mentését.
+     */
+    /**
+     * Tiszta döntés (se DB, se ES), hogy tesztelhető legyen: van-e értelme frissíteni.
+     * Nem engedélyezett templom miséi nincsenek is az indexben — ott nincs mit tenni.
+     */
+    public static function shouldRefreshMassSearchIndex(?string $ok): bool {
+        return $ok === 'i';
+    }
+
+    public function refreshMassSearchIndex(): void {
+        if (!self::shouldRefreshMassSearchIndex($this->ok)) {
+            return;
+        }
+        try {
+            ElasticsearchApi::updateMasses([], [$this->id], function ($msg) {});
+        } catch (\Throwable $e) {
+            error_log('[#670] a misék újraindexelése nem sikerült a(z) ' . $this->id
+                . ' templomnál: ' . $e->getMessage());
         }
     }
 }

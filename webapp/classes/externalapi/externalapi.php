@@ -34,7 +34,52 @@ class ExternalApi {
         $this->runQuery();
     }
 
+    /**
+     * Ki van-e kapcsolva a kifelé menő hálózat?
+     *
+     * A funkcionális (Panther) tesztek a VALÓDI oldalt töltik be, a templom-oldal pedig
+     * külső szolgáltatásokat hív (kozossegek.hu, Overpass) — üres cache-sel ez helyben is
+     * ~12 másodperc, a CI-ban pedig a WebDriver 180 másodperces korlátját is átlépheti.
+     * Így bukott véletlenszerűen a ChurchDetailPageTest és a ChurchRemarkFormTest, olyan
+     * PR-eken is, amik hozzá se értek a kódhoz.
+     *
+     * A kapcsoló SZÁNDÉKOSAN opt-in: alapból nincs bekapcsolva, tehát dev és production
+     * viselkedése nem változik. A teszt-compose-ok állítják be (l. compose.test.yml,
+     * compose.coverage.yml).
+     */
+    public static function isOffline(): bool {
+        $value = env('EXTERNAL_APIS_OFFLINE', '');
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Ez a szolgáltatás a saját infrastruktúránk-e?
+     *
+     * Az Elasticsearch ugyanezen az ősosztályon keresztül beszél, pedig a compose-hálózaton
+     * belül van — nem harmadik fél. Az offline kapcsoló SEM vonatkozhat rá, különben a
+     * kereső is elnémulna a tesztek alatt (ezt a saját tesztjeim fogták meg: az
+     * ElasticsearchApiLoggerTest azonnal elbukott az első próbálkozásnál).
+     */
+    protected function isInternalService(): bool {
+        return false;
+    }
+
     function runQuery() {
+        // Offline módban meg sem próbálkozunk: se hálózat, se cache-írás. A hívók a
+        // szokásos „üres válasz" ágon mennek tovább, pontosan úgy, mintha a külső
+        // szolgáltatás nem adott volna adatot.
+        if (self::isOffline() && !$this->isInternalService()) {
+            $this->responseCode = 0;
+            $this->rawData = '';
+            if ($this->format == 'json') $this->jsonData = json_decode('[]');
+            if ($this->format == 'xml')  $this->xmlData = false;
+            $this->error = 'A külső API-k ki vannak kapcsolva (EXTERNAL_APIS_OFFLINE).';
+            if (isset($this->isTesting) and $this->isTesting == true) {
+                throw new \Exception($this->error);
+            }
+            return false;
+        }
+
 		if(isset($this->rawData)) unset($this->rawData);
         try {
         

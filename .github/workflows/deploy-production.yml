@@ -24,8 +24,11 @@ on:
     branches: [production]
   workflow_dispatch: {}
 
+# #662: a staging és a production UGYANAZON a gépen fut, és mindkét deploy teljes
+# `docker build`-et csinál. Külön csoportban egyszerre indulhattak, és a párhuzamos
+# buildek megfojtották a gépet. Közös csoport: egyszerre csak EGY deploy fut.
 concurrency:
-  group: deploy-production
+  group: deploy-server
   # Production-ben NEM töröljük a futó deployt — megvárjuk, hogy befejezze.
   cancel-in-progress: false
 
@@ -34,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.STAGING_SSH_HOST }}
           username: ${{ secrets.STAGING_SSH_USER }}
@@ -56,6 +59,22 @@ jobs:
 
             COMPOSE="docker compose -f docker/compose.yml"
 
+            # ── 0) Van-e egyáltalán mit deployolni? (#662) ───────────────────
+            # Több egymás utáni merge esetén a sorban álló futások mind ugyanazt a
+            # commitot deployolnák. Ez a rövidzár SZÁNDÉKOSAN a backup ELŐTT van: egy
+            # fölösleges futás így teljes mysqldumpot sem készít.
+            # Kézi indításnál (workflow_dispatch) mindig végigmegy.
+            git fetch --prune origin
+            # Az upstream hiánya ne buktassa a deployt (set -e): ilyenkor egyszerűen
+            # kihagyjuk az optimalizálást és végigmegyünk.
+            UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+            if [ -n "$UPSTREAM" ] \
+               && [ "${{ github.event_name }}" != "workflow_dispatch" ] \
+               && [ "$(git rev-parse HEAD)" = "$(git rev-parse "$UPSTREAM")" ]; then
+              echo "✅ Már a legfrissebb commiton vagyunk ($(git rev-parse --short HEAD)) — deploy kihagyva."
+              exit 0
+            fi
+
             # ── 1) MySQL full backup ─────────────────────────────────────────
             echo "▶ Creating MySQL backup..."
             BACKUP_DIR="/home/github_action/backups"
@@ -64,7 +83,7 @@ jobs:
             BACKUP_FILE="$BACKUP_DIR/miserend-$TIMESTAMP.sql.gz"
 
             $COMPOSE exec -T mysql mariadb-dump \
-              -u root -ppw \
+              -u root -p"${MYSQL_ROOT_PASSWORD:-pw}" \
               --all-databases \
               --single-transaction \
               --routines \
@@ -82,6 +101,7 @@ jobs:
 
             # ── 2) git pull (nem force, nem reset) ──────────────────────────
             echo "▶ Pulling latest changes..."
+
             if ! git pull; then
               echo "❌ git pull failed! Possible merge conflict or dirty working tree."
               echo "   The production server has NOT been updated."

@@ -133,10 +133,29 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
             $actualSizeMB = round($inputFile["size"] / 1024 / 1024, 2);
             throw new \Exception("File size is too big! Maximum allowed: {$maxSizeMB} MB, uploaded: {$actualSizeMB} MB");
         }
-        if (!in_array($inputFile['type'], [ 'image/jpg', 'image/jpeg', 'image/gif', 'image/png' ])) {
-            \printr($inputFile);
-            throw new \Exception("Unsopported file type.");
-        }
+        /*
+         * #709: a típust a FÁJL TARTALMÁBÓL állapítjuk meg, nem abból, amit a
+         * kliens állít magáról.
+         *
+         * Eddig két hiba ért össze, és távoli kódfuttatás lett belőle:
+         *   1. az ellenőrzés az $inputFile['type']-ot nézte, ami a kliens által
+         *      küldött Content-Type — bármit be lehet írni oda;
+         *   2. a kiterjesztés a kliens FÁJLNEVÉBŐL jött, változtatás nélkül,
+         *      tehát a .php megmaradt.
+         * A fájl így a web által kiszolgált kepek/ könyvtárba került .php néven,
+         * ahol az Apache lefuttatta. Kimértem: a feltöltött PHP tényleg lefutott.
+         *
+         * Mostantól a getimagesize() dönt (a MOZGATÁS ELŐTT), és a kiterjesztést
+         * is a felismert képtípusból képezzük — a kliens fájlnevéből semmit nem
+         * veszünk át.
+         *
+         * FIGYELEM: a getimagesize() önmagában nem elég. Egy „polyglot" fájl
+         * lehet érvényes GIF-fejlécű ÉS futtatható PHP egyszerre. Ezért a
+         * kiszolgálás oldalán is van védelem (webapp/kepek/.htaccess és a vhost):
+         * a képkönyvtárból csak kép-kiterjesztésű fájl adható ki. A kettő együtt
+         * véd; egyik sem hagyható el.
+         */
+        $safeExtension = self::safeExtensionFor($inputFile['tmp_name']);
         $konyvtar = $this->pathToPhotos . "/" . $this->church_id;
         if (!is_dir("$konyvtar")) {
             if (!mkdir("$konyvtar", 0775)) {
@@ -149,10 +168,9 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
         if (!is_writable($konyvtar)) {
             throw new \Exception("Upload directory is not writable.");            
         }
-        $File_Name = strtolower($inputFile['name']);
-        $File_Ext = substr($File_Name, strrpos($File_Name, '.')); //get file extention
+        // #709: a kiterjesztés a FELISMERT képtípusból jön, nem a kliens fájlnevéből.
         $Random_Number = rand(0, 9999999999); //Random number to be added to name.
-        $this->filename = $Random_Number . $File_Ext; //new file name
+        $this->filename = $Random_Number . $safeExtension; //new file name
                 
         // Handle both regular uploads and API uploads (temporary files)
         $target_path = $konyvtar . "/" . $this->filename;
@@ -181,16 +199,39 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
 
         $kimenet = $target_path;
         $kimenet1 = $konyvtar . "/kicsi/" . $this->filename;
-        $info = \getimagesize($kimenet);
-        $this->width = $info[0];
-        $this->height = $info[1];
 
-        if ($this->width > 1200 or $this->height > 800)
-            $this->kicsinyites($kimenet, $kimenet, 1200);
-        $this->kicsinyites($kimenet, $kimenet1, 120);
-        
-        // Save the photo record to the database
-        $this->save();
+        /*
+         * #709: ha a feldolgozás elhasal, NE maradjon ott a fájl.
+         *
+         * A getimagesize() átenged olyat is, amit a GD utána már nem tud
+         * megnyitni — tipikusan a „polyglot" fájlokat, amik érvényes képfejlécet
+         * hordoznak, de mögötte más van. Eddig ilyenkor a kicsinyítés dobott egy
+         * belső GD-hibát, a fájl viszont már kint volt a lemezen, adatbázis-sor
+         * nélkül. Kimértem: pontosan ez történt.
+         *
+         * Kép-kiterjesztéssel ez önmagában nem futtatható, de akkor sem hagyjuk
+         * ott: takarítunk, és érthető hibát adunk.
+         */
+        try {
+            $info = \getimagesize($kimenet);
+            if ($info === false) {
+                throw new \Exception("A feltöltött fájl mégsem olvasható képként.");
+            }
+            $this->width = $info[0];
+            $this->height = $info[1];
+
+            if ($this->width > 1200 or $this->height > 800)
+                $this->kicsinyites($kimenet, $kimenet, 1200);
+            $this->kicsinyites($kimenet, $kimenet1, 120);
+
+            // Save the photo record to the database
+            $this->save();
+        } catch (\Throwable $e) {
+            @\unlink($kimenet);
+            @\unlink($kimenet1);
+            throw new \Exception("A képet nem sikerült feldolgozni, ezért nem mentettük el. "
+                . "Valószínűleg sérült vagy nem valódi képfájl.");
+        }
     }
     
     private function getMaxFileSize() {
@@ -221,12 +262,72 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
         return $php_limit;
     }
 
+    /**
+     * #709: milyen kiterjesztéssel menthető el biztonságosan ez a fájl?
+     *
+     * A döntés KIZÁRÓLAG a fájl tartalmán alapul — se a kliens fájlnevét, se az
+     * általa küldött Content-Type-ot nem vesszük figyelembe. Ez a védelem lelke:
+     * a támadás pontosan azon múlt, hogy a `.php` kiterjesztés a kliens
+     * fájlnevéből átjött, a típusellenőrzés pedig a kliens állítását hitte el.
+     *
+     * Külön, statikus függvény, mert így adatbázis és képkönyvtár nélkül,
+     * önmagában tesztelhető — a biztonsági állítások ne múljanak azon, hogy a
+     * futtató környezetben írható-e a kepek/ könyvtár.
+     *
+     * @return string a pontot is tartalmazó kiterjesztés, pl. ".jpg"
+     * @throws \Exception ha a fájl nem kép, vagy nem engedett formátum
+     */
+    static function safeExtensionFor(string $path): string {
+        $imageInfo = @\getimagesize($path);
+        if ($imageInfo === false) {
+            throw new \Exception("A feltöltött fájl nem kép.");
+        }
+
+        $allowedTypes = [
+            IMAGETYPE_JPEG => '.jpg',
+            IMAGETYPE_PNG  => '.png',
+            IMAGETYPE_GIF  => '.gif',
+        ];
+
+        if (!isset($allowedTypes[$imageInfo[2]])) {
+            throw new \Exception("Nem támogatott képformátum. Csak JPEG, PNG és GIF tölthető fel.");
+        }
+
+        return $allowedTypes[$imageInfo[2]];
+    }
+
+    /**
+     * #709 mellékága: ez a függvény FIXEN imagecreatefromjpeg()-et hívott.
+     *
+     * Vagyis a dokumentáltan engedett négy formátumból csak a JPEG működött: a
+     * GIF- és PNG-feltöltés idáig eljutott, majd itt elhasalt egy belső
+     * GD-hibával. Meg is látszik az adaton: 29314 jpg mellett 9 gif és 0 png.
+     *
+     * Mostantól a forrás TÉNYLEGES típusa dönti el az olvasót, és ugyanabban a
+     * formátumban írunk vissza — különben JPEG-tartalom kerülne .gif nevű
+     * fájlba. A PNG átlátszóságát megtartjuk.
+     */
     static function kicsinyites($forras, $kimenet, $max) {
 
         if (!isset($max))
             $max = 120;# maximum size of 1 side of the picture.
 
-        $src_img = \imagecreatefromjpeg($forras);
+        $info = @\getimagesize($forras);
+        if ($info === false) {
+            throw new \Exception("A kép nem olvasható: " . basename($forras));
+        }
+
+        switch ($info[2]) {
+            case IMAGETYPE_JPEG: $src_img = @\imagecreatefromjpeg($forras); break;
+            case IMAGETYPE_PNG:  $src_img = @\imagecreatefrompng($forras);  break;
+            case IMAGETYPE_GIF:  $src_img = @\imagecreatefromgif($forras);  break;
+            default:
+                throw new \Exception("Nem támogatott képformátum a kicsinyítéshez.");
+        }
+
+        if (!$src_img) {
+            throw new \Exception("A képet nem sikerült megnyitni: " . basename($forras));
+        }
 
         $oh = \imagesy($src_img);  # original height
         $ow = \imagesx($src_img);  # original width
@@ -242,12 +343,22 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
 
         // note TrueColor does 256 and not.. 8
         $dst_img = \imagecreatetruecolor($new_w, $new_h);
-        /* \imageantialias($dst_img, true); */
 
-        /* \imagecopyresized($dst_img, $src_img, 0,0,0,0, $new_w, $new_h, \imagesx($src_img), \imagesy($src_img)); */
+        // PNG/GIF: az átlátszóság elveszne, ha nem jelezzük külön a GD-nek.
+        if ($info[2] === IMAGETYPE_PNG || $info[2] === IMAGETYPE_GIF) {
+            \imagealphablending($dst_img, false);
+            \imagesavealpha($dst_img, true);
+        }
+
         \imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $new_w, $new_h, \imagesx($src_img), \imagesy($src_img));
-        \imagejpeg($dst_img, "$kimenet");
-        
+
+        // Ugyanabban a formátumban írunk vissza, amilyen a forrás volt.
+        switch ($info[2]) {
+            case IMAGETYPE_PNG: \imagepng($dst_img, "$kimenet");  break;
+            case IMAGETYPE_GIF: \imagegif($dst_img, "$kimenet");  break;
+            default:            \imagejpeg($dst_img, "$kimenet"); break;
+        }
+
         // Free up memory
         \imagedestroy($src_img);
         \imagedestroy($dst_img);

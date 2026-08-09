@@ -28,7 +28,11 @@ class Api extends Html {
         // Determine the action from the URL if not provided in the query string
         $endpoints = \Api\Api::collectApiEndpoints();                        
         if (preg_match('#^/api/(v[1-4])/?([^/?]*)#i', $uri, $matches)) {
-            $_REQUEST['v'] = preg_replace('/\D/', '', $matches[1]);
+            // #391: az API-osztályok a $_REQUEST['v']-ből olvassák a verziót, ezért azt
+            // továbbra is beállítjuk — de amit MI használunk lentebb, azt lokális
+            // változóból vesszük, ne a szuperglobális kerülőúton.
+            $version = preg_replace('/\D/', '', $matches[1]);
+            $_REQUEST['v'] = $version;
 
             // Simple uri - endpoint mapping
             $remaining = strtolower($matches[2]);
@@ -42,7 +46,7 @@ class Api extends Html {
                     }
 
                     if($remaining == 'sqlite') {
-                        $this->redirect(DOMAIN . '/fajlok/sqlite/miserend_v' . $_REQUEST['v'] . '.sqlite3');
+                        $this->redirect(DOMAIN . '/fajlok/sqlite/miserend_v' . $version . '.sqlite3');
                         exit;   
                     }
 

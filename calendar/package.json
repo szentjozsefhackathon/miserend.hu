@@ -50,5 +50,8 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.2.0",
     "typescript": "~5.9.0"
+  },
+  "overrides": {
+    "webpack-dev-server": "5.2.6"
   }
 }

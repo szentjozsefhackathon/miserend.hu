@@ -8,19 +8,27 @@ use Carbon\Carbon;
 class Health extends Html {
     public $infos;
     public $cronjobs;
+    public $stuckCronjobs;
     public $elasticsearch;
     public $churchesWithNoElasticMasses;
     public $churchesWithNoElasticMassesCount;
     public $externalapis;
     public $boundariesStats;
+    public $schemaCheck;
     public $emails;
     public $mailing;
     public $foremail;
 
     public function __construct() {
         parent::__construct();
+
+        global $user;
+        if (!$user->checkRole('any')) {
+            throw new \Exception('Nincs jogosultságod megtekinteni az egészség oldalt.');
+        }
+
         $this->setTitle('Miserend.hu állapotáról');
-		
+  
 		//General informations
 		global $config;
 		
@@ -114,6 +122,26 @@ class Health extends Html {
 		// Health of CronJobs
 		$this->cronjobs = \Eloquent\Cron::orderBy('deadline_at','DESC')->get()->toArray();
 
+		// Az elakadt munkákat külön is kiemeljük: az attempts oszlop egyetlen bukott
+		// futástól is piros, ezért abban elveszett, hogy volt cron, ami hónapok óta nem
+		// futott le sikeresen.
+		$this->stuckCronjobs = [];
+		foreach ($this->cronjobs as $i => $cron) {
+			$reason = \Eloquent\Cron::stuckReason(
+				$cron['lastsuccess_at'] ?? null,
+				(string) ($cron['frequency'] ?? '')
+			);
+			$this->cronjobs[$i]['stuck_reason'] = $reason;
+			if ($reason !== null) {
+				$this->stuckCronjobs[] = [
+					'id'       => $cron['id'],
+					'name'     => $cron['class'] . '::' . $cron['function'] . '()',
+					'reason'   => $reason,
+					'attempts' => $cron['attempts'] ?? 0,
+				];
+			}
+		}
+
 		// Health of ElasticSearch database
 		$elastic = new \ExternalApi\ElasticsearchApi();
 		$elastic->query ="_cat/indices?format=json";
@@ -196,10 +224,41 @@ class Health extends Html {
 			)
 			->first();
 		
+		/*
+		 * #570: „ellenőrizve" != „van boundaryja". A checkBoundariesForOne() akkor is
+		 * megjelöli a templomot ellenőrzöttként, ha az Overpass hibázott vagy nem adott
+		 * eredményt — a templom mégis boundary NÉLKÜL marad. A területi (települési,
+		 * egyházmegyei) keresés viszont KIZÁRÓLAG a lookup_boundary_church alapján szűr,
+		 * ezért pontosan ez a szám mondja meg, hány templom TALÁLHATÓ MEG így egyáltalán.
+		 *
+		 * Enélkül a fenti „soha nem ellenőrzött" sor félrevezető: lehet 0, miközben a
+		 * templomok fele mégsem kereshető területre.
+		 */
+		/*
+		 * #706: az adatbázis-struktúra összevetése azzal, amit az initdb.d leír.
+		 * Az élesen mindig kézzel ment végig minden migráció, ezért elcsúszhat:
+		 * maradhat rég kivezetett tábla, hiányozhat egy újabb oszlop vagy index.
+		 * A hiba SOHA ne vigye le a /health-et — a többi ellenőrzés fontosabb.
+		 */
+		try {
+			$this->schemaCheck = \SchemaCheck::check();
+		} catch (\Throwable $e) {
+			$this->schemaCheck = ['available' => false, 'reason' => 'Az ellenőrzés hibára futott: ' . $e->getMessage()];
+		}
+
+		$churchesWithBoundary = DB::table('lookup_boundary_church')
+			->join('templomok', 'templomok.id', '=', 'lookup_boundary_church.church_id')
+			->where('templomok.ok', 'i')
+			->whereNull('templomok.deleted_at')
+			->distinct()
+			->count('lookup_boundary_church.church_id');
+
 		$this->boundariesStats = [
 			'with_osm' => [
 				'count' => $churchBoundaryStats->count ?? 0,
 				'never_checked_count' => $churchBoundaryStats->never_checked_count ?? 0,
+				'with_boundary_count' => $churchesWithBoundary,
+				'without_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithBoundary),
 				'avg_days_old' => $churchBoundaryStats->avg_days_old ? round($churchBoundaryStats->avg_days_old, 2) : 0,
 				'newest' => $churchBoundaryStats->newest ?? null,
 				'oldest' => $churchBoundaryStats->oldest ?? null

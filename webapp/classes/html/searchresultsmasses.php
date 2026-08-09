@@ -118,6 +118,21 @@ class SearchResultsMasses extends Html {
             $search->timeRange($from, $until);
         };
 
+        /*
+         * #671: az adottság-adat még nagyon hiányos (a seedben egyetlen misézőhelynek
+         * sincs `wheelchair` attribútuma), ezért a szűrt keresés könnyen nulla találatot
+         * ad — amit a felhasználó hibának hisz. Megmondjuk, hány helyről tudunk valamit.
+         *
+         * Szándékosan ITT, a closure-ön KÍVÜL: az $applyBaseFilters a 0-találatos
+         * fallback-ágon még egyszer lefut, az üzenetet viszont csak egyszer akarjuk.
+         */
+        foreach (\Eloquent\Church::facilityCoverageMessages(
+            (bool) $params['wheelchair'],
+            (bool) $params['gluten_free']
+        ) as $facilityMessage) {
+            addMessage($facilityMessage, 'info');
+        }
+
         // ---- SZŰKÍTŐ szűrők (típus / rítus / kategória) — ezeket dobjuk a fallback-ban ----
         $applyNarrowingFilters = function (\Search $search) use ($typesReq, $ritesReq, $categoriesReq) {
             if (!empty($typesReq) || !empty($ritesReq)) {

@@ -27,6 +27,8 @@ class Email extends \Illuminate\Database\Eloquent\Model {
      * használja, ezt a metódust pedig cron hívja batchenként korlátozva.
      */
     static function sendQueued($limit = 20) {
+        self::requeueStuck();
+
         $queued = self::where('status', 'queued')
             ->orderBy('created_at')
             ->limit($limit)
@@ -35,6 +37,50 @@ class Email extends \Illuminate\Database\Eloquent\Model {
             $email->send();
         }
         return true;
+    }
+
+    /**
+     * A send() legelső dolga, hogy 'sending'-re állítja a sort, és csak utána próbálkozik
+     * az SMTP-vel. Ha a folyamat közben hal meg (időkorlát, OOM, konténer-újraindulás),
+     * a sor örökre 'sending'-ben marad: a sendQueued() csak a 'queued' státuszt szedi
+     * elő, tehát az ilyen levél soha nem megy ki és soha nem is próbálkozik vele senki.
+     * Élesen 89 ilyen sor gyűlt össze egyetlen hónap alatt.
+     *
+     * Itt visszatesszük őket a sorba. Aki viszont már régóta ezt csinálja, azt 'error'-ba
+     * tesszük, hogy egy önmagában végzetes levél ne pörögjön a végtelenségig.
+     *
+     * @param  string $stuckAfter   ennyi idő után tekintjük beragadtnak (strtotime)
+     * @param  string $giveUpAfter  ennyi idős sorral már nem próbálkozunk (strtotime)
+     * @return array{requeued:int,failed:int}
+     */
+    static function requeueStuck($stuckAfter = '1 hour', $giveUpAfter = '3 days') {
+        $stuckBefore = date('Y-m-d H:i:s', strtotime('-' . $stuckAfter));
+        $giveUpBefore = date('Y-m-d H:i:s', strtotime('-' . $giveUpAfter));
+
+        $failed = self::where('status', 'sending')
+            ->where('updated_at', '<', $stuckBefore)
+            ->where('created_at', '<', $giveUpBefore)
+            ->update(['status' => 'error']);
+
+        $requeued = self::where('status', 'sending')
+            ->where('updated_at', '<', $stuckBefore)
+            ->update(['status' => 'queued']);
+
+        return ['requeued' => $requeued, 'failed' => $failed];
+    }
+
+    /**
+     * Azok a státuszok, amik "már megpróbáltuk értesíteni" jelentésűek.
+     *
+     * A felhasználó-értesítő cronok eddig csak a 'queued' és 'sent' sorokat nézték, így
+     * egy 'sending'-ben ragadt vagy 'error'-ra futott levél láthatatlan volt számukra —
+     * a következő futás ezért újra kiküldte ugyanazt. Élesben ez adta a
+     * 89 'sending' + 48 'error' + 47 'sent' arányt a user_pleaselogin típusnál.
+     *
+     * @return string[]
+     */
+    public static function attemptedStatuses(): array {
+        return ['queued', 'sending', 'sent', 'error'];
     }
     
     function send($to = false) {

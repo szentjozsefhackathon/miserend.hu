@@ -13,6 +13,22 @@ on:
         required: true
         default: latest
 
+# A futás ragadjon be helyett bukjon el, és egy ág egyszerre csak egyszer fusson.
+#
+# Két baj volt egyszerre:
+#  1. Nincs `concurrency`, ezért új pusholás NEM állította le a korábbi futást. Egy
+#     beragadt job így a GitHub 6 órás alaplimitjéig lógott, foglalta a sort, és a
+#     PR-en „függőben" maradt az ellenőrzés akkor is, ha az új futás már zöld volt.
+#  2. Nincs `timeout-minutes`, ezért a beakadás nem is derült ki: a funkcionális
+#     (Panther/Chrome) lépés normálisan ~80 másodperc, beragadva viszont órákig ült.
+#
+# `cancel-in-progress: true` — itt szándékosan más, mint a deploy-workflow-knál: ott
+# a félbehagyott deploy sérült állapotot hagyna, egy tesztfutás megszakítása viszont
+# ártalmatlan.
+concurrency:
+  group: phpunit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   COMPOSE_FILES: -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml
   TEST_RESULTS_PATH: ${{ github.workspace }}
@@ -20,6 +36,8 @@ env:
 jobs:
   phpunit:
     runs-on: ubuntu-latest
+    # Az egész job felső korlátja; a sikeres futás ma ~5 perc.
+    timeout-minutes: 30
     # Only run if workflow_run was successful or if triggered by other events
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
@@ -47,7 +65,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.tag.outputs.REF }}
 
@@ -108,6 +126,9 @@ jobs:
           fi
 
       - name: Run functional tests
+        # Normálisan ~80 másodperc. Ha a böngésző beakad, itt bukjon el, ne a job
+        # felső korlátjánál — így a Docker-naplós lépés is lefut és látszik az ok.
+        timeout-minutes: 12
         working-directory: webapp/tests
         env:
           PANTHER_EXTERNAL_BASE_URI: http://127.0.0.1:8000
@@ -137,7 +158,7 @@ jobs:
             docker compose $COMPOSE_FILES logs
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: phpunit-coverage-html
@@ -145,7 +166,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload cobertura XML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: phpunit-coverage-cobertura
@@ -153,7 +174,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Publish Unit Test Report
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         if: always()
         with:
           report_paths: |
@@ -166,7 +187,7 @@ jobs:
           job_name: Unit Tests
 
       - name: Publish Functional Test Report
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         if: always()
         with:
           report_paths: |

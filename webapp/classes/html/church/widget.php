@@ -15,12 +15,18 @@ class Widget extends \Html\Html {
             $id = (int)$path[0];
         }
 
-        // fallback: kérés paraméterekből is megpróbáljuk
+        // fallback: kérés paraméterekből is megpróbáljuk.
+        // #391: a kézi isset + is_numeric páros pontosan az, amit a \Request::Integer()
+        // ad — az üres/hiányzó értékre false-t, nem-számra kivételt. Itt a kivétel nem
+        // kívánatos (a widget essen vissza a másik kulcsra), ezért a nyers olvasás
+        // helyett a \Request::get()-en át jövő értéket ellenőrizzük.
         if (!$id) {
-            if (isset($this->input['id']) && is_numeric($this->input['id'])) {
-                $id = (int)$this->input['id'];
-            } elseif (isset($this->input['church_id']) && is_numeric($this->input['church_id'])) {
-                $id = (int)$this->input['church_id'];
+            foreach (['id', 'church_id'] as $key) {
+                $value = \Request::get($key);
+                if (is_numeric($value)) {
+                    $id = (int) $value;
+                    break;
+                }
             }
         }
 

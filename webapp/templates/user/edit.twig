@@ -185,5 +185,16 @@
 
 		<input class="form-control" type="submit" name="submit" value="{% if new %}Létrehoz{% else %}Módosít{% endif %}"/>	    
 	</form>
+
+	{# #110: a saját fiók törlése eddig sehonnan nem volt elérhető — csak adminisztrátor
+	   tudott felhasználót törölni. A link csak a saját adatlapon jelenik meg. #}
+	{% if edit and user.uid > 0 and user.uid == edituser.uid %}
+		<hr>
+		<p class="text-muted">
+			Ha nem szeretnéd tovább használni a Miserendet,
+			<a href="/user/{{ edituser.uid }}/delete">törölheted a fiókodat</a>.
+			A törlés nem vonható vissza; a következő oldalon leírjuk, mi történik az adataiddal.
+		</p>
+	{% endif %}
         {% endif %}
 {% endblock %}
