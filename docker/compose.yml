@@ -132,6 +132,9 @@ services:
       - OSM_CLIENT_SECRET=${OSM_CLIENT_SECRET:-}
       - OSM_APPLICATION_CODE=${OSM_APPLICATION_CODE:-}
       - OSM_ACCESS_TOKEN=${OSM_ACCESS_TOKEN:-}
+      # A LoRaWAN gyóntatás-jelzők megosztott titka. Üresen a végpont a régi módon,
+      # azonosítás nélkül fogad adatot — l. Api\LoRaWAN::checkSharedSecret().
+      - LORAWAN_TOKEN=${LORAWAN_TOKEN:-}
 
     networks:
       inner:

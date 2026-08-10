@@ -102,10 +102,42 @@ class LoRaWAN extends Api {
         return $docs;
     }
     
+    /**
+     * Megosztott titok a LoRaWAN-hálózatszerverrel (ChirpStack).
+     *
+     * A végpont EDDIG teljesen azonosítás nélkül fogadott adatot: bárki beírhatott
+     * „gyóntatás folyamatban" állapotot BÁRMELYIK templomhoz, és korlátlanul
+     * szaporíthatta a sorokat. Kipróbálva: sima curl, HTTP 200, a sor bekerült.
+     *
+     * A titkot az `.env`-ből olvassuk. Ha NINCS beállítva, a végpont a régi módon
+     * viselkedik (nyitva marad) — különben a merge pillanatában elnémulnának az éles
+     * eszközök, amíg a küldő oldal nincs átállítva. A naplóba viszont minden ilyen
+     * kérésnél figyelmeztetés kerül, hogy ez az állapot ne maradjon észrevétlen.
+     *
+     * Beállítás után a küldő oldalon `X-Miserend-Token` fejlécként vagy `token`
+     * mezőként kell átadni ugyanezt az értéket.
+     */
+    private function checkSharedSecret(): void {
+        $elvart = trim((string) env('LORAWAN_TOKEN', ''));
+
+        if ($elvart === '') {
+            error_log('[miserend] LoRaWAN: nincs beállítva LORAWAN_TOKEN, a végpont azonosítás nélkül fogad adatot.');
+            return;
+        }
+
+        $kapott = $_SERVER['HTTP_X_MISEREND_TOKEN'] ?? ($this->input['token'] ?? '');
+
+        if (!is_string($kapott) || !hash_equals($elvart, trim($kapott))) {
+            throw new \Exception('Invalid or missing token.');
+        }
+    }
+
     public function run() {
         parent::run();
 
         $this->getInputJson();
+
+        $this->checkSharedSecret();
 
 
         $confession = new \Eloquent\Confession();
