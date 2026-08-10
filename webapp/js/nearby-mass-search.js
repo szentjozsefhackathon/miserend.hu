@@ -140,9 +140,9 @@
 
         if (walking) walking.addEventListener('click', function () {
             requestLocation(function () {
-                if (radius) radius.value = '2';
+                if (radius) radius.value = '3';
                 setNextTwoHours();
-                setStatus('2 km-es légvonalbeli körben, a következő két órában keresek.');
+                setStatus('3 km-es légvonalbeli körben, a következő két órában keresek.');
                 submitMassSearch();
             }, walking);
         });

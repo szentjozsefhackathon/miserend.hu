@@ -220,7 +220,10 @@ final class MassSearchResultsTest extends PantherTestCase
 
         $this->client->executeScript("HTMLFormElement.prototype.submit = function () { this.dataset.submitted = '1'; };");
         $this->client->getCrawler()->filter('#walking_masses')->click();
-        self::assertSame('3', $this->client->executeScript("return document.querySelector('#nearby_radius').value;"));
+        // #722: a helynévhez és a koordinátához tartozó két külön távolság-választóból egy
+        // lett (`tavolsag`) — ugyanahhoz a kereséshez nem volt értelme kettőnek. A 3 km
+        // (gyalogtávolság) benne maradt a listában.
+        self::assertSame('3', $this->client->executeScript("return document.querySelector('#tavolsag').value;"));
         self::assertSame('1', $this->client->executeScript("return document.querySelector('#kereses').dataset.submitted;"));
         // A gyalogos gyorskeresés mindhárom feltételt beállítja: hely + 3 km + következő két óra.
         $walkingOrigin = $this->client->executeScript(<<<'JS'

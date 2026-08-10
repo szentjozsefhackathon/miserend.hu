@@ -102,7 +102,8 @@
                             <select class="form-control" name="tavolsag" id="tavolsag" style="flex:0 0 8.5em;">
                                 {% set tav = searchform.tavolsag.value|default(0) %}
                                 <option value="0"{% if tav == 0 %} selected{% endif %}>bárhol</option>
-                                {% for km in [2, 5, 10, 20, 50] %}
+                                {# A 3 km a „gyalogtávolság" gyorskeresés értéke — a közös listában is legyen. #}
+                                {% for km in [2, 3, 5, 10, 20, 50] %}
                                     <option value="{{ km }}"{% if tav == km %} selected{% endif %}>{{ km }} km-en belül</option>
                                 {% endfor %}
                             </select>
