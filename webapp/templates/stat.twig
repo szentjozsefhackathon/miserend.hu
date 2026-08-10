@@ -29,8 +29,60 @@
 
 {% block content %}
 
+    {# #724: süti- és IP-mentes látogatottság. Napi darabszám útvonalanként — nincs benne
+       semmi, ami egy látogatóhoz köthető, ezért nem is kell hozzá süti-elfogadó ablak. #}
+    <h3>Használat (utolsó 30 nap)</h3>
+    {% if usage.dailyTotals is empty %}
+        <p class="text-muted">Még nincs adat. A gyűjtés a #724 bevezetése óta tart.</p>
+    {% else %}
+        <p>Összesen <b>{{ usage.total|number_format(0, ',', ' ') }}</b> oldalletöltés,
+           napi átlagban <b>{{ usage.dailyAverage|number_format(0, ',', ' ') }}</b>.
+           Robotokat nem számolunk.</p>
+
+        <table class="table table-sm table-striped">
+            <thead><tr><th>Nap</th><th class="text-end">Letöltés</th></tr></thead>
+            <tbody>
+            {% for nap in usage.dailyTotals|slice(-14) %}
+                <tr><td>{{ nap.date }}</td><td class="text-end">{{ nap.count|number_format(0, ',', ' ') }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <h5>Legnépszerűbb oldalak</h5>
+        <table class="table table-sm table-striped">
+            <thead><tr><th>Útvonal</th><th>Típus</th><th class="text-end">Letöltés</th></tr></thead>
+            <tbody>
+            {% for sor in usage.topRoutes %}
+                <tr><td><code>{{ sor.route }}</code></td><td>{{ sor.kind }}</td>
+                    <td class="text-end">{{ sor.count|number_format(0, ',', ' ') }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <h5>Mit keresnek</h5>
+        <div class="row">
+            <div class="col-md-6">
+                <p class="text-muted">Van találat</p>
+                <table class="table table-sm table-striped">
+                    {% for sor in usage.topSearchesFound %}
+                        <tr><td>{{ sor.keyword }}</td><td class="text-end">{{ sor.count }}</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="col-md-6">
+                {# Ez a jegy legértékesebb adata: mit keresnek nálunk, amit nem találnak meg. #}
+                <p class="text-muted"><b>Nincs találat</b> — ezekre érdemes ránézni</p>
+                <table class="table table-sm table-striped">
+                    {% for sor in usage.topSearchesMissing %}
+                        <tr><td>{{ sor.keyword }}</td><td class="text-end">{{ sor.count }}</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    {% endif %}
+
     {% if user.isadmin %}
-    
+
     <h3>Helyadatok</h3>
     <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
     

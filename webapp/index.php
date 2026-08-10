@@ -25,6 +25,13 @@ try {
         $path = new Path('templom/' . \Request::Integer('templom'));
     }
 
+    // #724: süti- és IP-mentes látogatottság-számláló. A feloldott, normalizált útvonalat
+    // számoljuk (`templom/{id}`), nem a nyers URL-t — így a tábla napi néhány tucat sor
+    // marad, és a query-stringből semmi nem kerül be. Robotokat kihagyunk: a User-Agentet
+    // csak megnézzük, nem tároljuk.
+    \Stats::countPageview($path->url, str_starts_with((string) $path->url, 'api/') ? 'api'
+        : (str_starts_with((string) $path->url, 'ajax') ? 'ajax' : 'html'));
+
     $class = $path->className;
 	if(!$class) throw new Exception('Az oldal nem található');
 		

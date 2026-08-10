@@ -20,6 +20,17 @@ class Crons {
 	}
 
 	/**
+	 * #724: a használati statisztika napi sorai. Nem személyes adat (nincs benne se IP,
+	 * se süti, se User-Agent), tehát a megőrzést nem jogi határidő szabja, hanem az,
+	 * hogy meddig érdemes összehasonlítani — két év elég az éves trendhez.
+	 */
+	public static function cleanUsageStats(): void {
+		$cutoff = date('Y-m-d', strtotime('-' . \Stats::MEGORZES));
+		DB::table('stats_pageviews')->where('date', '<', $cutoff)->delete();
+		DB::table('stats_searches')->where('date', '<', $cutoff)->delete();
+	}
+
+	/**
 	 * #351: az emails tábla reflex tájékoztató/értesítő leveleit takarítjuk (90 napnál
 	 * régebbieket). Az észrevételeket kísérő levelezést (remark_*, remarkfeedback*) ÉS
 	 * minden más, itt nem listázott típust MEGTARTJUK — csak a lenti explicit "reflex"
