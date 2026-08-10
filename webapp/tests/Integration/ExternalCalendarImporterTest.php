@@ -75,6 +75,64 @@ class ExternalCalendarImporterTest extends TestCase
         $this->assertSame(['hours' => 1, 'minutes' => 30], $mass->duration);
     }
 
+    /**
+     * Éles hiba: "Unable to parse datetime: VALUE=DATE:20260326". Az egész napos
+     * eseményekre a Google `DTSTART;VALUE=DATE:...`-ot ír, a parser viszont csak a
+     * TZID paramétert ismerte fel — egyetlen ilyen esemény az ADOTT TEMPLOM teljes
+     * importját megbuktatta, a cron pedig az egész futást hibásnak jelölte.
+     */
+    public function testAllDayEventsAreImportedInsteadOfBreakingTheWholeFeed(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "UID:allday-1@example.test\r\n"
+            . "SUMMARY:Búcsú\r\n"
+            . "DTSTART;VALUE=DATE:20260326\r\n"
+            . "DTEND;VALUE=DATE:20260327\r\n"
+            . "END:VEVENT\r\nBEGIN:VEVENT\r\n"
+            . "UID:timed-1@example.test\r\n"
+            . "SUMMARY:Vasárnapi szentmise\r\n"
+            . "DTSTART;TZID=Europe/Budapest:20260329T100000\r\n"
+            . "DURATION:PT1H\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $created = ExternalCalendarImporter::replaceFromIcs($ics, 1);
+
+        $this->assertSame(2, $created);
+
+        $allDay = Eloquent\CalMass::where('church_id', 1)->where('title', 'Búcsú')->firstOrFail();
+        $this->assertSame('2026-03-26T00:00:00', $allDay->start_date);
+        $this->assertSame(['hours' => 24, 'minutes' => 0], $allDay->duration);
+
+        // A paraméterek sorrendje nem számíthat, és az időpontos esemény sem sérülhet.
+        $timed = Eloquent\CalMass::where('church_id', 1)->where('title', 'Vasárnapi szentmise')->firstOrFail();
+        $this->assertSame('2026-03-29T10:00:00', $timed->start_date);
+    }
+
+    /**
+     * Ugyanez a paraméterkezelés fordított sorrenddel és idézőjeles TZID-vel is álljon,
+     * és a paraméter nélküli értékeket ne bántsa (a `2026-12-23T23:59:00`-ban a `:`
+     * az időhöz tartozik, nem paraméter-elválasztó).
+     */
+    public function testPropertyParametersAreParsedRegardlessOfOrder(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "UID:params-1@example.test\r\n"
+            . "SUMMARY:Esti szentmise\r\n"
+            . "DTSTART;VALUE=DATE-TIME;TZID=\"Europe/Budapest\":20260329T180000\r\n"
+            . "DURATION:PT1H\r\n"
+            . "RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20261223T235900Z\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        ExternalCalendarImporter::replaceFromIcs($ics, 1);
+
+        $mass = Eloquent\CalMass::where('church_id', 1)
+            ->where('comment', ExternalCalendarImporter::IMPORT_MARKER)
+            ->firstOrFail();
+        $this->assertSame('2026-03-29T18:00:00', $mass->start_date);
+        $this->assertSame('2026-03-29T18:00:00', $mass->rrule['dtstart']);
+        $this->assertSame('2026-12-24T00:59:00', $mass->rrule['until']);
+    }
+
     public function testCronReportsFailedCalendarInsteadOfMarkingTheRunSuccessful(): void
     {
         $calendar = Eloquent\ExternalCalendar::create([
