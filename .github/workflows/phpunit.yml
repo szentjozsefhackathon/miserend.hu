@@ -125,8 +125,35 @@ jobs:
             composer update --no-interaction --prefer-dist symfony/panther --with-all-dependencies
           fi
 
+      # A funkcionális tesztek a PUBLIKUS INTERNETTŐL függtek, és ettől időnként 12 percbe
+      # fulladtak a szokásos ~50 másodperc helyett.
+      #
+      # Az ok: a lefordított Angular Material CSS `@font-face` szabályai a
+      # `fonts.gstatic.com`-ról töltik a Robotót és a Material Symbolst. A Panther a
+      # `request()`-nél a TELJES oldalbetöltésre vár (document.readyState === 'complete'),
+      # ami a betűtípusokat is magában foglalja. Ha a gstatic lassú vagy elérhetetlen a
+      # runnerről, minden egyes oldalletöltés ~2 percet áll — tesztenként.
+      #
+      # Kimérve, ugyanaz az oldal, ugyanaz a csomag:
+      #   internettel .................. beakadt (>45 mp)
+      #   csak a fonts.gstatic.com tiltva ....... 1 mp
+      #
+      # A teszt-futásnak nincs szüksége a Google betűtípusaira: a méréseket és a DOM-ot
+      # nem befolyásolják. Itt tehát elvágjuk őket, hogy a futás hermetikus legyen.
+      #
+      # (Maga a függőség viszont az ÉLES oldalon is ott van — minden látogató böngészője
+      # hívja a Google-t, és minden oldalletöltés vár rá. Az külön kérdés, nem ez a lépés
+      # oldja meg.)
+      - name: Cut off external fonts for hermetic browser tests
+        run: |
+          sudo tee -a /etc/hosts > /dev/null <<'EOF'
+          127.0.0.1 fonts.gstatic.com
+          127.0.0.1 fonts.googleapis.com
+          127.0.0.1 oss.maxcdn.com
+          EOF
+
       - name: Run functional tests
-        # Normálisan ~80 másodperc. Ha a böngésző beakad, itt bukjon el, ne a job
+        # Normálisan ~50 másodperc. Ha a böngésző beakad, itt bukjon el, ne a job
         # felső korlátjánál — így a Docker-naplós lépés is lefut és látszik az ok.
         timeout-minutes: 12
         working-directory: webapp/tests
