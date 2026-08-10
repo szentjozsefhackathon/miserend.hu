@@ -10,6 +10,10 @@ export interface SuggestionPackage {
   suggestions: Suggestion[];
   state: SuggestionState;
   createdAt: Date;
+  /** Ki és mikor döntött a javaslatról. Korábban ez sehol nem tárolódott. */
+  handledByUserId?: number;
+  handledByName?: string;
+  handledAt?: string;
 }
 
 export enum SuggestionState {
