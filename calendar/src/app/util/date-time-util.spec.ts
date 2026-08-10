@@ -55,3 +55,38 @@ describe('DateTimeUtil', () => {
     });
   });
 });
+
+/**
+ * A `2026-01-01TNaN:NaN:NaN` kezdések forrása. A `pad(NaN)` a "NaN" sztringet adta, a
+ * szerver ellenőrzés nélkül kiírta, a generátor pedig kihagyta az ilyen misét — így az
+ * a szerkesztőben látszott, a keresőben soha. (Nagyatád, Őrangyalok-kápolna, 7 hónapig.)
+ */
+describe('DateTimeUtil érvénytelen időpont', () => {
+  it('érvénytelen Date-re hibát dob, nem NaN-t formáz', () => {
+    expect(() => DateTimeUtil.getIsoString(new Date('kacsa'))).toThrowError(/Érvénytelen időpont/);
+  });
+
+  it('a periódus dátumával együtt sem enged át NaN időt', () => {
+    // Pontosan ez az eset gyártotta az élesen talált értéket: a dátum-rész helyes
+    // maradt, csak az idő lett NaN — ezért nézett ki "majdnem jónak".
+    expect(() => DateTimeUtil.getIsoString(new Date(NaN), '2026-01-01'))
+      .toThrowError(/Érvénytelen időpont/);
+  });
+
+  it('érvényes időpontot változatlanul formáz', () => {
+    expect(DateTimeUtil.getIsoString(new Date(2026, 0, 1, 10, 30, 0))).toBe('2026-01-01T10:30:00');
+  });
+
+  it('érvényes időpontot a periódus dátumával is formáz', () => {
+    expect(DateTimeUtil.getIsoString(new Date(2026, 5, 5, 18, 0, 0), '2026-01-01'))
+      .toBe('2026-01-01T18:00:00');
+  });
+
+  it('felismeri az érvénytelen dátumot', () => {
+    expect(DateTimeUtil.isValidDate(new Date(2026, 0, 1))).toBeTrue();
+    expect(DateTimeUtil.isValidDate(new Date('kacsa'))).toBeFalse();
+    expect(DateTimeUtil.isValidDate(null)).toBeFalse();
+    expect(DateTimeUtil.isValidDate(undefined)).toBeFalse();
+    expect(DateTimeUtil.isValidDate('2026-01-01')).toBeFalse();
+  });
+});
