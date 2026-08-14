@@ -125,6 +125,10 @@ class Cron extends Html {
             $this->error = true;
             echo "<strong>" . $job->class . "->" . $job->function . "() futtatása sikertelen.</strong>\n";
             $this->printExceptionVerbose($exception);
+            // A következő próbálkozás a szokásos ritmus szerint jöjjön. Enélkül a bukott
+            // munka „esedékes" maradt, minden kopogás újrapróbálta, és percek alatt
+            // átlépte a 10-es korlátot — onnan pedig 12 órára kizárta magát.
+            $job->backOff();
         }
 
         if (!isset($this->error)) {
