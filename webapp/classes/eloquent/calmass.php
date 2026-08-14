@@ -716,6 +716,77 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
         return $massPeriods;
     }
 
+    /**
+     * Értelmezhető-e a mise kezdete? Tiszta függvény (se DB, se HTTP), hogy tesztelhető
+     * legyen, és hogy a mentés meg az import ugyanazt a határt húzza meg.
+     *
+     * A kiváltó eset: a naptárszerkesztőből `2026-01-01TNaN:NaN:NaN` érkezett — üresen
+     * hagyott időpontból —, és a mentés ellenőrzés nélkül kiírta. Az ilyen mise némán
+     * eltűnik: a generátor kihagyja ("Invalid RRULE dtstart, skipping mass ID …"), tehát
+     * a keresőbe soha nem kerül be, a szerkesztőben viszont ott van.
+     *
+     * @param array $massData snake_case kulcsokkal, ahogy a mentés kapja
+     * @return string|null a hiba oka, vagy null ha rendben van
+     */
+    public static function invalidDateTimeReason(array $massData): ?string {
+        $start = $massData['start_date'] ?? null;
+        if ($start !== null && $start !== '' && !self::isParsableDateTime($start)) {
+            return 'A kezdés nem értelmezhető: ' . $start;
+        }
+
+        $rrule = $massData['rrule'] ?? null;
+        if (is_string($rrule) && $rrule !== '') {
+            $rrule = json_decode($rrule, true);
+        }
+        if (!is_array($rrule)) {
+            return null;
+        }
+
+        foreach (['dtstart', 'until'] as $mezo) {
+            $ertek = $rrule[$mezo] ?? null;
+            if ($ertek !== null && $ertek !== '' && !self::isParsableDateTime($ertek)) {
+                return 'Az ismétlődés ' . $mezo . ' értéke nem értelmezhető: ' . $ertek;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A Carbon a "2026-01-01TNaN:NaN:NaN"-t is elfogadná (a NaN-t szemétként eldobva,
+     * éjfélre kerekítve), ezért nem elég ráhagyni: a nyilvánvalóan hibás alakot külön
+     * kizárjuk. Így a hibás időpont a mentésnél derül ki, nem hónapokkal később a
+     * keresőben.
+     */
+    private static function isParsableDateTime($value): bool {
+        if ($value instanceof \DateTimeInterface) {
+            return true;
+        }
+        if (!is_string($value)) {
+            return false;
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return false;
+        }
+
+        // Csak a ténylegesen használt alakokat fogadjuk el. Szabad formátumnál a Carbon
+        // nagyvonalú: a "2026-01-01TNaN:NaN:NaN"-ból is éjfelet csinál, tehát önmagában
+        // ráhagyva a hibás időpont csendben átcsúszna.
+        $alak = preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            || preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+\-]\d{2}:?\d{2})?$/', $value) === 1;
+        if (!$alak) {
+            return false;
+        }
+
+        try {
+            Carbon::parse($value);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     static private function applyCollisionAvoidance(array $masses): array
     {
         // Kevés CalPeriod van, és minden misénél kell, ezért inkább előre egyszer töltjük be mindet.

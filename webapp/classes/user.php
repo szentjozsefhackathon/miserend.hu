@@ -585,8 +585,7 @@ class User {
 			$email = new \Eloquent\Email();
 			$email->to = $result->email;
 			$email->render('user_youhavebeendeleted',$result);			
-			// $email->addToQueue();
-			$email->send();
+			$email->addToQueue();
 			
 		}
 
@@ -636,8 +635,7 @@ class User {
 				$email = new \Eloquent\Email();
 				$email->to = $user->email;
 				$email->render('user_pleaseactivate',$user);			
-				// $email->addToQueue();
-				$email->send();
+				$email->addToQueue();
 			}
 		}
 		
@@ -683,8 +681,7 @@ class User {
                 $email = new \Eloquent\Email();
                 $email->to = $user->email;
                 $email->render('user_youhavebeendeleted',$user);			
-                // $email->addToQueue();
-                $email->send();
+                $email->addToQueue();
                 if (!DB::table('user')->where('uid',$user->uid)->limit(1)->delete())  {
                             addMessage('Nem sikerül mindenkit törölni.', 'error');
                             echo "Nem sikerült mindenkit aki még nem lépett be törölni! ".print_r($user,1)." ";
@@ -698,8 +695,7 @@ class User {
 				$email = new \Eloquent\Email();
 				$email->to = $user->email;
 				$email->render('user_pleaselogin',$user);			
-				// $email->addToQueue();
-				$email->send();
+				$email->addToQueue();
 			}
 		}
 		
@@ -783,8 +779,7 @@ class User {
 			$email = new \Eloquent\Email();
 			$email->to = $user->email;
 			$email->render('user_pleaseupdate',$user);
-			// $email->addToQueue();
-			$email->send();
+			$email->addToQueue();
 					
 		}
 		
