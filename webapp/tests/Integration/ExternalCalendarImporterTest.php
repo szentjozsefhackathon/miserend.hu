@@ -156,6 +156,8 @@ class ExternalCalendarImporterTest extends TestCase
     private function setFrissites(?string $ertek): void
     {
         DB::table('templomok')->where('id', 1)->update(['frissites' => $ertek]);
+    }
+    /**
      * Éles hiba: "Unable to parse datetime: VALUE=DATE:20260326". Az egész napos
      * eseményekre a Google `DTSTART;VALUE=DATE:...`-ot ír, a parser viszont csak a
      * TZID paramétert ismerte fel — egyetlen ilyen esemény az ADOTT TEMPLOM teljes
