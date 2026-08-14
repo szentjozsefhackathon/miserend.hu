@@ -199,6 +199,7 @@
                 locateButtonHome: useCurrentLocation ? useCurrentLocation.parentNode : null,
                 setStatus: setStatus,
                 setOrigin: setOrigin,
+                clearOrigin: clearOrigin,
                 onOriginChange: function (fn) { originListeners.push(fn); }
             });
         }

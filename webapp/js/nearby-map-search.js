@@ -24,6 +24,7 @@
     var LEAFLET_JS = '/node_modules/leaflet/dist/leaflet.js';
     var DEFAULT_CENTER = [47.4979, 19.0402]; // Budapest — csak amíg nincs valódi pont
     var DEFAULT_ZOOM = 12;
+    var DEFAULT_RADIUS_KM = 3;   // a „gyalogtávolság" gyorskeresés értéke
 
     var state = {
         map: null,
@@ -112,6 +113,18 @@
         toggle.innerHTML = '<span aria-hidden="true">🗺</span> Térkép alapú keresés';
         slot.appendChild(toggle);
 
+        /*
+         * Alapból CSAK a térkép-kapcsoló látszik.
+         *
+         * Az „Egyéni közeli keresés" felirat, a helynév+sugár sor és a „Koordináta
+         * megadása" blokk együtt három, egymást átfedő módot kínált ugyanarra a
+         * kérdésre — ettől lett a sáv félrevezető. A vezérlők megmaradnak (az űrlap
+         * ugyanazt küldi), csak nem tolakodnak: a térképen kapnak helyet.
+         *
+         * JS nélkül minden marad a régiben: ez a rejtés is innen, JS-ből történik.
+         */
+        if (placeGroup) placeGroup.hidden = true;
+
         var leftBox = overlayBox('left');
         var rightBox = overlayBox('right');
 
@@ -130,7 +143,16 @@
             return (isFinite(lat) && isFinite(lon)) ? [lat, lon] : null;
         }
 
-        function drawCircle() {
+        /**
+         * @param {boolean} illesszen igazítsa-e a nézetet a körhöz
+         *
+         * Az illesztés SZÁNDÉKOSAN nem történik minden rajzoláskor. A kört a jelölő
+         * mozgatása, a geokódolás és a sugár állítása is újrarajzolja; ha mindegyik
+         * nagyítana is, a nézet folyamatosan ugrálna, és a beállítások egymást írnák
+         * felül. Illeszteni ott van értelme, ahol a felhasználó épp a TÁVOLSÁGRÓL
+         * mond valamit.
+         */
+        function drawCircle(illesszen) {
             if (!state.map) return;
             var km = parseFloat(api.radius ? api.radius.value : '0');
             var point = state.marker ? state.marker.getLatLng() : null;
@@ -147,17 +169,37 @@
                 weight: 1,
                 fillOpacity: 0.08
             }).addTo(state.map);
-            state.map.fitBounds(state.circle.getBounds(), { padding: [20, 20] });
+
+            /*
+             * A kör lássék EGÉSZBEN, különben a felhasználó csak egy ívet lát a szélén,
+             * és nem derül ki, mekkora területről beszélünk.
+             *
+             * A `fitBounds()` itt nem vált be: a doboz széles és alacsony (825×360), és
+             * a nagyítás makacsul 14 maradt, pedig a `getBoundsZoom()` 12-t mond. Ezért
+             * magunk számoljuk ki a nagyítást, és egy lépésben állítjuk be a nézetet.
+             */
+            if (!illesszen) return;
+
+            var illoZoom = state.map.getBoundsZoom(state.circle.getBounds(), false, [20, 20]);
+            state.map.setView(point, illoZoom, { animate: false });
         }
 
-        /** Külső forrásból (geokódolás, saját helyzet) érkezett pont. */
+        /**
+         * A tárolt kiindulópontra állunk (geokódolás, saját helyzet, jelölő).
+         *
+         * A nagyítást a KÖR határozza meg, nem egy fix érték: ha van sugár, a nézet
+         * mindig akkora, hogy a kör egészben látszódjon. Korábban ez fix 14 volt, és a
+         * jelölő megmozgatása után a 10 km-es kör négyszer akkora lett, mint a doboz —
+         * a felhasználó egy ívet sem látott belőle. Rögzített sugárnál az illő nagyítás
+         * állandó, tehát húzás közben a nézet nem ugrál, csak követ.
+         */
         function moveToStoredPoint(zoom) {
             var point = currentPoint();
             updateReadout();
             if (!point || !state.map) return;
             state.marker.setLatLng(point);
             state.map.setView(point, zoom || state.map.getZoom());
-            drawCircle();
+            drawCircle(true);
         }
 
         function buildMap(L) {
@@ -175,27 +217,36 @@
                 var position = state.marker.getLatLng();
                 api.setOrigin(position.lat, position.lng, 'marker');
                 updateReadout();
-                drawCircle();
+                drawCircle(true);
             });
 
-            // A vezérlők ÁTHELYEZÉSE a térkép fölé.
-            leftBox.appendChild(placeControls.querySelector('#hely'));
-            if (api.locateButton) leftBox.appendChild(api.locateButton);
-            if (api.radius) rightBox.appendChild(api.radius);
-            canvas.appendChild(leftBox);
-            canvas.appendChild(rightBox);
-            isolate(leftBox);
-            isolate(rightBox);
-
-            if (api.radius) api.radius.addEventListener('change', drawCircle);
+            if (api.radius) api.radius.addEventListener('change', function () { drawCircle(true); });
 
             updateReadout();
-            drawCircle();
 
             /* A térkép-példányt kitesszük a konténerre. A modul állapota egyébként
                closure-ben van (nincs globális szemét), de a térképhez időnként kívülről
                is hozzá kell férni — hibakereséshez és későbbi bővítéshez. */
             canvas._miserendMapSearch = { map: state.map, marker: state.marker };
+        }
+
+        /*
+         * A vezérlők áthelyezése a térkép fölé.
+         *
+         * Ez KORÁBBAN a `buildMap()`-ben volt, ami csak az ELSŐ nyitáskor fut le. Aki
+         * bezárta és újranyitotta a térképet, annak a kereső- és a sugármező szinte
+         * teljesen eltűnt: a bezárás visszatette őket a rejtett sorba, az újranyitás
+         * pedig már nem vitte vissza a lebegő dobozokba. Ezért nyitásonként futtatjuk.
+         */
+        function moveControlsToMap() {
+            var placeInput = placeControls.querySelector('#hely') || leftBox.querySelector('#hely');
+            if (placeInput) leftBox.appendChild(placeInput);
+            if (api.locateButton) leftBox.appendChild(api.locateButton);
+            if (api.radius) rightBox.appendChild(api.radius);
+            if (leftBox.parentNode !== canvas) canvas.appendChild(leftBox);
+            if (rightBox.parentNode !== canvas) canvas.appendChild(rightBox);
+            isolate(leftBox);
+            isolate(rightBox);
         }
 
         function restoreControls() {
@@ -207,25 +258,58 @@
             }
         }
 
+        /*
+         * Nyitáskor a kiindulópont LEGYEN kitöltve.
+         *
+         * Enélkül aki kinyitotta a térképet és rögtön a keresésre nyomott, üres
+         * koordinátával indult — a jelölő ott állt a képernyőn, a mezők mégis üresek
+         * voltak. Ami a térképen látszik, az legyen a keresés kiindulópontja is.
+         * A sugár ugyanígy: alapból a „gyalogtávolság" 3 km.
+         */
+        function seedOriginFromMap() {
+            if (!state.marker) return;
+            if (!currentPoint()) {
+                /*
+                 * Nincs tárolt kiindulópont — tehát vagy most nyitjuk először, vagy a
+                 * bezárás törölte. Ilyenkor a jelölő is menjen vissza az alaphelyzetbe:
+                 * enélkül a legutóbbi állás (pl. Bécs) csendben visszajönne, pedig épp
+                 * azért zártuk be, hogy ne maradjon meg.
+                 */
+                state.marker.setLatLng(DEFAULT_CENTER);
+                state.map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+                var kozep = state.marker.getLatLng();
+                api.setOrigin(kozep.lat, kozep.lng, 'marker');
+            }
+            if (api.radius && (api.radius.value === '' || api.radius.value === '0')) {
+                api.radius.value = String(DEFAULT_RADIUS_KM);
+            }
+            updateReadout();
+            drawCircle(true);
+        }
+
         function openMap() {
             toggle.disabled = true;
             loadLeaflet().then(function (L) {
                 toggle.disabled = false;
                 state.open = true;
-                box.hidden = false;
-                if (details) details.hidden = true;
-                /* A vezérlők átkerültek a térkép fölé, tehát a hozzájuk tartozó felirat
-                   és az üresen maradt soruk itt már csak zavarna. */
+                // A csoport hordozza a térkép-dobozt és az állapotsort, ezért nyitáskor
+                // láthatóvá kell tenni — a benne lévő felirat és sor viszont rejtve marad.
+                if (placeGroup) placeGroup.hidden = false;
                 if (placeLabel) placeLabel.hidden = true;
                 placeControls.hidden = true;
+                if (details) details.hidden = true;
+                box.hidden = false;
                 toggle.innerHTML = '<span aria-hidden="true">🗺</span> Térkép bezárása';
 
                 if (!state.map) {
                     buildMap(L);
-                } else {
-                    state.map.invalidateSize();
-                    moveToStoredPoint();
                 }
+
+                // Minden nyitáskor, nem csak az elsőnél — l. moveControlsToMap().
+                moveControlsToMap();
+                state.map.invalidateSize();
+                moveToStoredPoint();
+                seedOriginFromMap();
             }).catch(function (error) {
                 toggle.disabled = false;
                 api.setStatus(error.message);
@@ -234,12 +318,22 @@
 
         function closeMap() {
             state.open = false;
-            placeControls.hidden = false;
-            if (placeLabel) placeLabel.hidden = false;
             restoreControls();
             box.hidden = true;
-            if (details) details.hidden = false;
+            if (placeGroup) placeGroup.hidden = true;
             toggle.innerHTML = '<span aria-hidden="true">🗺</span> Térkép alapú keresés';
+
+            /*
+             * Bezárás = a térképen beállított kiindulópont visszavonása. Enélkül
+             * megmaradna, hogy valaki egyszer Bécset állította középpontnak, és a
+             * következő keresés csendben oda szólna — úgy, hogy közben egyetlen
+             * látható mező sem mutatja.
+             */
+            api.clearOrigin();
+            if (api.place) api.place.value = '';
+            if (api.radius) api.radius.value = '0';
+            api.setStatus('');
+            updateReadout();
         }
 
         toggle.addEventListener('click', function () {
