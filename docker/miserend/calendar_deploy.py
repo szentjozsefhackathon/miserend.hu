@@ -181,17 +181,17 @@ def update_layout_template(css_file):
 
         if inside_head and "{# ### calendar-css ### #}" in stripped:
             # Marker megtalálva, nézzük a következő sort
-            if i + 1 < len(lines) and 'href="/css/styles-' in lines[i + 1]:
-                updated_lines.append(f'\t\t<link rel="stylesheet" href="/css/{css_file}">\n')
+            if i + 1 < len(lines) and 'href="/css/styles' in lines[i + 1]:
+                updated_lines.append(f'\t\t<link rel="stylesheet" href="/css/{css_file}?v={{{{ mcal_version }}}}">\n')
                 i += 1  # átugorjuk az eredeti sort
             else:
-                updated_lines.append(f'\t\t<link rel="stylesheet" href="/css/{css_file}">\n')
+                updated_lines.append(f'\t\t<link rel="stylesheet" href="/css/{css_file}?v={{{{ mcal_version }}}}">\n')
             css_line_done = True
 
         if inside_head and not css_line_done and "{% block extraHead %}{% endblock %}" in stripped:
             # Marker nincs, de extraHead blokk van → szúrjuk be
             updated_lines.insert(len(updated_lines) - 1, '\t\t{# ### calendar-css ### #}\n')
-            updated_lines.insert(len(updated_lines) - 1, f'\t\t<link rel="stylesheet" href="/css/{css_file}">\n')
+            updated_lines.insert(len(updated_lines) - 1, f'\t\t<link rel="stylesheet" href="/css/{css_file}?v={{{{ mcal_version }}}}">\n')
             updated_lines.insert(len(updated_lines) - 1, '\n')
             css_line_done = True
 
@@ -291,9 +291,9 @@ def update_home_twig(template_path, main_js, polyfills_js):
 def main():
     # === CSS ===
     css_to_path = os.path.join(TO_PATH, "css")
-    delete_file_by_pattern(css_to_path, r"styles-[a-zA-Z0-9]{8}\.css")
+    delete_file_by_pattern(css_to_path, r"styles(-[a-zA-Z0-9]{8})?\.css")
 
-    css_file = find_file_by_pattern(FROM_PATH, r"styles-[a-zA-Z0-9]{8}\.css")
+    css_file = find_file_by_pattern(FROM_PATH, r"styles(-[a-zA-Z0-9]{8})?\.css")
     if css_file:
         process_css(os.path.join(FROM_PATH, css_file), css_to_path)
         update_layout_template(css_file)
@@ -306,8 +306,8 @@ def main():
         shutil.rmtree(js_to_path)
     os.makedirs(js_to_path, exist_ok=True)
 
-    main_js = find_file_by_pattern(FROM_PATH, r"main-[a-zA-Z0-9]{8}\.js")
-    polyfills_js = find_file_by_pattern(FROM_PATH, r"polyfills-[a-zA-Z0-9]{8}\.js")
+    main_js = find_file_by_pattern(FROM_PATH, r"main(-[a-zA-Z0-9]{8})?\.js")
+    polyfills_js = find_file_by_pattern(FROM_PATH, r"polyfills(-[a-zA-Z0-9]{8})?\.js")
 
     if main_js:
         shutil.copy(os.path.join(FROM_PATH, main_js), os.path.join(js_to_path, main_js))
