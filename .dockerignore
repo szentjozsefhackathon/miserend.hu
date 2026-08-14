@@ -22,3 +22,8 @@ webapp/kepek/templomok/
 # allow Angular build output
 !calendar/dist
 !calendar/dist/**
+
+# #750: adatbázis-felület soha ne kerüljön az image-be. A nézelődés az
+# opt-in docker/compose.adminer.yml profillal megy (csak 127.0.0.1 + SSH-tunnel).
+webapp/adminer.php
+webapp/adminer*.php
