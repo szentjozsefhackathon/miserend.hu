@@ -218,3 +218,27 @@ function twig_facebook_path($url) {
 function twig_readable_rrule($rrule) {
     return SimpleRRule::humanText($rrule);
 }
+
+/**
+ * A naptár-bundle cache-buster verziója.
+ *
+ * A `main.js` / `styles.css` neve a #751 óta STABIL (angular.json:
+ * outputHashing = "media"), mert a tartalomhash-elt fájlnév minden branchen
+ * más lett, és emiatt MINDEN nyitott PR ütközött a `webapp/js/mcal/main-*.js`
+ * fájlon (rename/rename). Stabil név mellett viszont kell egy külön
+ * cache-buster, különben a böngésző a régi csomagot szolgálná ki a deploy
+ * után. A bundle mtime-ja pontosan ezt adja: minden új build új értéket ad,
+ * és semmilyen verziókövetett fájlba nem kell beleírni.
+ */
+function mcalVersion(): string {
+    static $version = null;
+    if ($version !== null) {
+        return $version;
+    }
+    $main = PATH . 'js/mcal/main.js';
+    $mtime = @filemtime($main);
+    // Ha nincs bundle (pl. friss checkout build nélkül), a konstans érték is jó:
+    // ilyenkor úgysincs mit cache-elni.
+    $version = $mtime ? (string) $mtime : '0';
+    return $version;
+}

@@ -46,7 +46,7 @@
                   "maximumError": "1MB"
                 }
               ],
-              "outputHashing": "all",
+              "outputHashing": "media",
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
@@ -67,7 +67,7 @@
                   "maximumError": "1MB"
                 }
               ],
-              "outputHashing": "all",
+              "outputHashing": "media",
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
@@ -88,7 +88,7 @@
                   "maximumError": "1MB"
                 }
               ],
-              "outputHashing": "all",
+              "outputHashing": "media",
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
