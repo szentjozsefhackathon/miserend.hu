@@ -89,6 +89,17 @@ class LoRaWAN extends Api {
         <strong><i>Ez még egy kísérleti API, használata csak saját felelősségre!</i></strong>
         <p>Ez az API lehetővé teszi a LoRaWAN eszközök által küldött gyóntatási adatok jelentését. A rendszer ellenőrzi a bemeneti adatokat, és ha minden rendben van, elmenti az adatokat az adatbázisba.</p>
         <p>A jelenleg használt eszközök egyedi kommunikációs gyakorlata miatt van szükség ilyen részletes és szokatlan bemeneti adatokra.</p>
+
+        <h4>Azonosítás — kérj tőlünk tokent</h4>
+        <p><strong>Az adatküldéshez token szükséges.</strong> Kérj tőlünk egyet: szívesen adunk, csak biztonsági okból kell.
+        Enélkül bárki írhatna gyóntatási állapotot bármelyik templomhoz, ezért kötöttük azonosításhoz.</p>
+        <p>A kapott értéket kétféleképpen adhatod át — válaszd, amelyik az eszközödnek egyszerűbb:</p>
+        <ul>
+            <li><code>X-Miserend-Token</code> HTTP-fejlécként, vagy</li>
+            <li><code>token</code> mezőként a JSON törzsben.</li>
+        </ul>
+        <p>Hibás vagy hiányzó token esetén a válasz <code>„error”: 1</code>, a <code>„text”</code> pedig <code>Invalid or missing token.</code></p>
+
         <p>További információ a gyóntatásokról és a LoRaWAN eszközökről a <a href="/staticpage/confessions">dokumentációban</a> található.</p>
         HTML;
 
