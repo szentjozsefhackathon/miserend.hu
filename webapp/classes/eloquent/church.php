@@ -790,23 +790,43 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         if (empty($this->lat) || empty($this->lon)) {
             return collect();
         }
+        // #748: a mindkét irányú keresés miatt egy szomszéd KÉTSZER jött vissza. A
+        // `distances` táblában ugyanaz a pár mindkét irányban szerepel (A->B és B->A),
+        // mert a cron minden templomot külön dolgoz fel `from`-ként. Az egyik sort a
+        // fenti `from = ez`, a másikat a `to = ez` ág kapja el -> ugyanaz a templom
+        // kétszer került a listába. Ráadásul több koordinátapár is mutathat ugyanarra
+        // a templomra. Ezért koordináta ÉS templom-azonosító szerint is szűrünk.
+        // A limitet 30 -> 60-ra emelem, mert a soroknak kb. a fele duplikátum.
         $rows = \Eloquent\Distance::where(function($q) {
                     $q->where('fromLat', $this->lat)->where('fromLon', $this->lon);
                 })->orWhere(function($q) {
                     $q->where('toLat', $this->lat)->where('toLon', $this->lon);
-                })->orderBy('distance', 'ASC')->limit(30)->get();
+                })->orderBy('distance', 'ASC')->limit(60)->get();
 
         $result = collect();
+        $seenCoords = [];
+        $seenIds = [];
         foreach ($rows as $d) {
             $isFrom = ($d->fromLat == $this->lat && $d->fromLon == $this->lon);
             $lat = $isFrom ? $d->toLat : $d->fromLat;
             $lon = $isFrom ? $d->toLon : $d->fromLon;
-            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
-            if ($church) {
-                $church->distance = $d->distance;
-                $result->push($church);
-                if ($result->count() >= 10) break;
+
+            // A sorok távolság szerint növekvőek, tehát az első előfordulás a legkisebb.
+            $coordKey = $lat . '|' . $lon;
+            if (isset($seenCoords[$coordKey])) {
+                continue;
             }
+            $seenCoords[$coordKey] = true;
+
+            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
+            if (!$church || $church->id == $this->id || isset($seenIds[$church->id])) {
+                continue;
+            }
+            $seenIds[$church->id] = true;
+
+            $church->distance = $d->distance;
+            $result->push($church);
+            if ($result->count() >= 10) break;
         }
         return $result;
     }
