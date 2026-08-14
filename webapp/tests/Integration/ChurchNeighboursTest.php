@@ -119,4 +119,48 @@ class ChurchNeighboursTest extends TestCase {
         self::assertCount(10, $neighbours, 'A duplikátumok miatt 10-nél kevesebb szomszéd fért a listába.');
         self::assertSame(10, $neighbours->pluck('id')->unique()->count());
     }
+
+    /* --- #748 írás-oldal: a pár csak EGY sorként kerüljön be. --- */
+
+    public function testCanonicalPairPutsTheSmallerCoordinateFirst(): void {
+        $a = ['lat' => 47.500000, 'lon' => 19.000000];
+        $b = ['lat' => 47.400000, 'lon' => 19.900000];
+
+        self::assertSame([$b, $a], \Distance::canonicalPair($a, $b));
+        self::assertSame([$b, $a], \Distance::canonicalPair($b, $a), 'A sorrend nem lehet a hívás sorrendjétől függő.');
+    }
+
+    public function testCanonicalPairBreaksLatitudeTiesOnLongitude(): void {
+        $a = ['lat' => 47.500000, 'lon' => 19.900000];
+        $b = ['lat' => 47.500000, 'lon' => 19.100000];
+
+        self::assertSame([$b, $a], \Distance::canonicalPair($a, $b));
+    }
+
+    public function testNewRowIsStoredInCanonicalOrder(): void {
+        // Szándékosan a "nagyobb" koordinátával hívjuk elsőként.
+        $a = ['lat' => 47.900000, 'lon' => 19.900000];
+        $b = ['lat' => 47.100000, 'lon' => 19.100000];
+
+        $row = \Distance::findOrNewPair($a, $b);
+
+        self::assertEquals($b['lat'], $row->fromLat);
+        self::assertEquals($b['lon'], $row->fromLon);
+        self::assertEquals($a['lat'], $row->toLat);
+        self::assertEquals($a['lon'], $row->toLon);
+    }
+
+    /** A migráció előtti, fordított sort a helyén frissítjük — nem hozunk mellé újat. */
+    public function testExistingReversedRowIsReusedInsteadOfDuplicated(): void {
+        $a = ['lat' => 47.210000, 'lon' => 19.210000];
+        $b = ['lat' => 47.220000, 'lon' => 19.220000];
+
+        // A régi (nem kanonikus) irány: b -> a.
+        $this->addDistance($b['lat'], $b['lon'], $a['lat'], $a['lon'], 4321);
+
+        $row = \Distance::findOrNewPair($a, $b);
+
+        self::assertTrue($row->exists, 'Új sort hozott létre a meglévő, fordított irányú mellé.');
+        self::assertEquals(4321, $row->distance);
+    }
 }
