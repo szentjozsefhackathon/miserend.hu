@@ -76,6 +76,88 @@ class ExternalCalendarImporterTest extends TestCase
     }
 
     /**
+     * #723: a naptár utolsó módosítása lesz a templom frissesség-dátuma, ha újabb.
+     */
+    public function testFeedLastModifiedIsReportedBack(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\n"
+            . "BEGIN:VEVENT\r\nSUMMARY:Régi\r\nDTSTART:20260301T080000Z\r\n"
+            . "LAST-MODIFIED:20250104T101500Z\r\nEND:VEVENT\r\n"
+            . "BEGIN:VEVENT\r\nSUMMARY:Újabb\r\nDTSTART:20260302T080000Z\r\n"
+            . "LAST-MODIFIED:20260214T091500Z\r\nEND:VEVENT\r\n"
+            . "END:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertSame('2026-02-14', $modifiedOn);
+    }
+
+    /**
+     * A DTSTAMP-ot a Google az EXPORTÁLÁSKOR tölti ki, tehát minden lekérésnél mai.
+     * Ha azt vennénk alapul, minden naptár örökké frissnek látszana — pont az ellenkezője
+     * annak, amit a #723 kér. LAST-MODIFIED nélküli feednél ezért nem nyúlunk semmihez.
+     */
+    public function testFeedWithoutLastModifiedDoesNotTouchFreshness(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "SUMMARY:Mise\r\nDTSTART:20260301T080000Z\r\nDTSTAMP:" . gmdate('Ymd\THis\Z') . "\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertNull($modifiedOn);
+    }
+
+    /** Elrontott naptár ne tolhassa a jövőbe a frissesség-dátumot. */
+    public function testFutureLastModifiedIsIgnored(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "SUMMARY:Mise\r\nDTSTART:20260301T080000Z\r\n"
+            . "LAST-MODIFIED:" . gmdate('Ymd\THis\Z', strtotime('+3 days')) . "\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertNull($modifiedOn);
+    }
+
+    /**
+     * A `templomok` írásait ez a teszt SAJÁT MAGA állítja vissza, nem a setUp
+     * tranzakciójára bízza: az \Eloquent\Church::save() az Elasticsearchöt is frissíti,
+     * és ezen az úton a mentés túléli a rollbacket — a szomszéd teszt pedig már a
+     * beszivárgott értéket látná.
+     */
+    public function testFreshnessMovesForwardOnlyNeverBackwards(): void
+    {
+        $eredeti = Eloquent\Church::findOrFail(1)->frissites;
+
+        try {
+            $this->setFrissites(null);
+            $this->assertTrue(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-02-14', (string) Eloquent\Church::findOrFail(1)->frissites);
+
+            // Régebbi dátum: előre mozdul.
+            $this->setFrissites('2020-01-01');
+            $this->assertTrue(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-02-14', (string) Eloquent\Church::findOrFail(1)->frissites);
+
+            // A kézi frissítés újabb: a naptár nem húzhatja vissza.
+            $this->setFrissites('2026-07-01');
+            $this->assertFalse(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-07-01', (string) Eloquent\Church::findOrFail(1)->frissites);
+        } finally {
+            $this->setFrissites($eredeti);
+        }
+    }
+
+    private function setFrissites(?string $ertek): void
+    {
+        DB::table('templomok')->where('id', 1)->update(['frissites' => $ertek]);
+    }
+    /**
      * Éles hiba: "Unable to parse datetime: VALUE=DATE:20260326". Az egész napos
      * eseményekre a Google `DTSTART;VALUE=DATE:...`-ot ír, a parser viszont csak a
      * TZID paramétert ismerte fel — egyetlen ilyen esemény az ADOTT TEMPLOM teljes
