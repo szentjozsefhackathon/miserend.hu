@@ -1,4 +1,4 @@
-{% set polyfills = "polyfills-5CFQRCPP.js" %}{% set main = "main-W5BRT6OR.js" %}
+{% set polyfills = "polyfills.js" %}{% set main = "main.js" %}
 
 {#calendar-app#}
 <mcal class="calendar-app">
@@ -38,6 +38,6 @@
             }
         })();
     </script>
-    <script src="/js/mcal/{{ polyfills }}" type="module"></script>
-    <script src="/js/mcal/{{ main }}" type="module"></script>
+    <script src="/js/mcal/{{ polyfills }}?v={{ mcal_version }}" type="module"></script>
+    <script src="/js/mcal/{{ main }}?v={{ mcal_version }}" type="module"></script>
 </mcal>

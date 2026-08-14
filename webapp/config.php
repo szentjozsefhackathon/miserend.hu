@@ -49,7 +49,14 @@ $environment['default'] = [
         'debugger' => 'eleklaszlosj@gmail.com'
     ],
     'debug' => 0,
-    'error_reporting' => false
+    // #725: eddig `false` volt, amiből a load.php `error_reporting(0)`-t csinált — és az
+    // nem csak a kijelzést, a NAPLÓZÁST is elnémítja. Élesben (a `production` ág ezt az
+    // alapértéket örökli) ezért egyetlen fatal errorról sem maradt nyom: a `docker logs`
+    // csak az access-log 500-as sorát mutatta, hibaüzenetet nem.
+    //
+    // A látogató ettől semmit nem lát: a php.ini-ben `display_errors = Off`. A warning és
+    // notice szint szándékosan marad kint, hogy a napló ne fulladjon zajba.
+    'error_reporting' => E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR
 ];
 
 $environment['testing'] = [

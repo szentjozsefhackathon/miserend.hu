@@ -154,6 +154,9 @@
                  [ngModelOptions]="{updateOn: 'blur'}">
           <mat-timepicker #timepicker/>
           <mat-timepicker-toggle [for]="timepicker" matSuffix/>
+          @if (startTimeError) {
+            <div><mat-error class="input-error">{{ 'ERRORS.REQUIRED_START_TIME' | translate }}</mat-error></div>
+          }
         </mat-form-field>
       </div>
 

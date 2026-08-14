@@ -228,6 +228,7 @@
     "STATE_PENDING_INFO": "Ez a javaslat függőben van - elfogadhatod vagy elutasíthatod.",
     "STATE_ACCEPTED_INFO": "Ez a javaslat már elfogadásra került.",
     "STATE_REJECTED_INFO": "Ez a javaslat már elutasításra került.",
+    "HANDLED_BY": "Kezelte",
     "SENDER": {
       "NAME": "Javaslattevő neve",
       "EMAIL": "Javaslattevő email címe",
@@ -277,7 +278,8 @@
     "REQUIRED_DAY": "Meg kell adni, hogy melyik napon van.",
     "REQUIRED_DAYS": "Meg kell adni, hogy melyik napo(ko)n van.",
     "REQUIRED_EASTER_DAY": "Meg kell adni, hogy mely napon van a liturgia.",
-    "REQUIRED_CHRISTMAS_DAY": "Meg kell adni, hogy mely napon van a liturgia."
+    "REQUIRED_CHRISTMAS_DAY": "Meg kell adni, hogy mely napon van a liturgia.",
+    "REQUIRED_START_TIME": "Meg kell adni a liturgia időpontját."
   },
 
 

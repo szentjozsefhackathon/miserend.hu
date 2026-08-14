@@ -110,7 +110,14 @@ class Search extends Api {
         }
 
 		$results = $search->getResults($offset, $limit, true);
-            
+
+        // #724: a mobilalkalmazásból érkező keresések ugyanúgy számítanak — a jegy
+        // kifejezetten az API használatára is rákérdezett.
+        if (!$search->searchFailed) {
+            \Stats::countSearch($this->input['q'] ?? null, (int) $search->total);
+        }
+
+
         $this->return = [
             'offset' => $offset,
             'limit' => $limit,

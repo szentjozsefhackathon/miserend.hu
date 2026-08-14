@@ -208,6 +208,16 @@ De szinte biztos, hogy a végén valami extra masszírozás kell.
 docker exec -it [mysql|mailcatcher|miserend] bash
 ```
 
+### 🪵 Logok
+
+Nincs külön logfájl, minden a `docker logs`-ban van. Az alkalmazás hibái `[miserend]` előtaggal mennek ki, stack trace-szel:
+
+```sh
+docker logs miserend-miserend-1 2>&1 | grep '\[miserend\]'
+```
+
+Részletek, éles példák és további szűrők: [docs/logok.md](docs/logok.md).
+
 ### 📦 Composer használata (interaktív módban):
 
 ```sh

@@ -397,6 +397,15 @@ class CalMass extends CalModel
             $massesFromImport = [];
 
             foreach ($masses as $mass) {
+                // Körönként nullázni kell, különben átszivárog az előző miséről.
+                // A period nélküli, importált sorozatok ága ugyanis NEM állítja be
+                // ($massesFromImport-ba teszi a misét, és külön, lentebb dolgozza fel) —
+                // a lenti `foreach ($periods ...)` viszont utána is lefut. Így az ilyen
+                // mise az ELŐZŐ mise periódusaival is legenerálódott, rossz dátumokkal.
+                // (Az első ilyennél `$periods` egyszerűen null volt: "foreach() argument
+                // must be of type array|object, null given".)
+                $periods = collect([]);
+
                 /*
                 $this->logDebug("Mise feldolgozás indul", [
                     'mass_id' => $mass->id,
@@ -646,25 +655,40 @@ class CalMass extends CalModel
             foreach($massesFromImport as $mass) {
 echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year ".$year."<br>\n";
 
-                $endsBeforeGlobalEnd = false;
+                // A ciklusváltozókat KÖRÖNKÉNT nullázni kell. Korábban az `if` blokkokon
+                // belül keletkeztek, tehát az előző mise értéke átszivárgott a következőre:
+                // egy `until` nélküli szabály némán az előző mise záródátumát kapta meg,
+                // az első ilyennél pedig — amikor még semmi nem volt beállítva — a
+                // `$until->toIso8601String()` nullra futott:
+                //   "Call to a member function toIso8601String() on null"
+                // Élesben ez két darabot buktatott az újraindexelésből (~200 templom).
+                $until = null;
+                $dtstart = null;
+
+                // A nevek korábban félrevezetők voltak: itt az a kérdés, hogy a szabály
+                // teljes egészében kívül esik-e az indexelt éven.
+                $endsBeforeWindow = false;
                 if(isset($mass->rrule['until'])) {
                     $until = Carbon::parse($mass->rrule['until']);
                     if($until->lt($globalStart)) {
-                        $endsBeforeGlobalEnd = true;
+                        $endsBeforeWindow = true;
                     }
                 }
-                $startsBeforeGlobalStart = false;
+                $startsAfterWindow = false;
                 if(isset($mass->rrule['dtstart'])) {
                     $dtstart = Carbon::parse($mass->rrule['dtstart']);
                     if($dtstart->gt($globalEnd)) {
-                        $startsBeforeGlobalStart = true;
+                        $startsAfterWindow = true;
                     }
                 }
 
-                if(!$endsBeforeGlobalEnd and !$startsBeforeGlobalStart) {
-                    
+                if(!$endsBeforeWindow and !$startsAfterWindow) {
+
                 $newRrule = $mass->rrule;  // Az aktuális tömb lekérése
-                $newRrule['until'] = $until->toIso8601String();  // Módosítás
+                // Nyitott végű szabálynál (nincs UNTIL — pl. "minden vasárnap", ami a
+                // Google-naptárakban a leggyakoribb) az indexelt év vége a záródátum.
+                // Az évet úgyis évenként külön generáljuk, tehát ez nem vág le semmit.
+                $newRrule['until'] = ($until ?? $globalEnd)->toIso8601String();
                 $mass->rrule = $newRrule;  // Explicit reasszignálás az Eloquentnek
                
                 $newMassPeriod = [
@@ -690,6 +714,77 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
         }
 
         return $massPeriods;
+    }
+
+    /**
+     * Értelmezhető-e a mise kezdete? Tiszta függvény (se DB, se HTTP), hogy tesztelhető
+     * legyen, és hogy a mentés meg az import ugyanazt a határt húzza meg.
+     *
+     * A kiváltó eset: a naptárszerkesztőből `2026-01-01TNaN:NaN:NaN` érkezett — üresen
+     * hagyott időpontból —, és a mentés ellenőrzés nélkül kiírta. Az ilyen mise némán
+     * eltűnik: a generátor kihagyja ("Invalid RRULE dtstart, skipping mass ID …"), tehát
+     * a keresőbe soha nem kerül be, a szerkesztőben viszont ott van.
+     *
+     * @param array $massData snake_case kulcsokkal, ahogy a mentés kapja
+     * @return string|null a hiba oka, vagy null ha rendben van
+     */
+    public static function invalidDateTimeReason(array $massData): ?string {
+        $start = $massData['start_date'] ?? null;
+        if ($start !== null && $start !== '' && !self::isParsableDateTime($start)) {
+            return 'A kezdés nem értelmezhető: ' . $start;
+        }
+
+        $rrule = $massData['rrule'] ?? null;
+        if (is_string($rrule) && $rrule !== '') {
+            $rrule = json_decode($rrule, true);
+        }
+        if (!is_array($rrule)) {
+            return null;
+        }
+
+        foreach (['dtstart', 'until'] as $mezo) {
+            $ertek = $rrule[$mezo] ?? null;
+            if ($ertek !== null && $ertek !== '' && !self::isParsableDateTime($ertek)) {
+                return 'Az ismétlődés ' . $mezo . ' értéke nem értelmezhető: ' . $ertek;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A Carbon a "2026-01-01TNaN:NaN:NaN"-t is elfogadná (a NaN-t szemétként eldobva,
+     * éjfélre kerekítve), ezért nem elég ráhagyni: a nyilvánvalóan hibás alakot külön
+     * kizárjuk. Így a hibás időpont a mentésnél derül ki, nem hónapokkal később a
+     * keresőben.
+     */
+    private static function isParsableDateTime($value): bool {
+        if ($value instanceof \DateTimeInterface) {
+            return true;
+        }
+        if (!is_string($value)) {
+            return false;
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return false;
+        }
+
+        // Csak a ténylegesen használt alakokat fogadjuk el. Szabad formátumnál a Carbon
+        // nagyvonalú: a "2026-01-01TNaN:NaN:NaN"-ból is éjfelet csinál, tehát önmagában
+        // ráhagyva a hibás időpont csendben átcsúszna.
+        $alak = preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1
+            || preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+\-]\d{2}:?\d{2})?$/', $value) === 1;
+        if (!$alak) {
+            return false;
+        }
+
+        try {
+            Carbon::parse($value);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     static private function applyCollisionAvoidance(array $masses): array

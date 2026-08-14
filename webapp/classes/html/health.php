@@ -98,29 +98,7 @@ class Health extends Html {
 		$this->infos[] = ["sqlite files",implode("<br/>",$results)];
 		$results = [] ;
 
-		// Health of nearby log
-		try {
-			$loginfo = \Api\NearBy::getLogFileInfo();
-			if (!is_array($loginfo)) {
-				$this->infos[] = ['nearby.log', '<span class="text-warning">Nincs információ</span>'];
-			} else {
-				if (isset($loginfo['file_size'])) {
-					$sizeKb = round($loginfo['file_size'] / 1024, 2);
-					$this->infos[] = ['nearby.log mérete', $sizeKb . ' KB'];
-				} else {
-					$this->infos[] = ['nearby.log mérete', '<span class="text-warning">ismeretlen</span>'];
-				}
-
-				if (isset($loginfo['line_count'])) {
-					$this->infos[] = ['nearby.log hossza', $loginfo['line_count'] . ' sor'];
-				} else {
-					$this->infos[] = ['nearby.log hossza', '<span class="text-warning">ismeretlen</span>'];
-				}
-			}
-		} catch (\Exception $e) {
-			$this->infos[] = ['nearby.log', '<span class="text-danger">Hiba: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES) . '</span>'];
-		}
-		
+		// #724: a nearby.log méretét/hosszát mutató blokk megszűnt a naplóval együtt.
 
 		// Health of CronJobs
 		$this->cronjobs = \Eloquent\Cron::orderBy('deadline_at','DESC')->get()->toArray();
