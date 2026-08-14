@@ -185,6 +185,48 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
         return $created;
     }
 
+    /**
+     * #724: a registryből KIVETT munkák sorát is el kell takarítani.
+     *
+     * Az init() csak felvesz, sosem töröl. Ha egy függvény megszűnik (mint a
+     * `\Api\NearBy::cleanOldLogs()` a nearby.log megszüntetésekor), az éles adatbázisban
+     * ottmarad a sora, a futtató pedig minden esedékességnél elhasal rajta:
+     * "Function \Api\NearBy->cleanOldLogs() does not exists." — naponta, örökre.
+     *
+     * Ez a #638 elvének a másik fele: ha a registry az EGYETLEN forrás, akkor amit onnan
+     * kivettünk, annak az adatbázisban sincs helye.
+     *
+     * Üres vagy olvashatatlan registrynél szándékosan nem törlünk semmit: egy hiányzó
+     * fájl miatt nem szabad az összes ütemezést elveszíteni.
+     *
+     * @return string[] a most eltávolított munkák leírása
+     */
+    public static function pruneRemoved(): array {
+        $wanted = [];
+        foreach (self::registry() as $job) {
+            if (empty($job['class']) || empty($job['function'])) {
+                continue;
+            }
+            // A régebbi sorok kettőzött backslash-sel is bekerülhettek — mindkettő számít.
+            foreach (array_unique([$job['class'], str_replace('\\', '\\\\', $job['class'])]) as $class) {
+                $wanted[$class . '::' . $job['function']] = true;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $removed = [];
+        foreach (self::all() as $cron) {
+            if (isset($wanted[$cron->class . '::' . $cron->function])) {
+                continue;
+            }
+            $removed[] = $cron->class . '->' . $cron->function . '()';
+            $cron->delete();
+        }
+        return $removed;
+    }
+
 
     function run() {
         $className = $this->class;

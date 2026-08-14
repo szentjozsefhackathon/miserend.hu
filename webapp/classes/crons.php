@@ -12,7 +12,7 @@ class Crons {
 	 * megőrzése, a régebbi statisztika-sorokat naponta töröljük. A `date` oszlopra
 	 * szűrünk (DATE típus). Cron-ként a crons.sql-ben 41-es id-vel regisztrálva.
 	 *
-	 * (A #351 nearby.log része már megoldott: \Api\NearBy::cleanOldLogs cron 37.)
+	 * (A #351 nearby.log része tárgytalan: a #724-gyel maga a napló szűnt meg.)
 	 */
 	public static function cleanExternalApiStats(): void {
 		$cutoff = date('Y-m-d', strtotime('-30 days'));

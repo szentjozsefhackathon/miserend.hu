@@ -117,76 +117,16 @@ class NearBy extends Api {
 				
         //$this->return['lat'] = $this->input['lat'];
 
-		$hasNearbyChurch = false;
-		foreach ($this->return['templomok'] as $templom) {
-			if ($templom['tavolsag'] < 50) {
-				$hasNearbyChurch = true;
-				break;
-			}
-		}
-
-		$hasMassRightNow = false;
-		foreach ($this->return['templomok'] as $templom) {
-			foreach ($templom['misek'] as $mise) {
-				if ($templom['tavolsag'] < 100 && strtotime($mise['idopont']) < time() + 80 * 60 && strtotime($mise['idopont']) > time() - 15 * 60) {
-					$hasMassRightNow = true;
-					break 2;
-				}
-			}
-		}
-
-		$userAgent = isset($_SERVER['HTTP_USER_AGENT']) ? str_replace(',', ';', $_SERVER['HTTP_USER_AGENT']) : 'Unknown';
-
-		$logFile = '../nearby.log';
-		if (file_exists($logFile)) {			
-			file_put_contents($logFile, date('Y-m-d H:i:s') . "," . $this->input['lat'] . "," . $this->input['lon'] . "," . ($hasNearbyChurch ? 'true' : 'false') . "," . ($hasMassRightNow ? 'true' : 'false') . "," . $userAgent . PHP_EOL, FILE_APPEND);
-		}
-				
+		// #724: itt egy `nearby.log` fájlba írtuk a hívó KOORDINÁTÁJÁT, User-Agentjét és
+		// a pontos időt, egy hónapos megőrzéssel, és a /stat hőtérképen meg is jelenítette.
+		// Ez szembement a saját adatvédelmi tájékoztatónkkal, ami azt ígéri, hogy a
+		// helyadatot „semmilyen formában nem rögzítjük — sem azonosítva, sem anonim módon".
+		//
+		// A helyadat + időpont + User-Agent együtt akkor is azonosíthat valakit, ha nevet
+		// nem tárolunk mellé: az otthona és a plébániája közti napi mozgásból egy ember
+		// kirajzolódik. Ezért nem finomítottuk, hanem megszüntettük.
+		//
+		// A „hányan használják" kérdésre a \Stats válaszol, helyadat nélkül.
         return;
     }
-    
-	public static function cleanOldLogs() {
-		$logFile = '../nearby.log';
-		if (!file_exists($logFile)) {
-			return;
-		}
-
-		$lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-		if (empty($lines)) {
-			return;
-		}
-
-		$oneMonthAgo = strtotime('-1 month');
-		$firstLineTimestamp = strtotime(explode(',', $lines[0])[0]);
-
-		if ($firstLineTimestamp < $oneMonthAgo) {
-			$newLines = array_filter($lines, function($line) use ($oneMonthAgo) {
-				$timestamp = strtotime(explode(',', $line)[0]);
-				return $timestamp >= $oneMonthAgo;
-			});
-
-			file_put_contents($logFile, implode(PHP_EOL, $newLines) . PHP_EOL);
-		}
-	}
-  
-	static function getLogFileInfo() {
-		$logFile = '../nearby.log';
-		if (!file_exists($logFile)) {
-
-			throw new \Exception("Log file '".$logFile."' does not exist.");
-
-			return [
-				'line_count' => 'N/A',
-				'file_size' => 'file does not exist'
-			];
-		}
-
-		$lineCount = count(file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES));
-		$fileSize = filesize($logFile);
-
-		return [
-			'line_count' => $lineCount,
-			'file_size' => $fileSize
-		];
-	}
 }

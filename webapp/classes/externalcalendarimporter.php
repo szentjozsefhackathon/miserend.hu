@@ -628,9 +628,43 @@ class ExternalCalendarImporter {
     }
 
     /**
-     * Parse iCalendar datetime string with support for TZID parameter
+     * Szétválasztja egy iCalendar tulajdonság paramétereit az értékétől (RFC 5545 3.2).
+     *
+     * A hívók a `DTSTART`/`DTEND`/`EXDATE` sorok jobb oldalát adják át, ami bármennyi
+     * paramétert hordozhat, tetszőleges sorrendben:
+     *   TZID=Europe/Budapest:20221201T060000
+     *   VALUE=DATE:20260326
+     *   VALUE=DATE;TZID=Europe/Budapest:20260326
+     * A parser eddig csak a TZID-t ismerte fel, minden más paramétert az értékbe
+     * számolt bele — egyetlen egész napos esemény (`VALUE=DATE`) az egész naptár
+     * importját megbuktatta.
+     *
+     * Csak akkor eszik paramétert, ha a sor tényleg `NEV=` alakkal kezdődik, így a
+     * paraméter nélküli értékek (`20221201T060000`, `2026-12-23T23:59:00`) érintetlenek
+     * maradnak — utóbbiban a `:` az időhöz tartozik, nem elválasztó.
+     *
+     * @return array{0: array<string,string>, 1: string} [paraméterek nagybetűs kulccsal, érték]
+     */
+    private static function splitIcsParameters($raw) {
+        $params = [];
+        $rest = trim((string) $raw);
+
+        while (preg_match('/^([A-Za-z0-9-]+)=("[^"]*"|[^";:]*)([;:])(.*)$/s', $rest, $m)) {
+            $params[strtoupper($m[1])] = trim($m[2], '"');
+            $rest = $m[4];
+            if ($m[3] === ':') {
+                break;
+            }
+        }
+
+        return [$params, trim($rest)];
+    }
+
+    /**
+     * Parse iCalendar datetime string with support for property parameters
      * Handles formats like:
      * - TZID=Europe/Budapest:20221201T060000
+     * - VALUE=DATE:20260326
      * - 20221201T060000
      * - 20221201T060000Z
      * - YYYY-MM-DDTHH:MM:SS
@@ -638,17 +672,11 @@ class ExternalCalendarImporter {
      * Returns ISO 8601 datetime string in UTC (Y-m-d\TH:i:s format)
      */
     private static function parseIcsDateTime($dateStr) {
-        $dateStr = trim($dateStr);        
+        $dateStr = trim($dateStr);
 
-        $tzid = null;
-        $dtString = $dateStr;
-        
-        // Extract TZID parameter if present (e.g., TZID=Europe/Budapest:20221201T060000)
-        if (preg_match('/^TZID=([^:;]+):(.+)$/', $dateStr, $matches)) {
-            $tzid = $matches[1];
-            $dtString = $matches[2];
-        }
-        
+        [$params, $dtString] = self::splitIcsParameters($dateStr);
+        $tzid = $params['TZID'] ?? null;
+
         // Handle date-only format (YYYYMMDD)
         if (strlen($dtString) == 8 && ctype_digit($dtString)) {
             $year = substr($dtString, 0, 4);

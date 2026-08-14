@@ -29,57 +29,12 @@
 
 {% block content %}
 
-    {% if user.isadmin %}
-    
-    <h3>Helyadatok</h3>
-    <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
-    
-    <h5>Minden helyadat</h5>
-    <p>Az API/NearBy az elmúlt időben {{ stats.nearbylog|length }} db helyadatot gyűjtött. </p>
-    <div id="map"></div>    
-    <script>
+    {# #724: itt két helyadat-hőtérkép állt, a `nearby.log`-ból. Az a napló a hívók
+       koordinátáját, User-Agentjét és pontos idejét tárolta egy hónapig — szemben a saját
+       adatvédelmi tájékoztatónkkal, ami azt ígéri, hogy a helyadatot „semmilyen formában
+       nem rögzítjük". A naplózás megszűnt, vele a térképek is. #}
 
-        var map = L.map('map').setView([47.1625, 19.5033], 7);
-        // #376: CARTO Voyager (a direkt tile.openstreetmap.org produkcióra tiltott).
-        var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            subdomains: 'abcd', maxZoom: 19,
-            attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        }).addTo(map);
-
-        var nearbyLogPoints = {{ stats.nearbylog|json_encode()|raw }};
-        var heat = L.heatLayer(nearbyLogPoints, {
-                radius: 50,
-                blur: 15
-            
-                }).addTo(map);
-
-    </script>
-
-    <h5>Mise alatt és után</h5>
-    <p>Az API/MassRightNow az elmúlt időben {{ stats.massrightnowlog|length }} db helyadatot gyűjtött. </p>
-    <div id="map-massrightnow"></div>    
-    <script>
-
-        var mapMassRightNow = L.map('map-massrightnow').setView([47.1625, 19.5033], 7);
-        // #376: CARTO Voyager (a direkt tile.openstreetmap.org produkcióra tiltott).
-        var tilesMassRightNow = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            subdomains: 'abcd', maxZoom: 19,
-            attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        }).addTo(mapMassRightNow);
-
-        var massRightNowLogPoints = {{ stats.massrightnowlog|json_encode()|raw }};
-        var heatMassRightNow = L.heatLayer(massRightNowLogPoints, {
-            radius: 20,
-            maxZoom: 0.15,
-            blur: 20,
-            max: 10.0
-            }).addTo(mapMassRightNow);
-
-        </script>
-    {% endif %}
-
-
-    <h3>Templom statisztikák</h3>    
+    <h3>Templom statisztikák</h3>
     {{ stats.chart_templomaink.html|raw }}
 	{{ stats.chartN.html|raw }}
 	

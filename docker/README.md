@@ -17,6 +17,19 @@ Ez a fő Compose fájl, amely a legfontosabb szolgáltatásokat írja le:
 
 A szolgáltatások egy belső hálózaton kommunikálnak egymással. Ez a fájl az alapértelmezett, ha a teljes rendszert szeretnéd futtatni (pl. helyi teszteléshez vagy éles környezethez).
 
+### A `miserend` service tartalma futásidőben (#721, #720)
+
+Ez a fájl **nem** mountolja fölé a hoszt `webapp` könyvtárát: amit a konténer kiszolgál, az az image tartalma. Így a Dockerfile-ban lefutó `ng build --configuration=${NG_CONFIG}` és a `calendar_deploy.py` eredménye tényleg kimegy, és a `composer install` / `npm ci` friss függőségei is.
+
+Korábban ez nem így volt, és két hibát okozott:
+
+- a naptár minden környezetben a **beversenyzett, régi** `webapp/js/mcal/main-*.js`-t szolgálta ki, hiába épült friss az image-ben (#721);
+- a `vendor_data` / `node_modules_data` named volume csak az **első** létrehozáskor kapja meg az image tartalmát, a production deploy pedig `up -d`-t hív `down -v` nélkül — így új függőség (pl. a leaflet) sosem jutott ki (#720).
+
+Ami marad a hoszton: **`webapp/kepek`** (a feltöltött képek futásidőben keletkeznek, és a `.dockerignore` ki is hagyja őket az image-ből), valamint a `tmp` és `sqlite` named volume.
+
+**Következmény üzemeltetőnek:** a szerveren a `webapp/` alatti kézi fájlmódosítás többé nem érvényesül. A beállítás az `.env`-ből jön — a `config.php` minden értéke `env()`-en át olvas. Ha valamit tényleg felül kell írni, az `.env` a helye, nem a fájl.
+
 ## compose.kibana.yml – Kibana (opcionális)
 Ez a fájl egy opcionális Kibana szolgáltatást ad a stack-hez:
 
