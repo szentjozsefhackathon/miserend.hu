@@ -58,3 +58,16 @@ composer.phar
 
 # Test results
 /test-results/
+
+# #750: az Angular-naptár fordított kimenete. Ezeket a `calendar_deploy.py`
+# állítja elő, és a Docker image BUILD közben maga futtatja le
+# (docker/miserend/Dockerfile) — az éles kiszolgálás tehát sosem a
+# verziókövetett példányt használta. Commitolva viszont minden branch más
+# tartalmat kapott (tartalomhash-elt fájlnév), és emiatt MINDEN nyitott PR
+# ütközött rajtuk. Forrás: calendar/src és calendar/public.
+/webapp/js/mcal/
+/webapp/css/styles.css
+/webapp/css/styles-*.css
+/webapp/i18n/
+/webapp/cal_images/
+/webapp/fonts/

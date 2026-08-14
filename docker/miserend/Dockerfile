@@ -45,9 +45,22 @@ COPY --from=calendar-build /calendar/dist/mcal/browser \
     /miserend/calendar/dist/mcal/browser
 
 # Run Angular → PHP deploy script
+#
+# #750: a fordított naptárcsomag már NINCS verziókövetve (a tartalomhash-elt
+# fájlnév minden branchen más lett, és emiatt minden nyitott PR ütközött rajta).
+# Élesben ez semmit nem változtat: a csomagot eddig is ez a lépés állította elő.
+# Fejlesztésben viszont a `../webapp:/miserend/webapp` bind mount eltakarja az
+# image tartalmát a hoszt (friss klón után üres) könyvtárával — ezért félreteszünk
+# egy érintetlen példányt, amit az entrypoint vissza tud másolni.
 RUN python3 docker/miserend/calendar_deploy.py \
     /miserend/calendar/dist/mcal/browser /miserend/webapp \
- && rm -rf calendar/dist
+ && rm -rf calendar/dist \
+ && mkdir -p /opt/mcal-dist/js /opt/mcal-dist/css \
+ && cp -a /miserend/webapp/js/mcal /opt/mcal-dist/js/ \
+ && cp -a /miserend/webapp/css/styles.css /opt/mcal-dist/css/ \
+ && cp -a /miserend/webapp/i18n /opt/mcal-dist/ \
+ && cp -a /miserend/webapp/cal_images /opt/mcal-dist/ \
+ && if [ -d /miserend/webapp/fonts ]; then cp -a /miserend/webapp/fonts /opt/mcal-dist/; fi
 
 # Permissions
 RUN chown -R www-data:www-data webapp/fajlok
