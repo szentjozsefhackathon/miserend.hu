@@ -123,6 +123,16 @@ class Cron extends Html {
             // némán annyiban maradt — se hibaüzenet, se success. Így akadt el hónapokra
             // a \User::deleteNonActivatedUsers() is.
             $this->error = true;
+
+            /*
+             * A hiba eddig CSAK a kimenetre ment. A konténerbeli cron-loop ezt a
+             * `docker logs`-ba fűzi, a hosztról ütemezett futásnál viszont a kimenet
+             * jellemzően a semmibe megy — ott a bukás nyomtalanul eltűnt. A /health
+             * annyit mutatott, hogy „soha nem futott le sikeresen", az OKÁT viszont
+             * sehol nem lehetett megnézni. Ezért a szerver-naplóba is kiírjuk.
+             */
+            logThrowable('Cron ' . $job->class . '->' . $job->function . '()', $exception);
+
             echo "<strong>" . $job->class . "->" . $job->function . "() futtatása sikertelen.</strong>\n";
             $this->printExceptionVerbose($exception);
             // A következő próbálkozás a szokásos ritmus szerint jöjjön. Enélkül a bukott
