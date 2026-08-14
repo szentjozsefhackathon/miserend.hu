@@ -464,11 +464,35 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			'created_at' => $elastic->getIndexCreationDate('mass_index'),
 			'indexed_at' => $meta['full_reindex_at'] ?? null,
 			'max_start_date' => $elastic->maxMassStartDate(),
+			// A legutóbbi futásban hiba miatt kihagyott templomok.
+			'skipped_churches' => array_values(array_map('intval', (array) ($meta['skipped_churches'] ?? []))),
 		];
 	}
 
 	/** #627: az index megjelöli magát, hogy mikor épült fel utoljára teljesen. */
-	private static function markFullReindex(array $years, callable $log): void {
+	/**
+	 * Csak a kihagyott templomok listáját írjuk felül — a vízjel DÁTUMÁT nem.
+	 *
+	 * A pótlás nem teljes újraindexelés: ha a dátumot is előretolnánk, egy közben
+	 * megváltozott miserend újragenerálása maradna el.
+	 *
+	 * @param int[] $skippedChurchIds
+	 */
+	private static function rememberSkippedChurches(array $skippedChurchIds, callable $log): void {
+		try {
+			$elastic = new \ExternalApi\ElasticsearchApi();
+			$meta = $elastic->getIndexMeta('mass_index');
+			$meta['skipped_churches'] = array_values(array_map('intval', $skippedChurchIds));
+			$elastic->setIndexMeta('mass_index', $meta);
+		} catch (\Throwable $e) {
+			$log("A kihagyott templomok listáját nem sikerült frissíteni (" . $e->getMessage() . ").");
+		}
+	}
+
+	/**
+	 * @param int[] $skippedChurchIds templomok, amiket hiba miatt kihagytunk
+	 */
+	private static function markFullReindex(array $years, callable $log, array $skippedChurchIds = []): void {
 		try {
 			$elastic = new \ExternalApi\ElasticsearchApi();
 			$elastic->setIndexMeta('mass_index', [
@@ -477,6 +501,10 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 				// A "tényleg nincs idei miséje" lista szándékosan NEM öröklődik át: friss
 				// teljes indexépítés után újra ellenőrizzük, hátha közben lett miséjük.
 				'churches_without_masses' => [],
+				// A hiba miatt kihagyott templomok. A vízjel miatt a következő futás
+				// egyébként átugraná az egészet — ezt a listát viszont MINDIG újrapróbálja,
+				// tehát a kihagyott templomok nem vesznek el véglegesen.
+				'skipped_churches' => array_values(array_map('intval', $skippedChurchIds)),
 			]);
 		} catch (\Throwable $e) {
 			// A vízjel hiánya csak annyit jelent, hogy legközelebb újra lefutunk.
@@ -634,7 +662,7 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 				$indexState = self::massIndexState();
 			} catch (\Throwable $e) {
 				// ES-hiba az index-ellenőrzésnél: a biztonság kedvéért fussunk le teljesen.
-				$indexState = ['empty' => true, 'created_at' => null, 'indexed_at' => null, 'max_start_date' => null];
+				$indexState = ['empty' => true, 'created_at' => null, 'indexed_at' => null, 'max_start_date' => null, 'skipped_churches' => []];
 				$log("#306: index-ellenőrzés hibázott (" . $e->getMessage() . ") — biztonságból teljes futás.");
 			}
 			$cron = \Eloquent\Cron::where('class', '\\ExternalApi\\ElasticsearchApi')
@@ -654,7 +682,36 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 				$indexState['created_at']
 			) || !$coversYears;
 
+			$skipped = $indexState['skipped_churches'] ?? [];
+
 			if (!$needsReindex) {
+				/*
+				 * A vízjel miatt itt egyébként megállnánk. A LEGUTÓBB KIHAGYOTT templomokat
+				 * viszont mindig újrapróbáljuk: azok hiányoznak az indexből, és mivel a
+				 * saját adatuk nem változott, semmi más nem hozná vissza őket — csendben
+				 * kimaradnának a keresésből örökre.
+				 */
+				if (!empty($skipped)) {
+					$log("A legutóbb kihagyott " . count($skipped) . " templomot újrapróbálom: "
+						. implode(', ', array_slice($skipped, 0, 20))
+						. (count($skipped) > 20 ? ', …' : ''));
+					$maradek = self::reindexChunks(
+						$skipped,
+						$chunksize = 100,
+						function (array $group) use ($years, $logger): void {
+							static::updateMasses($years, $group, $logger);
+						},
+						$log
+					);
+					// A vízjel dátumát NEM frissítjük — csak a kihagyottak listáját, hogy a
+					// sikeresen pótoltak kikerüljenek belőle.
+					self::rememberSkippedChurches(array_keys($maradek), $log);
+					if (!empty($maradek)) {
+						$log(count($maradek) . " templom továbbra sem indexelhető.");
+					}
+					return;
+				}
+
 				$log("#306: a misék és a generatedPeriods nem változtak a legutóbbi indexépítés óta ("
 					. $lastSuccess . "), az index lefedi a(z) " . implode(', ', $years)
 					. " éveket és nem üres — teljes újragenerálás kihagyva.");
@@ -678,27 +735,39 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			// pedig sosem került sorra. Mostantól a hibás darab kimarad, a többi lefut,
 			// és a végén dobunk — így a cron továbbra is hibásnak látszik, de nem
 			// hagyunk magunk után nagy lyukat az indexben.
-			$failedChunks = [];
-			foreach (array_chunk($tids,  $chunksize) as $index => $chunk) {
-				try {
-					static::updateMasses($years, $chunk, $logger);
-				} catch (\Throwable $e) {
-					$failedChunks[] = ($index + 1) . '. darab (templomok: '
-						. implode(', ', array_slice($chunk, 0, 5))
-						. (count($chunk) > 5 ? ', …' : '') . '): ' . $e->getMessage();
-					$log("Hibás darab kihagyva: " . end($failedChunks));
+			$failedChurches = self::reindexChunks(
+				$tids,
+				$chunksize,
+				function (array $group) use ($years, $logger): void {
+					static::updateMasses($years, $group, $logger);
+				},
+				$log
+			);
+
+			/*
+			 * A futás VÉGIGMEGY, a hibás templomot kihagyja, és a végén összesítve
+			 * kiírja őket.
+			 *
+			 * Eddig egyetlen hibás templom kivételt dobott, a vízjel tehát nem íródott ki,
+			 * és a következő kör elölről kezdte mind az 51 darabot — ugyanazon a templomon
+			 * megint elbukva. A cron így soha nem lett sikeres, közben viszont folyamatosan
+			 * újraindexelte az egészet.
+			 *
+			 * A kihagyott templomok NEM vesznek el: a vízjelbe kerülnek, és a következő
+			 * futás mindig újrapróbálja őket, akkor is, ha egyébként nem lenne mit tenni.
+			 */
+			if (!empty($failedChurches)) {
+				$reszletek = [];
+				foreach ($failedChurches as $tid => $uzenet) {
+					$reszletek[] = 'templom #' . $tid . ': ' . $uzenet;
 				}
+				$osszegzes = count($failedChurches) . " templomot kihagytam hiba miatt:\n"
+					. implode("\n", $reszletek);
+				$log($osszegzes);
+				error_log('[miserend] updateMasses: ' . $osszegzes);
 			}
 
-			if (!empty($failedChunks)) {
-				// Vízjelet ilyenkor SZÁNDÉKOSAN nem írunk: az index hiányos, a következő
-				// futásnak újra neki kell futnia.
-				throw new \Exception(
-					count($failedChunks) . " darab újraindexelése hibázott:\n" . implode("\n", $failedChunks)
-				);
-			}
-
-			if ($isFullRun) self::markFullReindex($years, $log);
+			if ($isFullRun) self::markFullReindex($years, $log, array_keys($failedChurches));
 			return;
 		}
 
@@ -913,6 +982,52 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		}
 
 		return ['indexed' => $indexed, 'missing' => max(0, $indexed - $withLocation)];
+	}
+
+	/**
+	 * Templomok újraindexelése darabokban, a hibás templom KIEMELÉSÉVEL.
+	 *
+	 * Eddig a 100-as darab egyben veszett el, és a hibaüzenet is csak az első öt
+	 * templom azonosítóját mondta — abból nem derült ki, MELYIK templom a hibás, a
+	 * másik 99 pedig kimaradt az indexből. Mivel a teljes futás egyetlen hibától is
+	 * kivételt dob, a cron így soha nem lett sikeres, és minden körben elölről
+	 * kezdte az egészet.
+	 *
+	 * Hibánál a darabot templomonként újrafuttatjuk: a hibás templom pontosan
+	 * megnevezhető, a többi bekerül. Ez csak hiba esetén fut le, tehát az ép futást
+	 * nem lassítja.
+	 *
+	 * A darabolást szándékosan itt, I/O nélkül tartjuk — így tesztelhető.
+	 *
+	 * @param  int[]    $tids
+	 * @param  callable $runner  fn(int[] $tids): void — a tényleges indexelés
+	 * @param  callable $log
+	 * @return array<int,string> templom-id => hibaüzenet
+	 */
+	static function reindexChunks(array $tids, int $chunksize, callable $runner, callable $log): array
+	{
+		$failedChurches = [];
+
+		foreach (array_chunk($tids, $chunksize) as $index => $chunk) {
+			try {
+				$runner($chunk);
+				continue;
+			} catch (\Throwable $e) {
+				$log("A(z) " . ($index + 1) . ". darab hibázott (" . $e->getMessage()
+					. ") — templomonként újrapróbálom.");
+			}
+
+			foreach ($chunk as $tid) {
+				try {
+					$runner([$tid]);
+				} catch (\Throwable $inner) {
+					$failedChurches[$tid] = $inner->getMessage();
+					$log("Templom #" . $tid . " újraindexelése hibázott: " . $inner->getMessage());
+				}
+			}
+		}
+
+		return $failedChurches;
 	}
 
 	function churchIdsWithMassesInPeriod($startDate, $endDate) {
