@@ -15,7 +15,16 @@
         az egészet beküldheted javaslatcsomagként a karbantartóknak – és nem kell sem bejelentkezésed sem a szöveges forma.
     </div>
 
-    <form method=post action="/remark/add/{{ church.id }}">
+    {# #755: a türelmetlen második-harmadik kattintás miatt ugyanaz az észrevétel
+       többször futott be. A kiszolgáló is szűri (Remark::findRecentDuplicate), ez
+       csak azért van itt, hogy a beküldő LÁSSA, hogy elindult — enélkül nem tudja,
+       történt-e valami, és megint nyom. JS nélküli böngészőben a form változatlanul
+       működik, csak ez a visszajelzés marad el. #}
+    <form method=post action="/remark/add/{{ church.id }}" onsubmit="
+        var b = this.querySelector('button[type=submit]');
+        if (b) { b.disabled = true; b.textContent = 'Küldés…'; }
+        return true;
+    ">
         <input type=hidden name=tid value='{{ church.id }}'>
         {% if not user.loggedin %}
             <span class=alap>Nevem: </span>
