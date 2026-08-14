@@ -58,20 +58,15 @@ $(document).ready(function() {
 
  $( ".emailmenu" ).menu();
 
-        $('#tkereses').on('submit', function(e) { //use on if jQuery 1.7+
-            e.preventDefault();  //prevent form from submitting               
-            var data = $('#tvaros').val() + '&' + $('#tkulcsszo').val() + '&' + $('#tehm').val();
-            ga('send','event','Search','templom',data);
-            $(this).unbind('submit').submit();
-        });
-    
-        $('#mkereses').on('submit', function(e) { //use on if jQuery 1.7+
-            e.preventDefault();  //prevent form from submitting                                             
-            var data = $("#mmikor option:selected").text() + '&' + $('#mmikor2').val() + '&' + $('#mvaros').val() + '&' + $('#mehm').val() + '&' + $('#mnyelv').val() + '&' + $('#mzene').val() + '&' + $('#mdiak').val();
-            ga('send','event','Search','mise',data);
-            $(this).unbind('submit').submit();
-        });
-            
+        /* #724: itt két Google Analytics-esemény ült, de az `analytics.js` évek óta nincs
+           betöltve — a `ga` így NEM létezik, és mindkét handler ReferenceError-t dobott,
+           MIELŐTT a `submit()`-hoz ért volna. A preventDefault viszont már lefutott, tehát
+           ezek az űrlapok csak azért működnek ma, mert a hivatkozott azonosítók sem
+           léteznek már.
+
+           A keresőkifejezéseket mostantól szerveroldalon számoljuk (l. \Stats), sütire és
+           kimenő kérésre nincs szükség hozzá. */
+
     $('#password2').on('input', function() { 
         if($('#password1').val() != $(this).val() || $(this).val() == '') {
               $('#password2').parent().find('.form-control-feedback').addClass("fa-solid fa-triangle-exclamation").removeClass("fa-solid fa-check");

@@ -25,13 +25,68 @@ class Cron extends Html {
             echo "Ütemezhetővé tett cron (hiányzott a deadline_at): " . htmlspecialchars($job) . "<br>\n";
         }
 
+        // #724: a registryből kivett munkák sorát is takarítjuk. Enélkül egy megszűnt
+        // függvény sora örökre ottmarad, és minden esedékességnél hibát dob.
+        $removed = \Eloquent\Cron::pruneRemoved();
+        foreach ($removed as $job) {
+            echo "Eltávolított cron (már nincs a registryben): " . htmlspecialchars($job) . "<br>\n";
+        }
+
         if (\Request::Integer('cron_init')) {
-            if ($created === [] && $healed === []) {
+            if ($created === [] && $healed === [] && $removed === []) {
                 echo "Minden cron a helyén van, nem kellett újat felvenni.<br>\n";
             }
             return;
         }
 
+        // Az updateMasses fél óráig is futhat (500 ezer liturgikus esemény), a hoszt
+        // crontabja viszont 5 percenként kopogtat. Zár nélkül tehát 6-8 futás indult
+        // egymásra: mindegyik megnövelte az attempts-et, egyik sem ért véget, és 10
+        // fölött a scopeNextJobs 12 órára kizárta a munkát. A konténerbeli cron-loop
+        // sorosan fut, ezért ott ez nem látszott — élesben viszont a hosztról ütemezünk.
+        //
+        // Az adatbázis-szintű zár azért jó ide, mert a hoszt-cron, a konténer-loop és a
+        // böngészőből indított kézi futás mind ugyanahhoz a MySQL-hez megy, és a zár a
+        // kapcsolat megszakadásakor magától elenged (nincs beragadó lockfile).
+        if (!self::acquireLock()) {
+            echo "Már fut egy cron-munka, ezt a kört kihagyom.<br>\n";
+            return;
+        }
+
+        try {
+            $this->run();
+        } finally {
+            self::releaseLock();
+        }
+    }
+
+    private const LOCK_NAME = 'miserend_cron';
+
+    private static function acquireLock(): bool {
+        try {
+            $row = \Illuminate\Database\Capsule\Manager::selectOne(
+                'SELECT GET_LOCK(?, 0) AS acquired', [self::LOCK_NAME]
+            );
+        } catch (\Throwable $e) {
+            // Ha a zár nem kérhető, inkább fussunk le, mint hogy a cron néma legyen.
+            error_log('[cron] a zár nem kérhető: ' . $e->getMessage());
+            return true;
+        }
+
+        return (int) ($row->acquired ?? 0) === 1;
+    }
+
+    private static function releaseLock(): void {
+        try {
+            \Illuminate\Database\Capsule\Manager::selectOne(
+                'SELECT RELEASE_LOCK(?)', [self::LOCK_NAME]
+            );
+        } catch (\Throwable $e) {
+            error_log('[cron] a zár elengedése nem sikerült: ' . $e->getMessage());
+        }
+    }
+
+    private function run(): void {
         if($jobId = \Request::Integer('cron_id')) {
             $nextjob = \Eloquent\Cron::find($jobId);
 			if (!$nextjob) return;

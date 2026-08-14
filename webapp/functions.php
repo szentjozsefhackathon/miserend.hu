@@ -277,3 +277,81 @@ function overrideArray(&$orig, $new) {
         }
     }
 }
+
+/**
+ * #725: egységes hibanaplózás, stack trace-szel.
+ *
+ * A jegy kiindulópontja az volt, hogy a /templom/5444/edit 500-at ad, a
+ * `docker logs` viszont csak az access-log sorát mutatja, hibaüzenetet nem. Ennek
+ * három oka volt együtt:
+ *
+ *  1. élesben `error_reporting(0)` futott (config.php `default`), ami nem csak a
+ *     kijelzést, a NAPLÓZÁST is kikapcsolja — a PHP saját "Fatal error: Uncaught …"
+ *     üzenete sehova nem került ki;
+ *  2. az index.php csak `\Exception`-t fogott, a PHP 8-as `\Error`/`TypeError` nem az;
+ *  3. a `render()` a try/catch-en kívül volt.
+ *
+ * Az `error_log()` hívást az `error_reporting` maszk NEM szűri, ezért ez akkor is
+ * megbízhatóan ír, ha a maszk szűk. A cél a `docker logs` — a php:8.4-apache image
+ * az Apache error logját a stderr-re szimlinkeli.
+ */
+function logThrowable(string $context, \Throwable $e): void {
+    $uri = $_SERVER['REQUEST_URI'] ?? (PHP_SAPI === 'cli' ? 'cli' : '?');
+    error_log(sprintf(
+        '[miserend] %s: %s: %s @ %s:%d | URI: %s',
+        $context, get_class($e), $e->getMessage(), $e->getFile(), $e->getLine(), $uri
+    ));
+    // A trace külön sorban: a stack nélkül egy Twig-hiba üzenete önmagában
+    // ("An exception has been thrown during the rendering of a template") használhatatlan.
+    error_log('[miserend] trace: ' . $e->getTraceAsString());
+
+    if ($previous = $e->getPrevious()) {
+        error_log(sprintf('[miserend] %s (previous): %s: %s @ %s:%d',
+            $context, get_class($previous), $previous->getMessage(),
+            $previous->getFile(), $previous->getLine()));
+    }
+}
+
+/**
+ * #725: a hibaoldal összeállítása. Két helyről kell (oldal-építés és renderelés),
+ * ezért került külön.
+ */
+function buildExceptionPage(\Throwable $e, bool $showDetails, $arguments = false): \Html\Html {
+    $html = new \Html\Html($arguments);
+    $html->template = 'Exception.twig';
+    $html->errorTrace = '';
+
+    if ($showDetails) {
+        $html->errorMessage = $e->getMessage();
+        foreach ($e->getTrace() as $trace) {
+            if (isset($trace['class'])) {
+                $html->errorTrace .= $trace['class'] . "::" . $trace['function'] . "()";
+            }
+            if (isset($trace['file'])) {
+                $html->errorTrace .= $trace['file'] . ":" . $trace['line'] . " -> " . $trace['function'] . "()";
+            }
+            $html->errorTrace .= "<br>";
+        }
+    } else {
+        $html->errorMessage = 'Váratlan hiba történt. Kérjük, próbáld újra később.';
+    }
+
+    return $html;
+}
+
+/**
+ * #725: a végzetes hibák (memória, max_execution_time, parse error) nem dobnak
+ * kivételt, tehát semmilyen catch nem fogja meg őket — csak a shutdown handler.
+ * Éppen ezek adják a néma 500-akat.
+ */
+function registerFatalErrorLogger(): void {
+    register_shutdown_function(static function (): void {
+        $error = error_get_last();
+        if ($error === null || !in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+            return;
+        }
+        $uri = $_SERVER['REQUEST_URI'] ?? (PHP_SAPI === 'cli' ? 'cli' : '?');
+        error_log(sprintf('[miserend] Fatal error: %s @ %s:%d | URI: %s',
+            $error['message'], $error['file'], $error['line'], $uri));
+    });
+}
