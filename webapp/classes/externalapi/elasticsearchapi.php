@@ -871,6 +871,46 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		return $byChurch;
 	}
 
+	/**
+	 * Hány indexelt templomnak HIÁNYZIK a `location` geo_point mezője?
+	 *
+	 * A távolság szerinti templomkeresés kizárólag erre a mezőre szűr. A mapping
+	 * régóta tartalmazza, a dokumentumot építő kód is kiírja — de a meglévő
+	 * indexbe csak azoknál került be, amelyeket a javítás ÓTA újraindexeltünk.
+	 * Élesben ez azt jelentette, hogy a „X km-en belül" keresés a templomok
+	 * túlnyomó részét egyszerűen nem találta meg, és NÉMÁN: nem hiba, csak nulla
+	 * találat, amit a felhasználó „nincs ilyen templom"-nak olvas.
+	 *
+	 * Ezt csak egy teljes újraindexelés javítja (`updateChurches()` tid nélkül).
+	 * A /health ezért mutatja a számot: a mapping-változás önmagában nem elég,
+	 * és enélkül semmi nem szólt volna.
+	 *
+	 * @return array{indexed:int,missing:int}|null null, ha az index nem kérdezhető
+	 */
+	function churchesMissingLocation(): ?array {
+		$count = function (?array $query): ?int {
+			$this->curl_setopt(CURLOPT_CUSTOMREQUEST, "GET");
+			$this->buildQuery('churches/_count', $query === null ? null : json_encode($query));
+			$this->run();
+			if ($this->responseCode != 200 || !isset($this->jsonData->count)) {
+				return null;
+			}
+			return (int) $this->jsonData->count;
+		};
+
+		$indexed = $count(null);
+		if ($indexed === null) {
+			return null;
+		}
+
+		$withLocation = $count(['query' => ['exists' => ['field' => 'location']]]);
+		if ($withLocation === null) {
+			return null;
+		}
+
+		return ['indexed' => $indexed, 'missing' => max(0, $indexed - $withLocation)];
+	}
+
 	function churchIdsWithMassesInPeriod($startDate, $endDate) {
 		$this->curl_setopt(CURLOPT_CUSTOMREQUEST, "GET");
 		$this->buildQuery('mass_index/_search', json_encode([
