@@ -232,6 +232,13 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
 
     this.userService.loadUser().subscribe(user => {
       if (user) {
+        // A suggestionSenderID deklarálva volt és el is ment a szerverre, de SOHA nem
+        // kapott értéket — ezért maradt a `sender_user_id` mindig NULL, és ezért nem
+        // lehetett az adminfelületen a beküldőt felhasználóhoz kötni.
+        if (user.uid) {
+          this.suggestionSenderID.setValue(user.uid);
+          this.suggestionSenderID.updateValueAndValidity();
+        }
         this.suggestionSenderName.setValue(user.username);
         this.suggestionSenderName.updateValueAndValidity();
         this.suggestionSenderEmail.setValue(user.email);

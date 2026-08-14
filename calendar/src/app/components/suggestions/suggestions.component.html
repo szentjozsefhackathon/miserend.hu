@@ -31,6 +31,19 @@
             <mat-icon>cancel</mat-icon>
             <span>{{ 'SUGGESTION.STATE_REJECTED_INFO' | translate }}</span>
           }
+          @if (selectedSuggestionPackage.state !== 'PENDING' && selectedSuggestionPackage.handledByName) {
+            <span class="handled-by">
+              {{ 'SUGGESTION.HANDLED_BY' | translate }}:
+              @if (selectedSuggestionPackage.handledByUserId) {
+                <a [routerLink]="['/user', selectedSuggestionPackage.handledByUserId, 'edit']">{{ selectedSuggestionPackage.handledByName }}</a>
+              } @else {
+                {{ selectedSuggestionPackage.handledByName }}
+              }
+              @if (selectedSuggestionPackage.handledAt) {
+                ({{ selectedSuggestionPackage.handledAt | date:'yyyy.MM.dd HH:mm' }})
+              }
+            </span>
+          }
         </div>
       </div>
 
