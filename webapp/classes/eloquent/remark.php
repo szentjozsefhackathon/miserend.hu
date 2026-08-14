@@ -34,6 +34,41 @@ class Remark extends \Illuminate\Database\Eloquent\Model {
         return \Eloquent\Church::find($this->church_id);
         
     }    
+
+    /**
+     * #755: mennyi ideig számít ismétlésnek a betűre azonos észrevétel.
+     *
+     * Bőven a „kétszer kattintottam" fölött: a /remark/add POST-ra nincs
+     * átirányítás, tehát egy F5 percekkel később is újraküldi ugyanazt. Téves
+     * elnyomásból nincs kár — a szöveg azonos, tehát nem vész el információ; egy
+     * valóban új mondanivaló pedig már nem betűre ugyanaz.
+     */
+    public const DUPLICATE_WINDOW_SECONDS = 600;
+
+    /**
+     * #755: van-e friss, betűre azonos észrevétel ugyanattól, ugyanahhoz a templomhoz?
+     *
+     * Ugyanaz az észrevétel néha két-háromszor futott be, pár másodperc különbséggel.
+     * Kiszolgáló oldalon szűrjük, mert az mindhárom okot lefedi: dupla kattintás,
+     * újraküldés (F5), hálózati ismétlés. A hívó a meglévő sorral tér vissza, hogy a
+     * beküldő ugyanazt a visszajelzést kapja — különben azt hinné, nem ment el, és
+     * megint próbálkozna.
+     *
+     * @return static|null
+     */
+    public static function findRecentDuplicate($churchId, ?string $email, ?string $leiras)
+    {
+        if (empty($churchId) || empty($email) || empty($leiras)) {
+            return null;
+        }
+
+        return static::where('church_id', $churchId)
+            ->where('email', $email)
+            ->where('leiras', $leiras)
+            ->where('created_at', '>=', date('Y-m-d H:i:s', time() - static::DUPLICATE_WINDOW_SECONDS))
+            ->orderBy('created_at', 'desc')
+            ->first();
+    }
     
     /* 
      * custom functions 

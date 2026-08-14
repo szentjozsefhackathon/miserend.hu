@@ -15,7 +15,11 @@ $environment['default'] = [
         'useitforsearch' => false
     ],
 	'openstreetmap' => [
-		'apiUrl' => 'https://api.openstreetmap.org/'
+		'client_id' => env('OSM_CLIENT', ''),
+		'client_secret' => env('OSM_CLIENT_SECRET', ''),
+		'application_code' => env('OSM_APPLICATION_CODE', ''),		
+		'access_token' => env('OSM_ACCESS_TOKEN', ''),
+		'apiUrl' => env('OSM_URL', 'https://api.openstreetmap.org/')	
     ],
     // #376: konfigurálható Overpass-endpoint. A fő overpass-api.de instabil lehet;
     // prod átállhat egy stabil, EU-s mirrorra az OVERPASS_API_URL env-vel. Ajánlott:
@@ -79,17 +83,7 @@ $environment['staging'] = [
     ],
     'path' => [
         'domain' => 'http://staging.miserend.hu'
-    ],
-	'openstreetmap' => [
-		'client_id' => '',
-		'client_secret' => '',
-		'application_code' => '',		
-		'access_token' => '',
-		'apiUrl' => 'https://master.apis.dev.openstreetmap.org/'	
     ],	
-	
-	
-	
     'error_reporting' => E_ERROR | E_WARNING | E_PARSE
 ];
 

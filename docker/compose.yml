@@ -139,11 +139,19 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_SECURE=${SMTP_SECURE:-}
+      # OSM letöltéshez, és méginkább módosításhoz szükség lehet adatokra
+      # a .env.example alapján a .env -ben vannak megadva
+      # a config.php -ban van default, vagy innen veszi
       - OSM_URL=${OSM_URL:-}
       - OSM_CLIENT=${OSM_CLIENT:-}
       - OSM_CLIENT_SECRET=${OSM_CLIENT_SECRET:-}
       - OSM_APPLICATION_CODE=${OSM_APPLICATION_CODE:-}
       - OSM_ACCESS_TOKEN=${OSM_ACCESS_TOKEN:-}
+      # A LoRaWAN gyóntatás-jelzők megosztott titka. Üresen a végpont a régi módon,
+      # azonosítás nélkül fogad adatot — l. Api\LoRaWAN::checkSharedSecret().
+      - LORAWAN_TOKEN=${LORAWAN_TOKEN:-}
+      # Az alap overpass túlterhelt lehet. Lásd: .env.example
+      - OVERPASS_APIURL=${OVERPASS_APIURL:-}
 
     networks:
       inner:

@@ -89,6 +89,17 @@ class LoRaWAN extends Api {
         <strong><i>Ez még egy kísérleti API, használata csak saját felelősségre!</i></strong>
         <p>Ez az API lehetővé teszi a LoRaWAN eszközök által küldött gyóntatási adatok jelentését. A rendszer ellenőrzi a bemeneti adatokat, és ha minden rendben van, elmenti az adatokat az adatbázisba.</p>
         <p>A jelenleg használt eszközök egyedi kommunikációs gyakorlata miatt van szükség ilyen részletes és szokatlan bemeneti adatokra.</p>
+
+        <h4>Azonosítás — kérj tőlünk tokent</h4>
+        <p><strong>Az adatküldéshez token szükséges.</strong> Kérj tőlünk egyet: szívesen adunk, csak biztonsági okból kell.
+        Enélkül bárki írhatna gyóntatási állapotot bármelyik templomhoz, ezért kötöttük azonosításhoz.</p>
+        <p>A kapott értéket kétféleképpen adhatod át — válaszd, amelyik az eszközödnek egyszerűbb:</p>
+        <ul>
+            <li><code>X-Miserend-Token</code> HTTP-fejlécként, vagy</li>
+            <li><code>token</code> mezőként a JSON törzsben.</li>
+        </ul>
+        <p>Hibás vagy hiányzó token esetén a válasz <code>„error”: 1</code>, a <code>„text”</code> pedig <code>Invalid or missing token.</code></p>
+
         <p>További információ a gyóntatásokról és a LoRaWAN eszközökről a <a href="/staticpage/confessions">dokumentációban</a> található.</p>
         HTML;
 
@@ -102,10 +113,42 @@ class LoRaWAN extends Api {
         return $docs;
     }
     
+    /**
+     * Megosztott titok a LoRaWAN-hálózatszerverrel (ChirpStack).
+     *
+     * A végpont EDDIG teljesen azonosítás nélkül fogadott adatot: bárki beírhatott
+     * „gyóntatás folyamatban" állapotot BÁRMELYIK templomhoz, és korlátlanul
+     * szaporíthatta a sorokat. Kipróbálva: sima curl, HTTP 200, a sor bekerült.
+     *
+     * A titkot az `.env`-ből olvassuk. Ha NINCS beállítva, a végpont a régi módon
+     * viselkedik (nyitva marad) — különben a merge pillanatában elnémulnának az éles
+     * eszközök, amíg a küldő oldal nincs átállítva. A naplóba viszont minden ilyen
+     * kérésnél figyelmeztetés kerül, hogy ez az állapot ne maradjon észrevétlen.
+     *
+     * Beállítás után a küldő oldalon `X-Miserend-Token` fejlécként vagy `token`
+     * mezőként kell átadni ugyanezt az értéket.
+     */
+    private function checkSharedSecret(): void {
+        $elvart = trim((string) env('LORAWAN_TOKEN', ''));
+
+        if ($elvart === '') {
+            error_log('[miserend] LoRaWAN: nincs beállítva LORAWAN_TOKEN, a végpont azonosítás nélkül fogad adatot.');
+            return;
+        }
+
+        $kapott = $_SERVER['HTTP_X_MISEREND_TOKEN'] ?? ($this->input['token'] ?? '');
+
+        if (!is_string($kapott) || !hash_equals($elvart, trim($kapott))) {
+            throw new \Exception('Invalid or missing token.');
+        }
+    }
+
     public function run() {
         parent::run();
 
         $this->getInputJson();
+
+        $this->checkSharedSecret();
 
 
         $confession = new \Eloquent\Confession();
