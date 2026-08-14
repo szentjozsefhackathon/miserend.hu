@@ -39,22 +39,57 @@ class UnifiedNearbySearchTest extends TestCase {
         return $ids;
     }
 
+    /**
+     * A koordinátás keresés MINDEN találata essen a sugáron belülre.
+     *
+     * Ez a teszt korábban a szűrt és a szűretlen találatok DARABSZÁMÁT hasonlította
+     * össze. Az összehasonlítás megtévesztő: mindkét lekérdezés egy találati OLDALT ad
+     * vissza (20 elem), tehát amint a szűrt keresés is megtelt egy oldalnyival, a
+     * „kevesebb lett" feltétel hamis lett — pedig a szűrés hibátlanul működött. Így a
+     * teszt épp akkor bukott meg, amikor a funkció helyreállt (a churches index
+     * `location` mezőjének pótlása után).
+     *
+     * Amit ténylegesen tudni akarunk: a visszakapott templomok tényleg a megadott
+     * ponthoz közel vannak-e. Ezt a saját koordinátáikból ellenőrizzük.
+     */
     public function testCoordinatesNowFilterTheChurchSearch(): void {
+        $sugarKm = 10;
         $szurt = $this->churchIds($this->fetch(
-            'q=SearchResultsChurches&kulcsszo=&nearby_lat=' . self::LAT . '&nearby_lon=' . self::LON . '&nearby_radius=10'
+            'q=SearchResultsChurches&kulcsszo=&nearby_lat=' . self::LAT . '&nearby_lon=' . self::LON
+            . '&nearby_radius=' . $sugarKm
         ));
-        $szuretlen = $this->churchIds($this->fetch('q=SearchResultsChurches&kulcsszo='));
 
-        if ($szuretlen === []) {
+        if ($this->churchIds($this->fetch('q=SearchResultsChurches&kulcsszo=')) === []) {
             $this->markTestSkipped('A templom-index üres, nincs mit szűrni.');
         }
 
         $this->assertNotEmpty($szurt, 'A koordinátás szűrés mindent kiszűrt.');
-        $this->assertLessThan(
-            count($szuretlen),
-            count($szurt),
-            'A koordináta nem szűrt semmit — a templomkeresés megint figyelmen kívül hagyja.'
+
+        $tavoli = [];
+        foreach (\Eloquent\Church::whereIn('id', $szurt)->get(['id', 'lat', 'lon']) as $templom) {
+            $tav = self::tavolsagKm(self::LAT, self::LON, (float) $templom->lat, (float) $templom->lon);
+            // Az ES geo_distance légvonalban mér, ahogy mi is; a tizedes kerekítésre
+            // hagyunk egy kevés ráhagyást.
+            if ($tav > $sugarKm + 0.5) {
+                $tavoli[] = '#' . $templom->id . ' (' . round($tav, 1) . ' km)';
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $tavoli,
+            'A koordináta nem szűrt: a sugáron kívüli templomok is bejöttek — ' . implode(', ', $tavoli)
         );
+    }
+
+    /** Légvonalbeli távolság kilométerben (haversine). */
+    private static function tavolsagKm(float $lat1, float $lon1, float $lat2, float $lon2): float {
+        $r = 6371.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+        return $r * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
     public function testPlaceNameAndItsCoordinatesGiveTheSameChurches(): void {
