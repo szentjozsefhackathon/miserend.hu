@@ -508,9 +508,16 @@ class ExternalCalendarImporter {
             $exdates = self::extractExDates($event);
         }
 
+        $title = self::trimSummary($summary);
+        if ($title !== trim(preg_replace('/\s+/u', ' ', $summary) ?? $summary)) {
+            // A vágás nem hiba, de nem is némán történik: a naptár gazdája így
+            // megtudja, hogy a bejegyzés címe hosszabb, mint amit meg tudunk jeleníteni.
+            echo "  ⚠ A cím túl hosszú volt, levágtam: " . htmlspecialchars($title) . "<br>\n";
+        }
+
         $calMass = \Eloquent\CalMass::make([
             'church_id' => $churchId,
-            'title' => self::trimSummary($summary),
+            'title' => $title,
             'start_date' => $startDate,
             'rrule' => $rrule,
             'exdate' => !empty($exdates) ? $exdates : null,

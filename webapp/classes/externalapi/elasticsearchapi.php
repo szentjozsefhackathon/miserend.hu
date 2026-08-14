@@ -731,8 +731,12 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 
 	           $rrule = new \SimpleRRule($mass['rrule']);
 	           $occs = $rrule->getOccurrences();
-			$log("Talált időpontok száma: " . count($occs));
-			//printr($occs); exit;
+			/*
+			 * #756: itt SORONKÉNT ment ki egy „Talált időpontok száma" a naplóba —
+			 * mise-periódusonként. Egyetlen templomnál (pl. #276) ez több ezer sor, és
+			 * a valódi hibákat (elhasalt import, túl hosszú cím) elmossa. Az összesített
+			 * darabszám a ciklus után úgyis ott van.
+			 */
 			foreach($occs as $occ) {
 				$bulkInsert[] = [
 					'index' => [
