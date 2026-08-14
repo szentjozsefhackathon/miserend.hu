@@ -2,9 +2,13 @@
 #   docker compose --env-file .env.staging -f docker/compose.yml -f docker/compose.staging.yml ...
 #
 # Miért nem a compose.dev.yml: az a host `../webapp`-ját mountolja a konténer kódja FÖLÉ,
-# így a hostion kellene `npm build`-elni a naptárt (borazslo által jelzett gubanc). Itt a
+# így a hoszton kellene `npm build`-elni a naptárt (borazslo által jelzett gubanc). Itt a
 # staging a MEGÉPÍTETT image-et futtatja (a Dockerfile multi-stage buildje a calendar-t is
 # legyártja), ezért nincs host-oldali build és nincs git-pull-ütközés.
+#
+# #721: ez a komment sokáig téves volt — a bind mount valójában a compose.yml-ben volt,
+# tehát a staging is örökölte, és ugyanúgy a beversenyzett csomagot szolgálta ki. A mount
+# azóta átkerült a compose.dev.yml-be, így a fenti állítás mostantól igaz is.
 #
 # Az env `staging` (nem `production`) → a layout.twig kiteszi a
 # <meta name="robots" content="noindex,nofollow"> tag-et (#547).
