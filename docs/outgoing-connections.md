@@ -17,6 +17,7 @@
 | **Közösségek API** | `kozossegek.hu` | 443 | Templomhoz tartozó közösségek lekérése | `\ExternalApi\KozossegekApi` |
 | **Szentségimádások** | `szentsegimadas.hu` | 443 | Szentségimádás-időpontok (elavulóban) | `\ExternalApi\SzentsegimadasApi` |
 | **Napi lelki batyu** | `szentjozsefhackathon.github.io` | 443 | Napi lelki batyu: a liturgikus naptár érkezik innen | `\ExternalApi\NapiLelkibatyuApi` |
+| **Geofabrik** | `download.geofabrik.de` | 443 | OSM-kivonat az OSRM útvonal-gráfhoz. **Csak az `osrm` compose-profillal**, és csak a havi újraépítéskor — futás közben nem hívjuk. | `docker/osrm/build-graph.sh` |
 
 ## Belső szolgáltatások (Docker compose network)
 
@@ -25,6 +26,7 @@
 | **Elasticsearch** | `elasticsearch` | 9200 | Mise / templom kereső index |
 | **MariaDB** | `mysql` | 3306 | Fő adatbázis |
 | **Mailcatcher** | `mailcatcher` | 1025 (SMTP) / 1080 (web) | Dev környezetben email-elfogás |
+| **OSRM** | `osrm` | 5000 | Útvonaltervezés. Opcionális: csak az `osrm` compose-profillal indul (#673). |
 
 ## SMTP (production)
 
