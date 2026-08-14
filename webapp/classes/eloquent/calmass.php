@@ -653,7 +653,10 @@ class CalMass extends CalModel
 
             // Periódus nélküli RRULE-os események kezelése. Ez főleg importált naptáraknál fordulhat elő, ahol nem tudjuk biztosan megkövetelni a period_id-t, de lehetnek RRULE-juk.
             foreach($massesFromImport as $mass) {
-echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year ".$year."<br>\n";
+                // #756: itt korábban egy bennfelejtett `echo` írta ki minden importált,
+                // period nélküli RRULE-os misét — pedig ez a NORMÁLIS eset (l. a fenti
+                // megjegyzést: importnál nem követelhetjük meg a period_id-t). Hibának
+                // látszott, közben csak zaj volt, és mise × év darabszámban ömlött.
 
                 // A ciklusváltozókat KÖRÖNKÉNT nullázni kell. Korábban az `if` blokkokon
                 // belül keletkeztek, tehát az előző mise értéke átszivárgott a következőre:
