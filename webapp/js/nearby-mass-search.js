@@ -34,15 +34,46 @@
 
         /* A koordináta erősebb jelzés, mint a helynév (a szerver is így dönt). Ha a
            felhasználó átírja a helynevet, a korábbi koordináta már NEM hozzá tartozik —
-           különben a beírt új hely helyett a régi pont körül keresnénk. */
+           különben a beírt új hely helyett a régi pont körül keresnénk.
+
+           #733: a pont már nem csak geokódolásból jöhet, hanem a térképen húzott
+           jelölőből és a saját helyzetből is. Ezért nem elég a "melyik szöveghez
+           tartozik" kérdés: azt tartjuk számon, HONNAN van. Új helynév beírása
+           mindhárom forrást érvényteleníti, különben a friss beírás helyett a régi
+           pont körül keresnénk. */
+        var originSource = null;   // 'geocode' | 'marker' | 'geolocation'
         var geocodedFor = null;
+        var originListeners = [];
+
+        function notifyOriginChange() {
+            originListeners.forEach(function (fn) { fn(); });
+        }
+
+        function setOrigin(lat, lon, source) {
+            latitude.value = Number(lat).toFixed(6);
+            longitude.value = Number(lon).toFixed(6);
+            originSource = source;
+            if (source !== 'geocode') geocodedFor = null;
+            if (source === 'marker') setStatus('Kiindulópont: a térképen kijelölt pont.');
+            notifyOriginChange();
+        }
+
+        function clearOrigin() {
+            latitude.value = '';
+            longitude.value = '';
+            originSource = null;
+            geocodedFor = null;
+            notifyOriginChange();
+        }
+
         function clearStaleCoordinates() {
-            if (geocodedFor !== null && place && place.value.trim() !== geocodedFor) {
-                latitude.value = '';
-                longitude.value = '';
-                geocodedFor = null;
-                setStatus('');
-            }
+            if (!place || originSource === null) return;
+            /* Geokódolt pontnál csak akkor dobjuk el, ha tényleg MÁS szöveg áll a
+               mezőben; a térképről vagy a saját helyzetből jött pontot viszont bármely
+               új beírás felülírja, hiszen azok nem ehhez a szöveghez tartoznak. */
+            if (originSource === 'geocode' && place.value.trim() === geocodedFor) return;
+            clearOrigin();
+            setStatus('');
         }
 
         function geocodePlace() {
@@ -60,9 +91,8 @@
                     setStatus(data && data.message ? data.message : 'Ezt a helyet nem találtuk meg.');
                     return;
                 }
-                latitude.value = data.lat;
-                longitude.value = data.lon;
                 geocodedFor = value;
+                setOrigin(data.lat, data.lon, 'geocode');
                 setStatus('Kiindulópont: ' + data.name);
             }).catch(function () {
                 /* Nem baj: beküldéskor a szerver úgyis geokódol. Csak ne áltassuk a
@@ -107,8 +137,7 @@
 
         var nextTwoHours = document.getElementById('next_two_hours');
         if (nextTwoHours) nextTwoHours.addEventListener('click', function () {
-            latitude.value = '';
-            longitude.value = '';
+            clearOrigin();
             if (place) place.value = '';
             if (radius) radius.value = '0';
             setNextTwoHours();
@@ -124,12 +153,10 @@
             trigger.disabled = true;
             setStatus('Helyzet meghatározása…');
             navigator.geolocation.getCurrentPosition(function (position) {
-                latitude.value = position.coords.latitude.toFixed(6);
-                longitude.value = position.coords.longitude.toFixed(6);
                 /* A saját helyzet felülírja a beírt helynevet, tehát az már nem érvényes
                    kiindulópont — különben a szerver azt geokódolná vissza. */
                 if (place) place.value = '';
-                geocodedFor = null;
+                setOrigin(position.coords.latitude, position.coords.longitude, 'geolocation');
                 trigger.disabled = false;
                 onSuccess();
             }, function () {
@@ -151,9 +178,30 @@
         if (useCurrentLocation) useCurrentLocation.addEventListener('click', function () {
             requestLocation(function () {
                 setStatus('A kiindulópontot beállítottam. Válassz távolságot, majd indíts keresést.');
-                openCoordinates();
+                /* Térkép-módban a jelölő már odaugrott, ott nincs mit lenyitni. */
+                if (!document.getElementById('map_search_box') ||
+                    document.getElementById('map_search_box').hidden) {
+                    openCoordinates();
+                }
             }, useCurrentLocation);
         });
+
+        /* #733: a térkép külön fájlban él, mert a Leafletet csak megnyitáskor töltjük be.
+           Az állapot viszont KÖZÖS — a kiindulópontot egyetlen helyen tartjuk nyilván,
+           különben a térkép és az űrlap elcsúszna egymástól. */
+        if (window.MiserendMapSearch) {
+            window.MiserendMapSearch.install({
+                place: place,
+                radius: radius,
+                latitude: latitude,
+                longitude: longitude,
+                locateButton: useCurrentLocation,
+                locateButtonHome: useCurrentLocation ? useCurrentLocation.parentNode : null,
+                setStatus: setStatus,
+                setOrigin: setOrigin,
+                onOriginChange: function (fn) { originListeners.push(fn); }
+            });
+        }
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);

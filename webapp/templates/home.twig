@@ -76,8 +76,12 @@
 
             <div id="form_church"  style="margin-top:12px;">
                 <div class="search-field-group">
-                    <label class="search-label">Templom</label>
-                    <div class="search-input-wrap">{{ forms.input(searchform.kulcsszo) }}</div>                    
+                    {# #733: a mező név ÉS hely szerint is keres, ezért a felirat is ezt mondja. #}
+                    <label class="search-label">Templom neve vagy elhelyezkedése</label>
+                    <div class="search-input-wrap">{{ forms.input(searchform.kulcsszo) }}</div>
+                    {# A térkép-kapcsolót a JS szúrja be ide (nearby-mass-search.js). Térkép
+                       nélküli böngészőben így nem jelenik meg egy nem működő link. #}
+                    <div class="search-input-wrap" id="map_search_toggle_slot"></div>
                 </div>
             </div>
 
@@ -92,10 +96,13 @@
                blokk — összecsukva várnak, tehát aki csak helynevet ír, ugyanazt látja,
                mint korábban. #}
             <div id="form_place" style="margin-top:8px;">
-                <div class="search-field-group">
+                <div class="search-field-group" id="place_field_group">
                     <label class="search-label" for="hely">Egyéni közeli keresés</label>
                     <div class="search-input-wrap">
-                        <div class="d-flex" style="gap:6px;">
+                        {# #733: térkép-módban a JS ÁTHELYEZI ezt a két vezérlőt a térkép fölé
+                           lebegő dobozokba. Áthelyezés, nem másolás: így az űrlap-beküldés
+                           változatlan, és nem lehet két, egymásnak ellentmondó érték. #}
+                        <div class="d-flex" id="place_controls" style="gap:6px;">
                             <input type="text" class="form-control" id="hely" name="hely"
                                    placeholder="pl. Szentendre" value="{{ searchform.hely.value|default('') }}"
                                    autocomplete="off" style="flex:1 1 auto;">
@@ -110,6 +117,9 @@
                         </div>
                         <small id="location_status" class="form-text text-muted" aria-live="polite"></small>
 
+                        {# #733: térkép-módban a JS elrejti ezt a blokkot — a koordinátát ott a
+                           húzható marker adja, a számok pedig a térkép alatt olvashatók. JS
+                           nélkül viszont marad a mai, kézi beírás. #}
                         <details class="nearby-search-options" style="margin-top:6px;"{% if nearbyOrigin is defined and nearbyOrigin %} open{% endif %}>
                             <summary style="cursor:pointer; color:#6f3b8f;">Koordináta megadása</summary>
                             <div class="row g-2 align-items-end" style="margin-top:6px;">
@@ -131,6 +141,18 @@
                             </div>
                             <small class="form-text text-muted">A beírt helyet magunk fordítjuk koordinátává, de itt felül lehet írni. A távolság légvonalban értendő.</small>
                         </details>
+
+                        {# #733: a térkép doboza. Üresen indul, a Leafletet a JS csak akkor
+                           tölti be, ha a felhasználó tényleg megnyitja — a főoldal így nem
+                           lesz nehezebb attól, hogy ez a lehetőség létezik. #}
+                        <div id="map_search_box" hidden style="margin-top:8px;">
+                            <div id="map_search_canvas" style="height:360px; border-radius:6px; overflow:hidden;"></div>
+                            <small class="form-text text-muted">
+                                Húzd a jelölőt a keresés kiindulópontjára, vagy írd be a helyet.
+                                Kiindulópont: <span id="map_search_readout">nincs megadva</span>.
+                                A távolság légvonalban értendő.
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -913,6 +935,10 @@
             {# #722: a koordináta-mezők felkerültek a „Egyéni közeli keresés" blokkba, a
                helynév alá — a kettő ugyanaz a szűrő volt. A sugár is közös lett (`tavolsag`),
                nem volt értelme két külön távolság-választónak ugyanahhoz a kereséshez. #}
+            {# #733: a térkép-modul ELŐBB tölt be, mert a kereső-szkript indulásakor
+               kérdezi meg, van-e. A Leafletet viszont egyik sem hozza magával —
+               azt csak a térkép megnyitása tölti le. #}
+            <script src="/js/nearby-map-search.js"></script>
             <script src="/js/nearby-mass-search.js"></script>
             
             <script>
