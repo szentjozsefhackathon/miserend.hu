@@ -1986,9 +1986,23 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       return false;
     }
 
-    return inner.every(i => cover.some(c =>
-      new Date(c.startDate) <= new Date(i.startDate) && new Date(c.endDate) >= new Date(i.endDate)
-    ));
+    // A lefedés ÉVENTE változik: a Nagyböjt csak 2026-ban fedi le teljesen a
+    // Márciust. A szerkesztő viszont egyetlen `experiod` listát állít be, ami nem
+    // évfüggő — ezért itt csak akkor fordítunk, ha MINDEN olyan évben teljes a
+    // lefedés, amire van generált tartomány. Így a szerkesztő sosem tesz be olyan
+    // kizárást, amit a szerveroldali, évenkénti számolás egy évben visszavonna.
+    const years = new Set(inner.map(i => new Date(i.startDate).getFullYear()));
+
+    return Array.from(years).every(year => {
+      const innerOfYear = inner.filter(i => new Date(i.startDate).getFullYear() === year);
+      const coverOfYear = cover.filter(c => new Date(c.startDate).getFullYear() === year);
+      if (!coverOfYear.length) {
+        return false;
+      }
+      return innerOfYear.every(i => coverOfYear.some(c =>
+        new Date(c.startDate) <= new Date(i.startDate) && new Date(c.endDate) >= new Date(i.endDate)
+      ));
+    });
   }
 
   private filterOverlappingPeriodIds(

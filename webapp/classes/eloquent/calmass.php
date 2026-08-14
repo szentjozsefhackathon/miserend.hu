@@ -172,8 +172,14 @@ class CalMass extends CalModel
             return $instancesByChurch;
         }
 
-        // --- 0) Ütközés elkerülés alkalmazása ---
-        $masses = self::applyCollisionAvoidance($masses);
+        // --- 0) Ütközés elkerülés: ÉVENKÉNT (#747) ---
+        //
+        // Korábban itt, a ciklus előtt futott egyszer. A lefedés viszont évente
+        // változik (a Nagyböjt csak 2026-ban fedi le teljesen a Márciust), ezért a
+        // döntést évenként kell meghozni. A függvény az `experiod`-ot csak a
+        // memóriában állítja, tehát ez nem jár adatbázis-írással — a snapshot pedig
+        // biztosítja, hogy minden év tiszta lapról induljon.
+        $experiodSnapshot = self::snapshotExperiods($masses);
         /*
         $this->logDebug("applyCollisionAvoidance lefutott", [
             'after_count' => count($masses),
@@ -182,6 +188,9 @@ class CalMass extends CalModel
 
 
         foreach ($years as $year) {
+            self::restoreExperiods($masses, $experiodSnapshot);
+            $masses = self::applyCollisionAvoidance($masses, (int) $year);
+
             $globalStart = Carbon::create($year, 1, 1)->startOfDay();
             $globalEnd = Carbon::create($year, 12, 31)->endOfDay();
 
@@ -382,8 +391,14 @@ class CalMass extends CalModel
             return $massPeriods;
         }
 
-        // --- 0) Ütközés elkerülés alkalmazása ---
-        $masses = self::applyCollisionAvoidance($masses);
+        // --- 0) Ütközés elkerülés: ÉVENKÉNT (#747) ---
+        //
+        // Korábban itt, a ciklus előtt futott egyszer. A lefedés viszont évente
+        // változik (a Nagyböjt csak 2026-ban fedi le teljesen a Márciust), ezért a
+        // döntést évenként kell meghozni. A függvény az `experiod`-ot csak a
+        // memóriában állítja, tehát ez nem jár adatbázis-írással — a snapshot pedig
+        // biztosítja, hogy minden év tiszta lapról induljon.
+        $experiodSnapshot = self::snapshotExperiods($masses);
         /*
         $this->logDebug("applyCollisionAvoidance lefutott", [
             'after_count' => count($masses),
@@ -392,6 +407,9 @@ class CalMass extends CalModel
 
 
         foreach ($years as $year) {
+            self::restoreExperiods($masses, $experiodSnapshot);
+            $masses = self::applyCollisionAvoidance($masses, (int) $year);
+
             $globalStart = Carbon::create($year, 1, 1)->startOfDay();
             $globalEnd = Carbon::create($year, 12, 31)->endOfDay();
             $massesFromImport = [];
@@ -788,24 +806,37 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
     }
 
     /**
-     * #747: lefedi-e a `$coverId` időszak MINDEN generált tartománya a `$innerId`-ét?
+     * #747: lefedi-e a `$coverId` időszak a `$innerId`-ét ABBAN AZ ÉVBEN?
      *
-     * Igaz, ha az inner minden generált tartományához van olyan cover-tartomány, ami
-     * teljesen tartalmazza. Ilyenkor a kizárás nem felülírás lenne, hanem kiürítés.
+     * A lefedés évente változik: a Nagyböjt csak 2026-ban fedi le teljesen a
+     * Márciust (2025-ben márc. 1-4, 2027-ben márc. 25-31 kimarad). Ezért a kérdést
+     * évre kell feltenni — a hívó az adott év generálásakor kérdez.
      *
-     * Szándékosan konzervatív: ha bármelyik oldalnak nincs generált tartománya, vagy
-     * a két időszak ugyanaz, false-t adunk — tehát marad a régi, súly szerinti
-     * viselkedés. Így a javítás CSAK a ténylegesen lefedett esetre nyúl hozzá.
+     * Igaz, ha az inner ADOTT ÉVI tartományait mind tartalmazza egy cover-tartomány.
+     * Ha bármelyik oldalnak nincs abban az évben tartománya, vagy a két időszak
+     * ugyanaz, false — marad a súly szerinti viselkedés.
      */
-    static private function periodCovers($calGeneratedPeriods, $coverId, $innerId): bool
+    static private function periodCoversInYear($calGeneratedPeriods, $coverId, $innerId, int $year): bool
     {
         if (empty($coverId) || empty($innerId) || $coverId == $innerId) {
             return false;
         }
 
-        $cover = $calGeneratedPeriods[$coverId] ?? null;
-        $inner = $calGeneratedPeriods[$innerId] ?? null;
-        if (empty($cover) || empty($inner)) {
+        $inYear = static function ($ranges) use ($year) {
+            $out = [];
+            foreach ($ranges ?? [] as $r) {
+                // Az évhatáron átnyúló időszak (pl. Advent->Karácsony) a KEZDETE
+                // szerinti évhez tartozik, ahogy a generálás is aszerint sorolja be.
+                if ((int) substr((string) $r->start_date, 0, 4) === $year) {
+                    $out[] = $r;
+                }
+            }
+            return $out;
+        };
+
+        $cover = $inYear($calGeneratedPeriods[$coverId] ?? []);
+        $inner = $inYear($calGeneratedPeriods[$innerId] ?? []);
+        if ($cover === [] || $inner === []) {
             return false;
         }
 
@@ -825,12 +856,62 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
         return true;
     }
 
-    static private function applyCollisionAvoidance(array $masses): array
+    /**
+     * #747: az eredeti `experiod` értékek, hogy az évenkénti újraszámolás tiszta
+     * lapról induljon.
+     *
+     * Az `applyCollisionAvoidance()` a mise-objektumon állítja az `experiod`-ot
+     * (nem ír adatbázisba). Mivel most ÉVENKÉNT hívjuk, az előző év eredménye
+     * különben átszivárogna a következőbe, és a kizárások monoton nőnének.
+     *
+     * @return array<int,mixed> mass id => eredeti experiod
+     */
+    static private function snapshotExperiods(array $masses): array
     {
-        // Kevés CalPeriod van, és minden misénél kell, ezért inkább előre egyszer töltjük be mindet.
-        $calPeriods = CalPeriod::all()->keyBy('id');        
-        // Aránylag kevés (kb 100) CalGeneratedPeriod van, ezért ezeket is betöltjük egyszerre.
-        $calGeneratedPeriods = CalGeneratedPeriod::all()->groupBy('period_id');
+        $snapshot = [];
+        foreach ($masses as $mass) {
+            $snapshot[spl_object_id($mass)] = $mass->experiod ?? null;
+        }
+        return $snapshot;
+    }
+
+    static private function restoreExperiods(array $masses, array $snapshot): void
+    {
+        foreach ($masses as $mass) {
+            $key = spl_object_id($mass);
+            if (array_key_exists($key, $snapshot)) {
+                $mass->experiod = $snapshot[$key];
+            }
+        }
+    }
+
+    /**
+     * #747: az időszak-táblák kérésen belüli gyorsítótára.
+     *
+     * Az `applyCollisionAvoidance()` mostantól évenként fut, tehát a két `::all()`
+     * hívás évszám-szor annyiszor menne le. Az időszakok egy generálás alatt nem
+     * változnak, így elég egyszer beolvasni.
+     */
+    static private $calPeriodCache = null;
+    static private $calGeneratedPeriodCache = null;
+
+    /** Teszthez / hosszan futó folyamathoz: felejtsük el a betöltött időszakokat. */
+    public static function forgetPeriodCache(): void
+    {
+        self::$calPeriodCache = null;
+        self::$calGeneratedPeriodCache = null;
+    }
+
+    static private function applyCollisionAvoidance(array $masses, ?int $year = null): array
+    {
+        if (self::$calPeriodCache === null) {
+            self::$calPeriodCache = CalPeriod::all()->keyBy('id');
+        }
+        if (self::$calGeneratedPeriodCache === null) {
+            self::$calGeneratedPeriodCache = CalGeneratedPeriod::all()->groupBy('period_id');
+        }
+        $calPeriods = self::$calPeriodCache;
+        $calGeneratedPeriods = self::$calGeneratedPeriodCache;
         
         // Amikor nagyon sok misét kell egyszerre kezelni, akkor végtelenbe lelassulunk,
         // ezért inkább csak templomonként nézzük meg
@@ -882,7 +963,7 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
                                 // a saját tartományában ő nyer: nem őt zárjuk ki, hanem
                                 // fordítva. A súly csak akkor dönt, ha egyik tartomány sem
                                 // tartalmazza a másikat.
-                                if (self::periodCovers($calGeneratedPeriods, $higherMass->period_id, $lowerMass->period_id)) {
+                                if ($year !== null && self::periodCoversInYear($calGeneratedPeriods, $higherMass->period_id, $lowerMass->period_id, $year)) {
                                     $experiod = $higherMass->experiod ?? [];
                                     if (!in_array($lowerMass->period_id, $experiod)) {
                                         $experiod[] = $lowerMass->period_id;
