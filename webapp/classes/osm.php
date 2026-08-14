@@ -95,6 +95,11 @@ class OSM {
 
         $overpass = new \ExternalApi\OverpassApi();
 
+        // A sikertelenség itt VÁRT kimenet: lentebb null-lal térünk vissza, és a hívó
+        // ezt kezeli. Hibakereső üzemmódban se öntsük a verem-kiírást a lapra — a
+        // stagingen pontosan ez csúfította el egy templom oldalát.
+        $overpass->quiet = true;
+
         try {
             $overpass->downloadEnclosingBoundaries($lat, $lon);
         } catch (\Exception $e) {

@@ -348,6 +348,12 @@ class SearchResultsMasses extends Html {
         $applyNarrowingFilters($search);
         $results = $search->getResults($offset, $limit, false);
 
+        // #724: csak az ELSŐ menetet számoljuk. A lazított (#357) és a lookahead keresés
+        // ugyanannak a kérésnek a folytatása, azok külön nem használati esemény.
+        if (!$search->searchFailed) {
+            \Stats::countSearch($params['kulcsszo'] !== false ? $params['kulcsszo'] : null, (int) $search->total);
+        }
+
         // #575: ha a keresőmotor (Elasticsearch) nem elérhető, érthető üzenet a
         // néma üres oldal helyett. (A #357 lazított 2. menet is elhasalna ES nélkül.)
         if ($search->searchFailed) {

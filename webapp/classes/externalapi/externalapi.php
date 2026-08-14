@@ -25,6 +25,14 @@ class ExternalApi {
     public $headerAuthorization;
     public $postfields;
     public $apiUrl;
+
+    /**
+     * Hibakereső üzemmódban se írjuk ki a hibát a lapra.
+     *
+     * Ott állítsd be, ahol a sikertelenség VÁRT kimenet, és a hívó kezeli is — a hiba
+     * ilyenkor is elérhető marad a $this->error / hasError() felől.
+     */
+    public $quiet = false;
 	
     function __construct() {
         
@@ -112,8 +120,21 @@ class ExternalApi {
             if($this->format == 'json' ) $this->jsonData = [];
 			if($this->format == 'xml' ) $this->xmlData = [];
             $this->error = \Html\Html::printExceptionVerbose($e,true);
-            if($config['debug'] > 1) echo $this->error;
-            elseif($config['debug'] > 0) addMessage($this->error,'warning');
+
+            /*
+             * Van, ahol a sikertelenség VÁRT kimenet, és a hívó kezeli is (pl. a
+             * területi adatok pótlása a templomoldalon: ha az Overpass épp nem ér rá,
+             * a lap ugyanúgy megjelenik). Ott a hibakereső üzemmód teljes
+             * verem-kiírása csak a látogató képébe önti a belső működést — a
+             * stagingen pontosan ez történt egy templomoldalon.
+             *
+             * A hibát ilyenkor is eltesszük ($this->error, hasError()), csak nem
+             * tesszük ki a lapra.
+             */
+            if(empty($this->quiet)) {
+                if($config['debug'] > 1) echo $this->error;
+                elseif($config['debug'] > 0) addMessage($this->error,'warning');
+            }
             return false;
         }
         return true;

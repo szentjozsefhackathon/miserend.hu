@@ -141,9 +141,18 @@ class ExternalCalendarImporter {
         }
         
         // 2-3. Parse the complete feed, then replace only earlier imported masses atomically.
-        $eventsCreated = self::replaceFromIcs($icsContent, $churchId);
+        $feedModifiedOn = null;
+        $eventsCreated = self::replaceFromIcs($icsContent, $churchId, $feedModifiedOn);
 
         echo "  Created $eventsCreated masses from iCalendar<br>\n";
+
+        // #723: ha a naptárban van frissebb módosítás, mint a templom frissesség-dátuma,
+        // vegyük át. Így a rendszeresen karbantartott külső naptár akkor is frissen tartja
+        // a templomot, ha a gazdája sosem lép be a miserend.hu-ra — és fordítva: az évek
+        // óta érintetlen naptár helyesen marad réginek.
+        if ($feedModifiedOn !== null && self::touchChurchFreshness($churchId, $feedModifiedOn)) {
+            echo "  Frissesség dátuma átvéve a naptárból: $feedModifiedOn<br>\n";
+        }
 
         // 4. Refresh Elasticsearch index for this church
         $years = self::extractIndexedYears($icsContent);
@@ -159,7 +168,7 @@ class ExternalCalendarImporter {
      * Manually entered one-off masses also have a null period_id, so ownership is identified
      * exclusively by IMPORT_MARKER.
      */
-    public static function replaceFromIcs(string $icsContent, int $churchId): int {
+    public static function replaceFromIcs(string $icsContent, int $churchId, ?string &$feedModifiedOn = null): int {
         if (!preg_match('/BEGIN:VCALENDAR/i', $icsContent) || !preg_match('/END:VCALENDAR/i', $icsContent)) {
             throw new \InvalidArgumentException('Invalid iCalendar document.');
         }
@@ -169,6 +178,7 @@ class ExternalCalendarImporter {
         foreach ($events as $event) {
             $masses[] = self::createCalMassFromEvent($event, $churchId);
         }
+        $feedModifiedOn = self::lastModifiedDate($events);
 
         $connection = \Eloquent\CalMass::getConnectionResolver()->connection();
         $connection->transaction(function () use ($churchId, $masses): void {
@@ -182,6 +192,63 @@ class ExternalCalendarImporter {
         });
 
         return count($masses);
+    }
+
+    /**
+     * #723: a feed legkésőbbi LAST-MODIFIED értéke, `Y-m-d` alakban.
+     *
+     * Jövőbe mutató értéket nem fogadunk el: egy elrontott naptár nem tolhatja előre a
+     * templom frissesség-dátumát. Ha egyetlen esemény sem hordoz LAST-MODIFIED-et,
+     * null jön vissza, és a `frissites`-hez nem nyúlunk.
+     *
+     * @param object[] $events
+     */
+    private static function lastModifiedDate(array $events): ?string {
+        $today = date('Y-m-d');
+        $latest = null;
+
+        foreach ($events as $event) {
+            $raw = $event->{'LAST-MODIFIED'} ?? null;
+            if (empty($raw)) {
+                continue;
+            }
+            try {
+                $date = substr(self::parseIcsDateTime($raw), 0, 10);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($date > $today) {
+                continue;
+            }
+            if ($latest === null || $date > $latest) {
+                $latest = $date;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * #723: a templom frissesség-dátumát csak ELŐRE mozgatjuk. Ha a kézi frissítés
+     * újabb, mint a naptáré, marad a kézi.
+     */
+    public static function touchChurchFreshness(int $churchId, string $modifiedOn): bool {
+        $church = \Eloquent\Church::find($churchId);
+        if (!$church) {
+            return false;
+        }
+
+        // #174-B: a '0000-00-00' truthy string, ezért nem elég a sima üresség-vizsgálat.
+        $current = (string) $church->frissites;
+        $hasCurrent = $current !== '' && strpos($current, '0000-00-00') !== 0;
+        if ($hasCurrent && substr($current, 0, 10) >= $modifiedOn) {
+            return false;
+        }
+
+        $church->frissites = $modifiedOn;
+        $church->save();
+
+        return true;
     }
 
     /** @return int[] */
@@ -307,6 +374,11 @@ class ExternalCalendarImporter {
                 'DURATION' => null,
                 'RRULE' => null,
                 'EXDATES' => [],  // To store EXDATE values if needed in the future
+                // #723: az esemény utolsó VALÓDI módosítása. Ebből lesz a templom
+                // frissesség-dátuma. Szándékosan NEM a DTSTAMP: azt a Google az
+                // exportáláskor tölti ki, tehát minden lekérésnél mai — attól minden
+                // naptár örökké "frissnek" látszana, akkor is, ha évek óta hozzá se nyúltak.
+                'LAST-MODIFIED' => null,
             ];
             
             // Parse EXDATE (capture the full parameter+value part, e.g. ;TZID=Europe/Budapest:20241222T183000)
@@ -341,7 +413,12 @@ class ExternalCalendarImporter {
             if (preg_match('/^RRULE\s*:\s*(.*)$/im', $eventData, $m)) {
                 $event->RRULE = trim($m[1]);
             }
-            
+
+            // Parse LAST-MODIFIED (#723)
+            if (preg_match('/^LAST-MODIFIED(?:;|:)(.*)$/im', $eventData, $m)) {
+                $event->{'LAST-MODIFIED'} = trim($m[1]);
+            }
+
             $events[] = $event;
         }
         
@@ -551,9 +628,43 @@ class ExternalCalendarImporter {
     }
 
     /**
-     * Parse iCalendar datetime string with support for TZID parameter
+     * Szétválasztja egy iCalendar tulajdonság paramétereit az értékétől (RFC 5545 3.2).
+     *
+     * A hívók a `DTSTART`/`DTEND`/`EXDATE` sorok jobb oldalát adják át, ami bármennyi
+     * paramétert hordozhat, tetszőleges sorrendben:
+     *   TZID=Europe/Budapest:20221201T060000
+     *   VALUE=DATE:20260326
+     *   VALUE=DATE;TZID=Europe/Budapest:20260326
+     * A parser eddig csak a TZID-t ismerte fel, minden más paramétert az értékbe
+     * számolt bele — egyetlen egész napos esemény (`VALUE=DATE`) az egész naptár
+     * importját megbuktatta.
+     *
+     * Csak akkor eszik paramétert, ha a sor tényleg `NEV=` alakkal kezdődik, így a
+     * paraméter nélküli értékek (`20221201T060000`, `2026-12-23T23:59:00`) érintetlenek
+     * maradnak — utóbbiban a `:` az időhöz tartozik, nem elválasztó.
+     *
+     * @return array{0: array<string,string>, 1: string} [paraméterek nagybetűs kulccsal, érték]
+     */
+    private static function splitIcsParameters($raw) {
+        $params = [];
+        $rest = trim((string) $raw);
+
+        while (preg_match('/^([A-Za-z0-9-]+)=("[^"]*"|[^";:]*)([;:])(.*)$/s', $rest, $m)) {
+            $params[strtoupper($m[1])] = trim($m[2], '"');
+            $rest = $m[4];
+            if ($m[3] === ':') {
+                break;
+            }
+        }
+
+        return [$params, trim($rest)];
+    }
+
+    /**
+     * Parse iCalendar datetime string with support for property parameters
      * Handles formats like:
      * - TZID=Europe/Budapest:20221201T060000
+     * - VALUE=DATE:20260326
      * - 20221201T060000
      * - 20221201T060000Z
      * - YYYY-MM-DDTHH:MM:SS
@@ -561,17 +672,11 @@ class ExternalCalendarImporter {
      * Returns ISO 8601 datetime string in UTC (Y-m-d\TH:i:s format)
      */
     private static function parseIcsDateTime($dateStr) {
-        $dateStr = trim($dateStr);        
+        $dateStr = trim($dateStr);
 
-        $tzid = null;
-        $dtString = $dateStr;
-        
-        // Extract TZID parameter if present (e.g., TZID=Europe/Budapest:20221201T060000)
-        if (preg_match('/^TZID=([^:;]+):(.+)$/', $dateStr, $matches)) {
-            $tzid = $matches[1];
-            $dtString = $matches[2];
-        }
-        
+        [$params, $dtString] = self::splitIcsParameters($dateStr);
+        $tzid = $params['TZID'] ?? null;
+
         // Handle date-only format (YYYYMMDD)
         if (strlen($dtString) == 8 && ctype_digit($dtString)) {
             $year = substr($dtString, 0, 4);
