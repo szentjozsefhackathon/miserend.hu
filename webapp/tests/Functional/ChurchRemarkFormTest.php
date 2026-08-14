@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 6: Church Remark Form Test
@@ -10,21 +9,13 @@ use Symfony\Component\Panther\PantherTestCase;
  * Tests the remark (észrevétel) form functionality on church pages.
  * Validates that the form elements are present and the form can be accessed.
  */
-final class ChurchRemarkFormTest extends PantherTestCase
+final class ChurchRemarkFormTest extends FunctionalTestCase
 {
     private $client;
 
     protected function setUp(): void
     {
-        $this->client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        $this->client = static::pantherClient();
     }
 
     private function getFirstChurchId(): ?int

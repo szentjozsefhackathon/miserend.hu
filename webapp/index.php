@@ -34,6 +34,15 @@ try {
 
     $class = $path->className;
 	if(!$class) throw new Exception('Az oldal nem található');
+
+    // A JSON-t adó végpontok (ajax/, api/) törzsébe semmilyen HTML nem kerülhet.
+    // A külső API-k hibakereső üzemmódban eddig a teljes verem-kiírást a válaszba
+    // echózták; ott csak a szerver-naplóba való. Itt jelöljük meg, még a végpont
+    // példányosítása ELŐTT — a konstruktorban már megtörténhet a külső hívás.
+    if (str_starts_with((string) $path->url, 'ajax') || str_starts_with((string) $path->url, 'api/')) {
+        \ExternalApi\ExternalApi::markJsonResponse(true);
+    }
+
 		
     if (method_exists($path->className, 'factory')) {
         $html = $class::factory($path->arguments);
