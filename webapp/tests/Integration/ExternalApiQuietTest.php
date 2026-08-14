@@ -95,8 +95,8 @@ final class ExternalApiQuietTest extends TestCase {
     }
 
     /*
-     * A területi adatok pótlása ilyen „várt kudarc" hely: null-lal tér vissza, a hívó
-     * ezt kezeli — közben semmit nem ír a lapra. Ez a templomoldal esete.
+     * A területi adatok pótlása ilyen „várt kudarc" hely: false-szal tér vissza, a
+     * hívó ezt kezeli — közben semmit nem ír a lapra. Ez a templomoldal esete.
      */
     public function testBoundaryDownloadStaysSilentOnFailure(): void {
         global $config;
@@ -109,7 +109,10 @@ final class ExternalApiQuietTest extends TestCase {
                 $result = (new \OSM())->downloadBoundaries(47.5, 19.05);
             });
 
-            self::assertNull($result, 'elérhetetlen Overpassnál null a helyes válasz');
+            // #570/#700: a kudarc jelzése `false` lett, hogy megkülönböztethető legyen
+            // a „lefutott, de nincs itt határ" ([]) esettől — csak az utóbbinál szabad
+            // a templomot ellenőrzöttnek bélyegezni.
+            self::assertFalse($result, 'elérhetetlen Overpassnál false a helyes válasz');
             self::assertSame('', $output, 'a templomoldal nem kaphat hibakiírást');
         } finally {
             if ($originalUrl === null) {

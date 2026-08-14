@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 3: Church Search Results Test
@@ -10,21 +9,13 @@ use Symfony\Component\Panther\PantherTestCase;
  * Tests the church search functionality and validates that results are properly rendered.
  * Validates dynamic foreach loops for church listings and filter display.
  */
-final class ChurchSearchResultsTest extends PantherTestCase
+final class ChurchSearchResultsTest extends FunctionalTestCase
 {
     private $client;
 
     protected function setUp(): void
     {
-        $this->client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        $this->client = static::pantherClient();
     }
 
     public function testChurchSearchWithKeyword(): void
