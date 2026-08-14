@@ -40,44 +40,38 @@ try {
     } else {
         $html = new $class($path->arguments);
     }
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
     // #182: a nyers hibaüzenet (QueryException esetén a TELJES SQL) és a stack
     // trace eddig környezet-ellenőrzés NÉLKÜL kiment a frontendre — pl. egy emoji
     // beküldésekor a "SQLSTATE... Incorrect string value ... insert into `remarks`
     // ..." + fájlútvonalak/sorszámok. Csak debug módban (dev/testing/staging)
     // mutatjuk a részleteket; prod-ban ($config['debug']=0) generikus üzenet.
     // A részletek MINDIG a szerver-logba kerülnek, hogy debug=0 mellett se vesszenek el.
+    //
+    // #725: \Throwable, nem \Exception. A TypeError/Error a PHP 8-ban NEM \Exception,
+    // ezért az eddig átment ezen az ágon: 500 lett belőle, napló nélkül.
     $showDetails = !empty($config['debug']);
-    error_log('[miserend] Unhandled exception: ' . $e->getMessage()
-        . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    logThrowable('Unhandled exception', $e);
 
     if (isset($html)) {
         addMessage($showDetails ? $e->getMessage() : 'Váratlan hiba történt. Kérjük, próbáld újra később.', 'danger');
     } else {
-
 		// Mi lenne, ha a hibaüzenetünket szeben írnánk ki?
-		$html = new \Html\Html($path->arguments);
-
-		$html->template = 'Exception.twig';
-		$html->errorTrace = '';
-
-        if ($showDetails) {
-            $html->errorMessage = $e->getMessage();
-            foreach ($e->getTrace() as $trace) {
-                if (isset($trace['class']))
-                    $html->errorTrace .= $trace['class'] . "::" . $trace['function'] . "()";
-                if (isset($trace['file']))
-                    $html->errorTrace .= $trace['file'] . ":" . $trace['line'] . " -> " . $trace['function'] . "()";
-                $html->errorTrace .= "<br>";
-            }
-        } else {
-            $html->errorMessage = 'Váratlan hiba történt. Kérjük, próbáld újra később.';
-        }
+		$html = buildExceptionPage($e, $showDetails, $path->arguments ?? false);
     }
 }
 if (isset($html)) {
-    $html->render();
-    if (trim($html->html) != '') {  
+    // #725: a renderelés eddig védtelen volt. Márpedig a Twig-sablonok a lusta Eloquent-
+    // accessorokat (church.location, church.holders, …) csak itt hívják meg — ha ott szállt
+    // el valami, abból 500 lett, a hibáról pedig SEMMI nem került a naplóba.
+    try {
+        $html->render();
+    } catch (\Throwable $e) {
+        logThrowable('Render failed', $e);
+        $html = buildExceptionPage($e, !empty($config['debug']), $path->arguments ?? false);
+        $html->render();
+    }
+    if (trim($html->html) != '') {
 		//Az API esetén a CORS policy megengedő kell legyen.
 		if(isset($html->api)) {			
 			header("Access-Control-Allow-Origin: *");
