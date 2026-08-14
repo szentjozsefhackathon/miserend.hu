@@ -17,13 +17,40 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
         $this->deadline_at = date('Y-m-d H:i:s', strtotime('now +' . $this->frequency));
     }
 
+    /**
+     * A sorrend a LEGRÉGEBBEN esedékes munkával kezdődik.
+     *
+     * Eddig `attempts ASC` volt az elsődleges rendezés, és ez kiéheztetett: a futtató
+     * egy körben EGY munkát indít, tehát amelyik egyszer felhalmozott néhány próbálkozást,
+     * az örökre a sor végére került, és csak akkor jutott szóhoz, ha épp semmi más nem
+     * volt esedékes. Ezért állt élesben a \User::deleteNonActivatedUsers() 135 napja
+     * (65 próbálkozás, egyetlen siker nélkül) — a hibái mellett a rendezés is fogva
+     * tartotta.
+     *
+     * Az attempts már csak holtverseny-döntő: azonos esedékességnél a kevesebbszer
+     * bukott munka megy előbb.
+     */
     public function scopeNextJobs($query) {
         return $query->where('deadline_at', '<', date('Y-m-d H:i:s'))
                         ->where(function($query) {
                             $query->where('attempts', '<', 10)
                             ->orWhere('updated_at', '<', date('Y-m-d H:i:s', strtotime('-12 hour')));
                         })
-                        ->orderBy('attempts', 'ASC')->orderBy('deadline_at', 'ASC');
+                        ->orderBy('deadline_at', 'ASC')->orderBy('attempts', 'ASC');
+    }
+
+    /**
+     * Sikertelen futás után a következő esedékesség a szokásos ritmus szerint jön.
+     *
+     * A deadline_at eddig CSAK sikerre újult meg, tehát egy bukó munka örökre
+     * "esedékes" maradt: minden kopogás újrapróbálta, az attempts percenként nőtt, és
+     * 10 fölött 12 órára ki is zárta magát. A fenti, esedékesség szerinti rendezés
+     * mellett ráadásul minden mást maga elé engedett volna — egy tartósan hibás munka
+     * megbénította volna a többit.
+     */
+    public function backOff(): void {
+        $this->renewDeadline();
+        $this->save();
     }
 
     public function initialize() {
@@ -183,6 +210,48 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
             }
         }
         return $created;
+    }
+
+    /**
+     * #724: a registryből KIVETT munkák sorát is el kell takarítani.
+     *
+     * Az init() csak felvesz, sosem töröl. Ha egy függvény megszűnik (mint a
+     * `\Api\NearBy::cleanOldLogs()` a nearby.log megszüntetésekor), az éles adatbázisban
+     * ottmarad a sora, a futtató pedig minden esedékességnél elhasal rajta:
+     * "Function \Api\NearBy->cleanOldLogs() does not exists." — naponta, örökre.
+     *
+     * Ez a #638 elvének a másik fele: ha a registry az EGYETLEN forrás, akkor amit onnan
+     * kivettünk, annak az adatbázisban sincs helye.
+     *
+     * Üres vagy olvashatatlan registrynél szándékosan nem törlünk semmit: egy hiányzó
+     * fájl miatt nem szabad az összes ütemezést elveszíteni.
+     *
+     * @return string[] a most eltávolított munkák leírása
+     */
+    public static function pruneRemoved(): array {
+        $wanted = [];
+        foreach (self::registry() as $job) {
+            if (empty($job['class']) || empty($job['function'])) {
+                continue;
+            }
+            // A régebbi sorok kettőzött backslash-sel is bekerülhettek — mindkettő számít.
+            foreach (array_unique([$job['class'], str_replace('\\', '\\\\', $job['class'])]) as $class) {
+                $wanted[$class . '::' . $job['function']] = true;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $removed = [];
+        foreach (self::all() as $cron) {
+            if (isset($wanted[$cron->class . '::' . $cron->function])) {
+                continue;
+            }
+            $removed[] = $cron->class . '->' . $cron->function . '()';
+            $cron->delete();
+        }
+        return $removed;
     }
 
 

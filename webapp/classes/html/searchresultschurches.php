@@ -232,6 +232,12 @@ class SearchResultsChurches extends Html {
         $results['results'] = $search->getResults($offset, $limit, false);
         $resultsCount = $search->total;
 
+        // #724: mit keresnek — és főleg mit NEM találnak meg. Csak a kifejezés és a
+        // "volt-e találat" kerül be, napi összesítésben, semmihez nem kötve.
+        if (!$search->searchFailed) {
+            \Stats::countSearch($params['kulcsszo'] !== false ? $params['kulcsszo'] : null, (int) $resultsCount);
+        }
+
         // #575: ha a keresőmotor (Elasticsearch) nem elérhető, ne néma üres
         // találati oldalt mutassunk, hanem érthető, nem-szakmai üzenetet.
         if ($search->searchFailed) {

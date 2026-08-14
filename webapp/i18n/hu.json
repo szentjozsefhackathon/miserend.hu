@@ -228,6 +228,7 @@
     "STATE_PENDING_INFO": "Ez a javaslat függőben van - elfogadhatod vagy elutasíthatod.",
     "STATE_ACCEPTED_INFO": "Ez a javaslat már elfogadásra került.",
     "STATE_REJECTED_INFO": "Ez a javaslat már elutasításra került.",
+    "HANDLED_BY": "Kezelte",
     "SENDER": {
       "NAME": "Javaslattevő neve",
       "EMAIL": "Javaslattevő email címe",

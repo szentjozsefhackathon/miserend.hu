@@ -55,7 +55,10 @@ cd webapp && composer install
 docker exec -it miserend bash
 docker exec miserend php index.php q=health
 docker exec -it mysql mysql -u root -p miserend
+docker logs miserend-miserend-1 2>&1 | grep '\[miserend\]'   # alkalmazás-hibák stack trace-szel
 ```
+
+Logolás: nincs külön logfájl, minden a `docker logs`-ban van — részletek: `docs/logok.md`.
 
 ## Architecture
 
