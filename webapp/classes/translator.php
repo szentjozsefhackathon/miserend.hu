@@ -13,12 +13,15 @@ class Translator {
     /**
      * A szótár helye.
      *
-     * #751: a `webapp/i18n/` a naptár-build kimenete — a `calendar_deploy.py`
-     * másolja oda a `calendar/public/i18n/`-ből, hogy a böngésző HTTP-n el tudja
-     * érni. Emiatt már nincs verziókövetve, a PHP viszont ugyanezt a szótárat
-     * használja (a kategória-szűrő innen kapja a magyar mise-címeket, #299).
-     * Ezért ELŐSZÖR a forrást nézzük — így a fordítás egy helyen él, és friss
-     * klónban, build nélkül is működik. A `webapp/i18n/` csak tartalék.
+     * #751: a szótár FORRÁSA a `calendar/public/i18n/`, a `webapp/i18n/` csak a
+     * `calendar_deploy.py` által odamásolt példány (a böngészőnek kell HTTP-n).
+     * Először a forrást nézzük, hogy egyértelmű legyen, melyik a mérvadó, és hogy
+     * a hoszton futó CLI-eszközök build nélkül is fordítsanak.
+     *
+     * A `webapp/i18n/` viszont verziókövetett MARAD, és tartalékként itt is
+     * szerepel: a CI a `Dockerfile.github`-ból épült image-et futtatja, ami a
+     * `calendar/` mappát NEM másolja be — ott ez az egyetlen elérhető szótár.
+     * (A PHP a kategória-szűrő magyar mise-címeit innen veszi, #299.)
      */
     private static function dictionaryPath(string $lang): ?string
     {
