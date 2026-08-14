@@ -57,6 +57,16 @@ class SearchResultsMasses extends Html {
         $hasLongitude = $params['nearby_lon'] !== false && $params['nearby_lon'] !== '';
         $hasRadius = $params['nearby_radius'] !== false && $params['nearby_radius'] !== '';
 
+        // #722: a helynévhez és a koordinátához eddig két külön távolság-választó tartozott
+        // (`tavolsag` és `nearby_radius`) ugyanahhoz a kereséshez. Az űrlapon már csak egy
+        // van; a régi `nearby_radius` paraméter továbbra is érvényes (a találati oldal
+        // rejtett mezői és a kézzel írt URL-ek miatt), de ha hiányzik, a `tavolsag` lép a
+        // helyébe.
+        if (!$hasRadius && (int) $params['tavolsag'] > 0) {
+            $params['nearby_radius'] = $params['tavolsag'];
+            $hasRadius = true;
+        }
+
         // #608: a hely szerinti szűrés hibás bemenete nem fatális hiba. Tipikus eset a
         // magyar tizedesvessző: a number input az értelmezhetetlen értéket üres stringként
         // küldi el, így csak az egyik koordináta érkezik meg. Ilyenkor jelezzük a bajt,
