@@ -43,6 +43,50 @@ class Distance {
         }
     }
     
+    /**
+     * #748: a pár KANONIKUS sorrendje — a „kisebb" koordináta a `from`.
+     *
+     * A `distances` tábla eddig ugyanazt a párt kétszer tárolta (A->B ÉS B->A),
+     * mert a cron minden templomot külön dolgoz fel `from`-ként, a `Coord` unique
+     * kulcs pedig a két tuple-t különbözőnek látja. Innentől egy pár egy sor.
+     */
+    public static function canonicalPair(array $a, array $b): array {
+        if ($a['lat'] < $b['lat'] || ($a['lat'] == $b['lat'] && $a['lon'] <= $b['lon'])) {
+            return [$a, $b];
+        }
+        return [$b, $a];
+    }
+
+    /**
+     * #748: a párhoz tartozó sor — BÁRMELYIK tárolt irányban.
+     *
+     * A még nem normalizált (fordított) sorokat így a helyükön frissítjük, nem
+     * hozunk mellé újat; új sor viszont már csak kanonikus sorrendben születik.
+     * Így a migráció lefutása előtt sem keletkezik több duplikátum.
+     */
+    public static function findOrNewPair(array $a, array $b): \Eloquent\Distance {
+        $existing = \Eloquent\Distance::where(function ($q) use ($a, $b) {
+                    $q->where('fromLat', $a['lat'])->where('fromLon', $a['lon'])
+                      ->where('toLat', $b['lat'])->where('toLon', $b['lon']);
+                })->orWhere(function ($q) use ($a, $b) {
+                    $q->where('fromLat', $b['lat'])->where('fromLon', $b['lon'])
+                      ->where('toLat', $a['lat'])->where('toLon', $a['lon']);
+                })->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        [$from, $to] = self::canonicalPair($a, $b);
+
+        $row = new \Eloquent\Distance();
+        $row->fromLat = $from['lat'];
+        $row->fromLon = $from['lon'];
+        $row->toLat   = $to['lat'];
+        $row->toLon   = $to['lon'];
+        return $row;
+    }
+
     function MupdateChurch($churchFrom, $maxDistance = 5000) { //maxDistance in meter
             set_time_limit('600');
             $counter = 0;
@@ -63,18 +107,11 @@ class Distance {
             
             $highestDistance = 0;
             foreach ($churchesInBBox as $churchTo) {  
-                $processingDistance = \Eloquent\Distance::findOrNew(['fromLat' => $churchFrom->lat, 'fromLon' => $churchFrom->lon, 'toLat' => $churchTo->lat, 'toLon' => $churchTo->lon])->first();
-                $processingDistance = \Eloquent\Distance::where('fromLat',$churchFrom->lat)
-                        ->where('fromLon',$churchFrom->lon)
-                        ->where('toLat',$churchTo->lat)
-                        ->where('toLon',$churchTo->lon)->first();
-                if(!$processingDistance) {
-                    $processingDistance = new \Eloquent\Distance();
-                    $processingDistance->fromLat = $churchFrom->lat;
-                    $processingDistance->fromLon = $churchFrom->lon;
-                    $processingDistance->toLat = $churchTo->lat;
-                    $processingDistance->toLon = $churchTo->lon;
-                }
+                // #748: kanonikus sorrend, és a fordított irányú sort is megtaláljuk.
+                $processingDistance = self::findOrNewPair(
+                    ['lat' => $churchFrom->lat, 'lon' => $churchFrom->lon],
+                    ['lat' => $churchTo->lat,   'lon' => $churchTo->lon]
+                );
                 if ($churchFrom->updated_at > $processingDistance->updated_at
                         OR $churchTo->updated_at > $processingDistance->updated_at) {
 
@@ -113,18 +150,11 @@ class Distance {
                 
                 foreach ($churchesInBBox as $churchTo) {  
 
-                        $processingDistance = \Eloquent\Distance::findOrNew(['fromLat' => $churchFrom->lat, 'fromLon' => $churchFrom->lon, 'toLat' => $churchTo->lat, 'toLon' => $churchTo->lon])->first();
-                        $processingDistance = \Eloquent\Distance::where('fromLat',$churchFrom->lat)
-                                ->where('fromLon',$churchFrom->lon)
-                                ->where('toLat',$churchTo->lat)
-                                ->where('toLon',$churchTo->lon)->first();
-                        if(!$processingDistance) {
-                            $processingDistance = new \Eloquent\Distance();
-                            $processingDistance->fromLat = $churchFrom->lat;
-                            $processingDistance->fromLon = $churchFrom->lon;
-                            $processingDistance->toLat = $churchTo->lat;
-                            $processingDistance->toLon = $churchTo->lon;
-                        }
+                        // #748: kanonikus sorrend, és a fordított irányú sort is megtaláljuk.
+                        $processingDistance = self::findOrNewPair(
+                            ['lat' => $churchFrom->lat, 'lon' => $churchFrom->lon],
+                            ['lat' => $churchTo->lat,   'lon' => $churchTo->lon]
+                        );
                         $highestDistance = 0;
                         if ($churchFrom->updated_at > $processingDistance->updated_at
                                 OR $churchTo->updated_at > $processingDistance->updated_at) {

@@ -75,6 +75,146 @@ class ExternalCalendarImporterTest extends TestCase
         $this->assertSame(['hours' => 1, 'minutes' => 30], $mass->duration);
     }
 
+    /**
+     * #723: a naptár utolsó módosítása lesz a templom frissesség-dátuma, ha újabb.
+     */
+    public function testFeedLastModifiedIsReportedBack(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\n"
+            . "BEGIN:VEVENT\r\nSUMMARY:Régi\r\nDTSTART:20260301T080000Z\r\n"
+            . "LAST-MODIFIED:20250104T101500Z\r\nEND:VEVENT\r\n"
+            . "BEGIN:VEVENT\r\nSUMMARY:Újabb\r\nDTSTART:20260302T080000Z\r\n"
+            . "LAST-MODIFIED:20260214T091500Z\r\nEND:VEVENT\r\n"
+            . "END:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertSame('2026-02-14', $modifiedOn);
+    }
+
+    /**
+     * A DTSTAMP-ot a Google az EXPORTÁLÁSKOR tölti ki, tehát minden lekérésnél mai.
+     * Ha azt vennénk alapul, minden naptár örökké frissnek látszana — pont az ellenkezője
+     * annak, amit a #723 kér. LAST-MODIFIED nélküli feednél ezért nem nyúlunk semmihez.
+     */
+    public function testFeedWithoutLastModifiedDoesNotTouchFreshness(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "SUMMARY:Mise\r\nDTSTART:20260301T080000Z\r\nDTSTAMP:" . gmdate('Ymd\THis\Z') . "\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertNull($modifiedOn);
+    }
+
+    /** Elrontott naptár ne tolhassa a jövőbe a frissesség-dátumot. */
+    public function testFutureLastModifiedIsIgnored(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "SUMMARY:Mise\r\nDTSTART:20260301T080000Z\r\n"
+            . "LAST-MODIFIED:" . gmdate('Ymd\THis\Z', strtotime('+3 days')) . "\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $modifiedOn = null;
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+
+        $this->assertNull($modifiedOn);
+    }
+
+    /**
+     * A `templomok` írásait ez a teszt SAJÁT MAGA állítja vissza, nem a setUp
+     * tranzakciójára bízza: az \Eloquent\Church::save() az Elasticsearchöt is frissíti,
+     * és ezen az úton a mentés túléli a rollbacket — a szomszéd teszt pedig már a
+     * beszivárgott értéket látná.
+     */
+    public function testFreshnessMovesForwardOnlyNeverBackwards(): void
+    {
+        $eredeti = Eloquent\Church::findOrFail(1)->frissites;
+
+        try {
+            $this->setFrissites(null);
+            $this->assertTrue(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-02-14', (string) Eloquent\Church::findOrFail(1)->frissites);
+
+            // Régebbi dátum: előre mozdul.
+            $this->setFrissites('2020-01-01');
+            $this->assertTrue(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-02-14', (string) Eloquent\Church::findOrFail(1)->frissites);
+
+            // A kézi frissítés újabb: a naptár nem húzhatja vissza.
+            $this->setFrissites('2026-07-01');
+            $this->assertFalse(ExternalCalendarImporter::touchChurchFreshness(1, '2026-02-14'));
+            $this->assertSame('2026-07-01', (string) Eloquent\Church::findOrFail(1)->frissites);
+        } finally {
+            $this->setFrissites($eredeti);
+        }
+    }
+
+    private function setFrissites(?string $ertek): void
+    {
+        DB::table('templomok')->where('id', 1)->update(['frissites' => $ertek]);
+    }
+    /**
+     * Éles hiba: "Unable to parse datetime: VALUE=DATE:20260326". Az egész napos
+     * eseményekre a Google `DTSTART;VALUE=DATE:...`-ot ír, a parser viszont csak a
+     * TZID paramétert ismerte fel — egyetlen ilyen esemény az ADOTT TEMPLOM teljes
+     * importját megbuktatta, a cron pedig az egész futást hibásnak jelölte.
+     */
+    public function testAllDayEventsAreImportedInsteadOfBreakingTheWholeFeed(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "UID:allday-1@example.test\r\n"
+            . "SUMMARY:Búcsú\r\n"
+            . "DTSTART;VALUE=DATE:20260326\r\n"
+            . "DTEND;VALUE=DATE:20260327\r\n"
+            . "END:VEVENT\r\nBEGIN:VEVENT\r\n"
+            . "UID:timed-1@example.test\r\n"
+            . "SUMMARY:Vasárnapi szentmise\r\n"
+            . "DTSTART;TZID=Europe/Budapest:20260329T100000\r\n"
+            . "DURATION:PT1H\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        $created = ExternalCalendarImporter::replaceFromIcs($ics, 1);
+
+        $this->assertSame(2, $created);
+
+        $allDay = Eloquent\CalMass::where('church_id', 1)->where('title', 'Búcsú')->firstOrFail();
+        $this->assertSame('2026-03-26T00:00:00', $allDay->start_date);
+        $this->assertSame(['hours' => 24, 'minutes' => 0], $allDay->duration);
+
+        // A paraméterek sorrendje nem számíthat, és az időpontos esemény sem sérülhet.
+        $timed = Eloquent\CalMass::where('church_id', 1)->where('title', 'Vasárnapi szentmise')->firstOrFail();
+        $this->assertSame('2026-03-29T10:00:00', $timed->start_date);
+    }
+
+    /**
+     * Ugyanez a paraméterkezelés fordított sorrenddel és idézőjeles TZID-vel is álljon,
+     * és a paraméter nélküli értékeket ne bántsa (a `2026-12-23T23:59:00`-ban a `:`
+     * az időhöz tartozik, nem paraméter-elválasztó).
+     */
+    public function testPropertyParametersAreParsedRegardlessOfOrder(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\n"
+            . "UID:params-1@example.test\r\n"
+            . "SUMMARY:Esti szentmise\r\n"
+            . "DTSTART;VALUE=DATE-TIME;TZID=\"Europe/Budapest\":20260329T180000\r\n"
+            . "DURATION:PT1H\r\n"
+            . "RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20261223T235900Z\r\n"
+            . "END:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        ExternalCalendarImporter::replaceFromIcs($ics, 1);
+
+        $mass = Eloquent\CalMass::where('church_id', 1)
+            ->where('comment', ExternalCalendarImporter::IMPORT_MARKER)
+            ->firstOrFail();
+        $this->assertSame('2026-03-29T18:00:00', $mass->start_date);
+        $this->assertSame('2026-03-29T18:00:00', $mass->rrule['dtstart']);
+        $this->assertSame('2026-12-24T00:59:00', $mass->rrule['until']);
+    }
+
     public function testCronReportsFailedCalendarInsteadOfMarkingTheRunSuccessful(): void
     {
         $calendar = Eloquent\ExternalCalendar::create([

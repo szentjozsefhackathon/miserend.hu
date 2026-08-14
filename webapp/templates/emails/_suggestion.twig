@@ -36,7 +36,8 @@
                     {% if k != 'id' and k != 'churchId' %}
                         <li><strong>{{ fieldLabels[k]|default(k) }}:</strong>
                         {%- if v is null or v == '' %} <em>(üres)</em>
-                        {%- elseif k == 'lang' %} {{ ('LANGUAGES.' ~ v)|trans }}
+                        {#- #334: a nyelv vesszős lista is lehet ("sk,la"), így külön-külön fordítjuk #}
+                        {%- elseif k == 'lang' %} {{ v|split(',')|map(l => ('LANGUAGES.' ~ l|trim)|trans)|join(', ') }}
                         {%- elseif k == 'rite' %} {{ v|trans }}
                         {%- elseif k == 'startDate' %} {{ v|date('Y-m-d H:i') }}
                         {%- elseif k == 'rrule' %} {{ v|readable_rrule }}

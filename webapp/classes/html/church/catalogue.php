@@ -23,11 +23,23 @@ class Catalogue extends \Html\Html {
             throw new \Exception('Nincs jogosultságod megnézni a templomok listáját.');
         }
                
-        $this->filterKeyword = (isset($this->input['keyword']) ? $this->input['keyword'] : false);
-        $this->filterDiocese = (isset($this->input['egyhazmegye']) ? $this->input['egyhazmegye'] : false);
-        $this->filterDeanery = ((isset($this->input['espereskerulet']) AND $this->input['espereskerulet'] != 0 ) ? $this->input['espereskerulet'] : false);
-        $this->filterStatus = (isset($this->input['status']) ? $this->input['status'] : false);
-        $this->orderBy = (isset($this->input['orderBy']) ? $this->input['orderBy'] : 'updated_at DESC');
+        // #391: az `isset(...) ? ... : false` páros pontosan az, amit a \Request::get()
+        // ad — csak épp nyersen olvasta a $this->input-ot.
+        //
+        // Az azonosítókat számként ellenőrizzük, de NEM \Request::Integer()-rel: az
+        // kivételt dob nem-számra, vagyis egy elgépelt `?egyhazmegye=abc` hibaoldalt
+        // adna egy listán. Egy rossz szűrő nem hiba — egyszerűen nem szűr.
+        $numericFilter = function (string $key) {
+            $value = \Request::get($key);
+            return is_numeric($value) ? (int) $value : false;
+        };
+
+        $this->filterKeyword = \Request::Text('keyword');
+        $this->filterDiocese = $numericFilter('egyhazmegye');
+        $deanery = $numericFilter('espereskerulet');
+        $this->filterDeanery = ($deanery !== false AND $deanery != 0) ? $deanery : false;
+        $this->filterStatus = \Request::SimpleText('status');
+        $this->orderBy = \Request::TextwDefault('orderBy', 'updated_at DESC');
         
         $params = [
             'keyword' => $this->filterKeyword,

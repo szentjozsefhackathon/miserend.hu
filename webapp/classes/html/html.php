@@ -29,7 +29,7 @@ class Html {
         // szűretlen $_REQUEST-ként. Kiváltása a html/ mappa mind a ~73 ->input[...]
         // használatának átírását + staging-tesztet igényel (form-mentés, kép-feltöltés),
         // ezért külön, tesztelt lépésben megy — nem itt, vakon.
-        $this->input = $_REQUEST;
+        $this->input = \Request::all();
         $this->initPagination();
     }
 
@@ -72,6 +72,7 @@ class Html {
         $this->twig->addFilter(new \Twig\TwigFilter('readable_rrule', 'twig_readable_rrule'));
         // DANGER: a twig declarálva van / meg van hívva a Load.php -ban is. Így ott is módosítani kellhet a filterket
         $this->twig->addGlobal('domain', DOMAIN); // Environment-specific domain for email templates
+        $this->twig->addGlobal('mcal_version', mcalVersion()); // naptár-bundle cache-buster, l. mcalVersion()
 
     }
 
@@ -183,11 +184,23 @@ class Html {
 
     function initPagination() {
         $this->pagination = new \Pagination();
-        if (isset($this->input['page'])) {
-            $this->pagination->active = $this->input['page'];
+
+        // #391: a lapozó eddig NYERSEN vette át a `page`/`take` értéket, tehát bármit.
+        // A hívók viszont szoroznak vele (`take * active`), ami PHP 8-ban TypeError
+        // nem-számra: egy `?page=abc` vagy `?page[]=1` HTTP 500-at adott MINDEN
+        // keresőoldalon.
+        //
+        // A \Request::Integer* kivételt dob nem-számra — az szintén 500 lenne. Egy
+        // elrontott lapszám viszont nem hiba, amiért az egész oldalt el kell dobni:
+        // csendben az első lapra esünk vissza, ahogy a felhasználó várná.
+        $page = \Request::get('page');
+        if (is_numeric($page)) {
+            $this->pagination->active = max(0, (int) $page);
         }
-        if (isset($this->input['take'])) {
-            $this->pagination->take = $this->input['take'];
+
+        $take = \Request::get('take');
+        if (is_numeric($take) && (int) $take > 0) {
+            $this->pagination->take = (int) $take;
         }
     }
 

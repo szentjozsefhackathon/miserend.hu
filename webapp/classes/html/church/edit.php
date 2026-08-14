@@ -36,7 +36,7 @@ class Edit extends \Html\Html {
    
         // #545: többdimenziós szerkesztő-űrlap nyers inputja. A mezőnkénti
         // \Request:: átírás staging-tesztet igényel (mentés-folyamat), ezért marad.
-        $this->input = $_REQUEST;
+        $this->input = \Request::all();
         $this->tid = $path[0];
         $this->church = \Eloquent\Church::find($this->tid);
         if (!$this->church) {
@@ -50,7 +50,8 @@ class Edit extends \Html\Html {
         }
 
         $isForm = \Request::Text('submit');
-        $isRelationshipAction = isset($_REQUEST['relationship']['add']) || isset($_REQUEST['relationship']['delete']);
+        $isRelationshipAction = \Request::get('relationship[add]') !== false
+            || \Request::get('relationship[delete]') !== false;
         if ($isForm || $isRelationshipAction) {
             $this->modify();
         }
@@ -58,10 +59,14 @@ class Edit extends \Html\Html {
     }
 
     function modify() {
-        $hasChurchForm = isset($this->input['church']['id']);
+        // #391: a szerkesztő-űrlap mezőcsoportja a \Request::Fields()-en át jön —
+        // ellenőrzött másolat, hiányzó vagy nem-tömb bemenetnél false, tehát nincs
+        // „Undefined array key" figyelmeztetés a naplóban.
+        $churchFields = \Request::Fields('church');
+        $hasChurchForm = ($churchFields !== false && isset($churchFields['id']));
 
         // --- Teljes church form mentése (beleértve a kapcsolat kiválasztást) ---
-        if ($hasChurchForm && $this->input['church']['id'] != $this->tid) {
+        if ($hasChurchForm && $churchFields['id'] != $this->tid) {
             throw new \Exception("Gond van a módosítandó templom azonosítójával.");
         }
 
@@ -76,8 +81,8 @@ class Edit extends \Html\Html {
             'lat','lon'];
 
         foreach ($allowedFields as $field) {
-            if (array_key_exists($field, $this->input['church'])) {
-                $this->church->$field = $this->input['church'][$field];
+            if (array_key_exists($field, $churchFields)) {
+                $this->church->$field = $churchFields[$field];
             }
         }
 
@@ -89,8 +94,8 @@ class Edit extends \Html\Html {
          * kidobta), ezért a már beállított ellátó plébániát NEM lehetett visszavonni.
          * Most a 0 és a hiányzó érték egyaránt a törlés ága.
          */
-        $parentId = isset($this->input['church']['parent_id'])
-            ? (int) $this->input['church']['parent_id']
+        $parentId = isset($churchFields['parent_id'])
+            ? (int) $churchFields['parent_id']
             : 0;
         $parentAction = self::parentChurchAction($parentId, (int) $this->tid);
 
@@ -114,14 +119,14 @@ class Edit extends \Html\Html {
         }
 
         // Handle external calendar URL
-        if (isset($this->input['church']['external_calendar_url'])) {
-            $newUrl = trim($this->input['church']['external_calendar_url']);
+        if (isset($churchFields['external_calendar_url'])) {
+            $newUrl = trim($churchFields['external_calendar_url']);
             \ExternalCalendarImporter::saveCalendarUrl((int)$this->tid, $newUrl);
         }
 
         // #484: a részletes beállítások mentése + a származtatott OSM-címke azonnali
         // felküldése, hogy ne kelljen külön az /editosm-en is elmenteni.
-        $glutenFreeOsmValue = \GlutenFreeCommunion::save($this->tid, $this->input['church']);
+        $glutenFreeOsmValue = \GlutenFreeCommunion::save($this->tid, $churchFields);
         if ($glutenFreeOsmValue !== null) {
             \GlutenFreeCommunion::syncToOsm($this->church, $glutenFreeOsmValue);
         }
@@ -152,7 +157,7 @@ class Edit extends \Html\Html {
             }
         }
 
-        switch ($this->input['modosit']) {
+        switch (\Request::Text('modosit')) {
             case 'n':
                 $this->redirect("/church/catalogue");
                 break;

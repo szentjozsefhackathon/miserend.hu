@@ -10,6 +10,33 @@ class Translator {
         self::init($lang);
     }
 
+    /**
+     * A szótár helye.
+     *
+     * #751: a szótár FORRÁSA a `calendar/public/i18n/`, a `webapp/i18n/` csak a
+     * `calendar_deploy.py` által odamásolt példány (a böngészőnek kell HTTP-n).
+     * Először a forrást nézzük, hogy egyértelmű legyen, melyik a mérvadó, és hogy
+     * a hoszton futó CLI-eszközök build nélkül is fordítsanak.
+     *
+     * A `webapp/i18n/` viszont verziókövetett MARAD, és tartalékként itt is
+     * szerepel: a CI a `Dockerfile.github`-ból épült image-et futtatja, ami a
+     * `calendar/` mappát NEM másolja be — ott ez az egyetlen elérhető szótár.
+     * (A PHP a kategória-szűrő magyar mise-címeit innen veszi, #299.)
+     */
+    private static function dictionaryPath(string $lang): ?string
+    {
+        $candidates = [
+            __DIR__ . '/../../calendar/public/i18n/' . $lang . '.json',
+            __DIR__ . '/../i18n/' . $lang . '.json',
+        ];
+        foreach ($candidates as $path) {
+            if (is_file($path) && is_readable($path)) {
+                return $path;
+            }
+        }
+        return null;
+    }
+
     public static function init($lang = null)
     {
         if (self::$inited) {
@@ -26,12 +53,12 @@ class Translator {
         }
 
         $lang = preg_replace('/[^a-z]/', '', strtolower($lang)) ?: 'en';
-        $path = __DIR__ . '/../i18n/' . $lang . '.json';
+        $path = self::dictionaryPath($lang);
 
         // fallback to English if requested language file is missing
-        if (!is_file($path) || !is_readable($path)) {
-            $fallback = __DIR__ . '/../i18n/en.json';
-            if (is_file($fallback) && is_readable($fallback)) {
+        if ($path === null) {
+            $fallback = self::dictionaryPath('en');
+            if ($fallback !== null) {
                 $path = $fallback;
             } else {
                 // nothing to load, mark initialized to avoid repeated attempts

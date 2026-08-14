@@ -82,6 +82,9 @@ export interface Mass {
 
   /**
    * A mise nyelvének kétbetűs kódja. Default: hu
+   *
+   * #334: több nyelvű mise esetén vesszővel elválasztva több kód is állhat benne
+   * ("sk,la"). A listás alakhoz: MassUtil.languageCodes().
    */
   lang: string;
 

@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Functional (browser) tests for the Unified Autocomplete UX.
@@ -13,17 +12,13 @@ use Symfony\Component\Panther\PantherTestCase;
  * Requires a running local server at PANTHER_EXTERNAL_BASE_URI
  * (defaults to http://127.0.0.1:8000).
  */
-final class UnifiedAutocompleteTest extends PantherTestCase
+final class UnifiedAutocompleteTest extends FunctionalTestCase
 {
     private static $client;
 
     public static function setUpBeforeClass(): void
     {
-        self::$client = static::createPantherClient(
-            ['external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000'],
-            [],
-            ['browser' => static::CHROME]
-        );
+        self::$client = static::pantherClient();
     }
 
     private function loadHomepage(): \Symfony\Component\DomCrawler\Crawler

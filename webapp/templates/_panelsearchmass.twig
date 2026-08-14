@@ -20,6 +20,11 @@
         <div class="row">
             <input type=submit value="keresés" class="keresourlap form-control">
         </div>
+        {% if nearbyOrigin %}
+            <input type="hidden" name="nearby_lat" value="{{ nearbyOrigin.lat }}">
+            <input type="hidden" name="nearby_lon" value="{{ nearbyOrigin.lon }}">
+            <input type="hidden" name="nearby_radius" value="{{ nearbyRadius }}">
+        {% endif %}
     </div>
   </form>
 

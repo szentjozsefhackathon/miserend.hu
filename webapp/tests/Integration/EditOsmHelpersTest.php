@@ -77,14 +77,13 @@ class EditOsmHelpersTest extends TestCase
         $o = $this->editOsm();
         $o->osmtags = (object) ['amenity' => 'place_of_worship', 'phone' => '+36 1 111'];
         $o->validKeys = ['amenity', 'phone', 'website', 'wheelchair'];
-        $o->input = ['osm' => [
+        
+        $r = $o->prepareUpdatedOsmtags([
             'amenity'    => 'place_of_worship',        // változatlan
             'phone'      => '',                        // törlés
             'website'    => 'https://x.hu',            // hozzáadás
             'wheelchair' => 'Nincs információ. yes',   // '' -> no-op (nincs az eredetiben)
-        ]];
-
-        $r = $o->prepareUpdatedOsmtags();
+        ]);
 
         $this->assertSame(
             ['amenity' => 'place_of_worship', 'website' => 'https://x.hu'],
@@ -97,9 +96,8 @@ class EditOsmHelpersTest extends TestCase
         $o = $this->editOsm();
         $o->osmtags = (object) ['amenity' => 'place_of_worship', 'phone' => '+36 1 111'];
         $o->validKeys = ['amenity', 'phone', 'website', 'wheelchair'];
-        $o->input = ['osm' => ['phone' => '+36 2 222']];
-
-        $r = $o->prepareUpdatedOsmtags();
+        
+        $r = $o->prepareUpdatedOsmtags(['phone' => '+36 2 222']);
 
         $this->assertSame('+36 2 222', $r['phone']);
     }
@@ -109,8 +107,7 @@ class EditOsmHelpersTest extends TestCase
         $o = $this->editOsm();
         $o->osmtags = (object) ['amenity' => 'place_of_worship', 'phone' => '+36 1 111'];
         $o->validKeys = ['amenity', 'phone', 'website', 'wheelchair'];
-        $o->input = ['osm' => ['amenity' => 'place_of_worship']]; // változatlan
-
-        $this->assertFalse($o->prepareUpdatedOsmtags());
+        
+        $this->assertFalse($o->prepareUpdatedOsmtags(['amenity' => 'place_of_worship']));
     }
 }

@@ -78,4 +78,7 @@ RUN a2dissite 000-default \
     
 # Entrypoint
 COPY docker/miserend/entrypoint.sh /entrypoint.sh
+# #171: az entrypoint hivatkozik rá, ha a CRON_ENABLED be van kapcsolva.
+COPY docker/miserend/cron-loop.sh /cron-loop.sh
+RUN chmod +x /entrypoint.sh /cron-loop.sh
 ENTRYPOINT ["/entrypoint.sh"]

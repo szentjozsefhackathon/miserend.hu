@@ -27,13 +27,13 @@ USE miserend;
 CREATE TABLE IF NOT EXISTS `attributes` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `church_id` int(11) NOT NULL,
-  `key` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_hungarian_ci NOT NULL,
-  `value` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_hungarian_ci NOT NULL,
+  `key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `fromOSM` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `church_id` (`church_id`),
   CONSTRAINT `attributes_ibfk_1` FOREIGN KEY (`church_id`) REFERENCES `templomok` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS `boundaries` (
   PRIMARY KEY (`id`),
   KEY `index1` (`boundary`,`admin_level`),
   KEY `index2` (`osmtype`,`osmid`)
-) ENGINE=InnoDB AUTO_INCREMENT=7891 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7891 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS `cal_generated_periods` (
   PRIMARY KEY (`id`),
   KEY `period_id` (`period_id`),
   CONSTRAINT `fk_cal_generated_periods_period_id` FOREIGN KEY (`period_id`) REFERENCES `cal_periods` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS `cal_masses` (
   KEY `period_id` (`period_id`),
   KEY `church_id` (`church_id`),
   CONSTRAINT `fk_cal_masses_period_id` FOREIGN KEY (`period_id`) REFERENCES `cal_periods` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS `cal_periods` (
   KEY `end_period_id` (`end_period_id`),
   CONSTRAINT `fk_cal_periods_start_period` FOREIGN KEY (`start_period_id`) REFERENCES `cal_periods` (`id`),
   CONSTRAINT `fk_cal_periods_end_period` FOREIGN KEY (`end_period_id`) REFERENCES `cal_periods` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS `cal_period_years` (
   PRIMARY KEY (`id`),
   KEY `period_id` (`period_id`),
   CONSTRAINT `fk_cal_period_years_period_id` FOREIGN KEY (`period_id`) REFERENCES `cal_periods` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS `cal_suggestion_packages` (
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `church_id` (`church_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS `cal_suggestions` (
   PRIMARY KEY (`id`),
   KEY `package_id` (`package_id`),
   CONSTRAINT `fk_cal_suggestions_package` FOREIGN KEY (`package_id`) REFERENCES `cal_suggestion_packages` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS `chat` (
   `kinek` varchar(20) NOT NULL DEFAULT '',
   `szoveg` tinytext NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS `church_holders` (
   `updated_at` timestamp NULL DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_bin;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS `church_links` (
   `updated_at` timestamp NULL DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1505 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_bin;
+) ENGINE=InnoDB AUTO_INCREMENT=1505 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -274,7 +274,7 @@ CREATE TABLE IF NOT EXISTS `church_relationships` (
     REFERENCES `templomok` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_cr_child`  FOREIGN KEY (`child_church_id`)
     REFERENCES `templomok` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS `confessions` (
   `status` enum('ON','OFF') NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `deduplicationId` (`deduplicationId`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS `crons` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_At` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -337,7 +337,7 @@ CREATE TABLE IF NOT EXISTS `distances` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `Coord` (`fromLat`,`fromLon`,`toLat`,`toLon`),
   KEY `From` (`fromLat`,`fromLon`)
-) ENGINE=InnoDB AUTO_INCREMENT=58224 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=58224 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS `egyhazmegye` (
   `osm_relation` int(45) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `id` (`id`)
-) ENGINE=MyISAM AUTO_INCREMENT=35 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci PACK_KEYS=1;
+) ENGINE=MyISAM AUTO_INCREMENT=35 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS `emails` (
   `updated_at` timestamp NULL DEFAULT NULL,
   `status` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -391,7 +391,7 @@ CREATE TABLE IF NOT EXISTS `espereskerulet` (
   `ehm` int(2) NOT NULL DEFAULT 0,
   `nev` varchar(50) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM AUTO_INCREMENT=239 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=239 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -408,7 +408,29 @@ CREATE TABLE IF NOT EXISTS `events` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`id`),
   UNIQUE KEY `name+year` (`name`,`year`)
-) ENGINE=InnoDB AUTO_INCREMENT=381 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=381 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `external_calendars`
+--
+
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE IF NOT EXISTS `external_calendars` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `church_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `url` varchar(2048) NOT NULL,
+  `active` tinyint(1) DEFAULT 1,
+  `last_import_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_church_external` (`church_id`,`name`),
+  KEY `fk_external_calendars_church_id` (`church_id`),
+  CONSTRAINT `fk_external_calendars_church_id` FOREIGN KEY (`church_id`) REFERENCES `templomok` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -425,7 +447,7 @@ CREATE TABLE IF NOT EXISTS `favorites` (
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uid_tid_UNIQUE` (`uid`,`tid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -448,7 +470,7 @@ CREATE TABLE IF NOT EXISTS `keyword_shortcuts` (
   KEY `FK_keyword_shortchuts_osmtag_idx` (`osmtag_id`),
   KEY `church_type_value` (`church_id`,`type`,`value`),
   KEY `type_value` (`type`,`value`)
-) ENGINE=InnoDB AUTO_INCREMENT=12825 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12825 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -467,7 +489,7 @@ CREATE TABLE IF NOT EXISTS `lookup_boundary_church` (
   UNIQUE KEY `unique` (`church_id`,`boundary_id`),
   KEY `FK_church_id_idx` (`church_id`),
   KEY `FK_boundary_id_idx` (`boundary_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=84777320 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=84777320 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -487,7 +509,7 @@ CREATE TABLE IF NOT EXISTS `lookup_church_osm` (
   KEY `FK_church_id_idx` (`church_id`),
   KEY `FK_osm_id_idx` (`osm_id`),
   CONSTRAINT `FK_lookup_church_osm_osm_id` FOREIGN KEY (`osm_id`) REFERENCES `osm` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=5317741 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5317741 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -508,7 +530,7 @@ CREATE TABLE IF NOT EXISTS `lookup_osm_enclosed` (
   KEY `FK_osm_enclosing_id_idx` (`enclosing_id`),
   CONSTRAINT `FK_lookup_osm_enclosed_enclosing` FOREIGN KEY (`enclosing_id`) REFERENCES `osm` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT `FK_lookup_osm_enclosed_osm` FOREIGN KEY (`osm_id`) REFERENCES `osm` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=36847 DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=36847 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -523,7 +545,7 @@ CREATE TABLE IF NOT EXISTS `megye` (
   `orszag` int(2) NOT NULL DEFAULT 12,
   `egyeb` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -540,7 +562,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `text` text DEFAULT NULL,
   `shown` int(11) DEFAULT 0,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -556,7 +578,7 @@ CREATE TABLE IF NOT EXISTS `orszagok` (
   `ok` enum('i','n') NOT NULL DEFAULT 'i',
   `kiemelt` enum('i','n') NOT NULL DEFAULT 'n',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=49 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -576,7 +598,7 @@ CREATE TABLE IF NOT EXISTS `osm` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`osmid`,`osmtype`),
   UNIQUE KEY `idUNIQUE` (`osmid`,`osmtype`)
-) ENGINE=InnoDB AUTO_INCREMENT=8439 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8439 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -600,7 +622,7 @@ CREATE TABLE IF NOT EXISTS `photos` (
   KEY `kiemelt` (`flag`),
   KEY `FKchurch` (`church_id`),
   CONSTRAINT `FKchurch` FOREIGN KEY (`church_id`) REFERENCES `templomok` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=44673 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=44673 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -629,7 +651,7 @@ CREATE TABLE IF NOT EXISTS `remarks` (
   KEY `index1` (`id`,`church_id`),
   KEY `FK_church_id` (`church_id`),
   CONSTRAINT `FK_church_id` FOREIGN KEY (`church_id`) REFERENCES `templomok` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -649,7 +671,7 @@ CREATE TABLE IF NOT EXISTS `stats_externalapi` (
   `diff` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `fast` (`url`,`date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_bin;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -667,7 +689,7 @@ CREATE TABLE IF NOT EXISTS `szentsegimadasok` (
   `type` varchar(40) DEFAULT NULL,
   `info` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_hungarian_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -722,7 +744,7 @@ CREATE TABLE IF NOT EXISTS `templomok` (
   KEY `espereskerulet` (`espereskerulet`),
   KEY `osm` (`osmid`,`osmtype`),
   KEY `boundaries_checked_at` (`boundaries_checked_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=5420 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5420 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -775,7 +797,7 @@ CREATE TABLE IF NOT EXISTS `templomok_full` (
   KEY `egyhazmegye` (`egyhazmegye`),
   KEY `espereskerulet` (`espereskerulet`),
   KEY `osm` (`osmid`,`osmtype`)
-) ENGINE=InnoDB AUTO_INCREMENT=5420 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5420 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -810,7 +832,7 @@ CREATE TABLE IF NOT EXISTS `tokens` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`id`),
   UNIQUE KEY `name_UNIQUE` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -826,7 +848,7 @@ CREATE TABLE IF NOT EXISTS `updates` (
   `timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_hungarian_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -849,7 +871,7 @@ CREATE TABLE IF NOT EXISTS `user` (
   `nev` varchar(100) NOT NULL DEFAULT '',
   `volunteer` int(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`uid`)
-) ENGINE=MyISAM AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -865,7 +887,7 @@ CREATE TABLE IF NOT EXISTS `varosok` (
   `orszag` int(2) NOT NULL DEFAULT 46,
   `nev` varchar(50) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM AUTO_INCREMENT=7845 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_uca1400_ai_ci;
+) ENGINE=MyISAM AUTO_INCREMENT=7845 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

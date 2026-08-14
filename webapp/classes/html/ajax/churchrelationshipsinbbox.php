@@ -7,16 +7,13 @@ use Illuminate\Database\Capsule\Manager as DB;
 class ChurchRelationshipsInBBox extends Ajax {
 
     public function __construct() {
-        $bbox = explode(';', $_REQUEST['bbox']);
-        if (count($bbox) != 4) {
+        // #391: a kézi explode + is_numeric pontosan azt csinálta, amit a \Request::Bbox()
+        // — csak épp isset-ellenőrzés nélkül olvasta a $_REQUEST-et, tehát hiányzó `bbox`
+        // paraméternél PHP-figyelmeztetést hagyott a naplóban minden hívásnál.
+        $bbox = \Request::Bbox('bbox');
+        if ($bbox === false) {
             echo json_encode(['relationships' => []]);
             return;
-        }
-        foreach ($bbox as $int) {
-            if (!is_numeric($int)) {
-                echo json_encode(['relationships' => []]);
-                return;
-            }
         }
 
         // Lekérjük az összes templomot a bbox-ban

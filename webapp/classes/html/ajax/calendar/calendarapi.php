@@ -8,7 +8,9 @@ class CalendarApi extends \Html\Html {
     public $format = 'json';
 
     public function __construct($path) {
-        $this->content = json_encode($_REQUEST);
+        // #391: nem tükrözzük vissza a kérést (l. Html\Ajax\Ajax). A naptár-végpontok
+        // mind saját konstruktort hoznak, ez csak a „nincs ilyen végpont" eset.
+        $this->content = json_encode(['error' => 'Nincs ilyen naptár végpont.']);
     }
 
     public function sendJsonError($message, $code): void {

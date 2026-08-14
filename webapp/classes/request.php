@@ -298,6 +298,39 @@ class Request {
         }
     }
 
+    /**
+     * #391: egy űrlap-mezőcsoport (többdimenziós $_REQUEST-tömb) beolvasása.
+     *
+     * A `church[...]`, `edituser[...]`, `relationship[...]` alakú mezőcsoportokat a
+     * feldolgozó kód egyben fogyasztja (`submit($vars)`), ezért nem bontható mezőnkénti
+     * \Request:: hívásokra. Az viszont kiváltható, hogy nyersen a szuperglobálishoz
+     * nyúljunk: itt egyetlen belépési pont van, ami ELLENŐRZI, hogy tömböt kaptunk-e.
+     *
+     * Az értékeket SZÁNDÉKOSAN nem alakítjuk át: a mezőnkénti validáció a hívóé
+     * (User::submit() -> presave()), és egy vak sanitize() elrontaná például a
+     * jelszót, ami tartalmazhat `<` karaktert.
+     *
+     * @return array|false  a mezőcsoport MÁSOLATA, vagy false ha nincs / nem tömb
+     */
+    static function Fields($name) {
+        $value = self::get($name);
+        if ($value === false || !is_array($value)) {
+            return false;
+        }
+        return $value;
+    }
+
+    /**
+     * #391: a teljes kérés. A html/ réteg `$this->input`-ja épül rá.
+     *
+     * Nem szanál — pontosan azt adja, amit eddig a nyers $_REQUEST —, de egyetlen
+     * helyre gyűjti az olvasást: innentől statikusan kereshető, és ha valaha
+     * szűrni/naplózni akarjuk a bejövő kérést, egy helyen kell megtenni.
+     */
+    static function all(): array {
+        return $_REQUEST;
+    }
+
     static function get($name) {
          // Ellenőrizzük, hogy a kulcs tömbszerű-e (pl. church[lat])
         if (strpos($name, '[') !== false && strpos($name, ']') !== false) {

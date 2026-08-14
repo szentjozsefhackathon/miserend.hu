@@ -10,7 +10,14 @@ export COMPOSE_DOCKER_CLI_BUILD=0
 docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml build miserend
 
 # MySQL readiness is guaranteed by depends_on service_healthy in compose.coverage.yml
-docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml run --rm --entrypoint sh -u root miserend -lc \
+# Ugyanaz a gond, mint a docker-test.sh-ban: ez is KÜLÖN konténer, nincs benne
+# webkiszolgáló, tehát a HTTP-alapú tesztek 127.0.0.1:8000-es alapértelmezése halott.
+# A futó app a compose-hálózaton `miserend` néven érhető el.
+BASE_URI="${PANTHER_EXTERNAL_BASE_URI:-http://miserend:8000}"
+
+docker compose -f docker/compose.yml -f docker/compose.dev.yml -f docker/compose.coverage.yml run --rm \
+  -e "PANTHER_EXTERNAL_BASE_URI=$BASE_URI" \
+  --entrypoint sh -u root miserend -lc \
   'mkdir -p tests/coverage/html \
     && : > tests/junit.xml \
     && chown -R www-data:www-data tests/coverage tests/junit.xml 2>/dev/null || true \

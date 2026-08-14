@@ -154,6 +154,9 @@
                  [ngModelOptions]="{updateOn: 'blur'}">
           <mat-timepicker #timepicker/>
           <mat-timepicker-toggle [for]="timepicker" matSuffix/>
+          @if (startTimeError) {
+            <div><mat-error class="input-error">{{ 'ERRORS.REQUIRED_START_TIME' | translate }}</mat-error></div>
+          }
         </mat-form-field>
       </div>
 
@@ -271,9 +274,12 @@
                      [src]="'/cal_images/types/' + type.toLowerCase() + '.png'" [alt]="type | translate" />
               }
             }
-            <img class="type-icon"
-                 [matTooltip]="(('LANGUAGES.' + data.event.language) | translate) + ' nyelvű'"
-                 [src]="'/cal_images/flags/' + data.event.language.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + data.event.language) | translate) + ' nyelvű'" />
+            <!-- #334: a nyelv már lista, minden kiválasztotthoz kirakjuk a zászlót. -->
+            @for (l of data.event.language; track l) {
+              <img class="type-icon"
+                   [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'"
+                   [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
+            }
           </div>
         </mat-panel-description>
       </mat-expansion-panel-header>
@@ -313,7 +319,8 @@
 
       <mat-form-field>
         <mat-label>{{'LANGUAGE' | translate}}</mat-label>
-        <mat-select [(ngModel)]="data.event.language" name="renum">
+        <!-- #334: több nyelvű mise (szlovák-latin, német-magyar) — ezért multiple. -->
+        <mat-select [(ngModel)]="data.event.language" name="language" multiple>
           @for (lang of languages; track lang) {
             <mat-option [value]="lang">
               {{('LANGUAGES.' + lang) | translate}}

@@ -699,11 +699,31 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $massTypeKeys;
     }
     
+    /**
+     * #667: mely rítusokban van (bármikor) liturgia ebben a templomban?
+     *
+     * A rítus nem a templom tulajdonsága, hanem a miséké — a keresőnek viszont
+     * templomonként kell tudnia, hogy „van-e itt valaha görögkatolikus liturgia".
+     * Pontosan úgy származtatjuk, ahogy a nyelveket (l. getLanguagesAttribute).
+     *
+     * @return string[]
+     */
+    public function getRitusokAttribute() {
+        return $this->massrules()
+                    ->pluck('rite')
+                    ->filter(function($v) { return $v !== null && $v !== ''; })
+                    ->unique()
+                    ->values()
+                    ->toArray();
+    }
+
     public function getLanguagesAttribute() {
-        // Grab the 'lang' column from related massrules, remove empty values, unique and return as array
+        // #334: egy mise `lang` mezője vesszővel elválasztva több nyelvet is tartalmazhat
+        // ("sk,la"), ezért szét kell bontani — enélkül a templom nyelvei közé maga a
+        // "sk,la" karakterlánc kerülne be.
         return $this->massrules()
                     ->pluck('lang')
-                    ->filter(function($v) { return $v !== null && $v !== ''; })
+                    ->flatMap(function($v) { return \Eloquent\CalMass::splitLanguages($v); })
                     ->unique()
                     ->values()
                     ->toArray();
@@ -770,23 +790,43 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         if (empty($this->lat) || empty($this->lon)) {
             return collect();
         }
+        // #748: a mindkét irányú keresés miatt egy szomszéd KÉTSZER jött vissza. A
+        // `distances` táblában ugyanaz a pár mindkét irányban szerepel (A->B és B->A),
+        // mert a cron minden templomot külön dolgoz fel `from`-ként. Az egyik sort a
+        // fenti `from = ez`, a másikat a `to = ez` ág kapja el -> ugyanaz a templom
+        // kétszer került a listába. Ráadásul több koordinátapár is mutathat ugyanarra
+        // a templomra. Ezért koordináta ÉS templom-azonosító szerint is szűrünk.
+        // A limitet 30 -> 60-ra emelem, mert a soroknak kb. a fele duplikátum.
         $rows = \Eloquent\Distance::where(function($q) {
                     $q->where('fromLat', $this->lat)->where('fromLon', $this->lon);
                 })->orWhere(function($q) {
                     $q->where('toLat', $this->lat)->where('toLon', $this->lon);
-                })->orderBy('distance', 'ASC')->limit(30)->get();
+                })->orderBy('distance', 'ASC')->limit(60)->get();
 
         $result = collect();
+        $seenCoords = [];
+        $seenIds = [];
         foreach ($rows as $d) {
             $isFrom = ($d->fromLat == $this->lat && $d->fromLon == $this->lon);
             $lat = $isFrom ? $d->toLat : $d->fromLat;
             $lon = $isFrom ? $d->toLon : $d->fromLon;
-            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
-            if ($church) {
-                $church->distance = $d->distance;
-                $result->push($church);
-                if ($result->count() >= 10) break;
+
+            // A sorok távolság szerint növekvőek, tehát az első előfordulás a legkisebb.
+            $coordKey = $lat . '|' . $lon;
+            if (isset($seenCoords[$coordKey])) {
+                continue;
             }
+            $seenCoords[$coordKey] = true;
+
+            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
+            if (!$church || $church->id == $this->id || isset($seenIds[$church->id])) {
+                continue;
+            }
+            $seenIds[$church->id] = true;
+
+            $church->distance = $d->distance;
+            $result->push($church);
+            if ($result->count() >= 10) break;
         }
         return $result;
     }
@@ -841,8 +881,15 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 foreach($masses as $key => $mise) {
                     $misek[$key]['idopont'] = date('Y-m-d H:i:s', strtotime($mise->start_date));
                     $info = trim( t($mise->rite)." ".t($mise->title));
-                    if( $this->orszag != 12 or $mise->lang != 'hu') {
-                        $info .= ' ' . t('LANGUAGES.'.$mise->lang)." nyelven";
+                    // #334: az ES-ből tömbként jön (több nyelvű mise is lehet).
+                    $miseLangs = \Eloquent\CalMass::splitLanguages(
+                        is_array($mise->lang) ? implode(',', $mise->lang) : $mise->lang
+                    );
+                    if( $this->orszag != 12 or $miseLangs != ['hu'] ) {
+                        $translated = array_map(function($l) { return t('LANGUAGES.'.$l); }, $miseLangs);
+                        if ($translated) {
+                            $info .= ' ' . implode('-', $translated)." nyelven";
+                        }
                     }
                     if (!empty($mise->types)) {                        
                         $translatedTypes = array_map(function($type) { return t($type); }, $mise->types);
@@ -961,6 +1008,18 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             // boundaries
             $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();
 
+            // #89: a `location` mező geo_point-ként SZEREPEL a mappingben
+            // (fajlok/elasticsearch/mappings/church.json), de eddig SENKI nem töltötte
+            // fel — nulla dokumentumban volt benne érték. Emiatt semmilyen távolság-alapú
+            // szűrés nem működhetett, és a kereső `hely`+`tavolsag` paramétere néma
+            // no-op maradt: a találatok teljesen figyelmen kívül hagyták a helyet.
+            //
+            // Csak érvényes koordinátánál írjuk ki: a 0,0 az Atlanti-óceán (Null Island),
+            // az rosszabb lenne, mint a hiányzó adat.
+            if ((float) $this->lat != 0.0 || (float) $this->lon != 0.0) {
+                $return['location'] = ['lat' => (float) $this->lat, 'lon' => (float) $this->lon];
+            }
+
             /*
              * #644: akadálymentesség és csökkentett gluténtartalmú áldozás — szűrhető,
              * LAPOS mezőként. Az `accessibility` tömb ugyan eddig is kiment, de üres
@@ -969,6 +1028,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
              * ha nincs adat), így a churches indexbe ÉS a mass_index church-részébe is
              * bekerül — a kereső mindkettőn tud szűrni.
              */
+            // #667: mely rítusokban van itt liturgia — a `nyelvek` mintájára, hogy a
+            // templomkereső rítusra is tudjon szűrni (eddig a felület gombjai megvoltak,
+            // de a templom-index nem tudott róluk semmit).
+            $return['ritusok'] = $this->ritusok;
+
             $return['wheelchair'] = (string) ($this->wheelchair ?? '');
             $return['gluten_free_holidays'] = (string) ($this->{\GlutenFreeCommunion::HOLIDAYS_KEY} ?? '');
             $return['gluten_free_weekdays'] = (string) ($this->{\GlutenFreeCommunion::WEEKDAYS_KEY} ?? '');
@@ -1313,19 +1377,96 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         /* Adminisrative Boundaries(Country,County, City, District) */
         $boundaries = $this->boundaries()
                 ->where('boundary','administrative')
-                ->whereIn('admin_level',[2,6,8,9,10])
-                ->orderBy('admin_level')              
+                ->whereIn('admin_level',[2,4,6,8,9,10])
+                ->orderBy('admin_level')
                 ->get()->toArray();
+
+        $boundaries = self::pickAdministrativeBoundaries($boundaries);
 
         if(array_key_exists(0, $boundaries)) $location->country = $boundaries[0];
         if(array_key_exists(1, $boundaries)) $location->county = $boundaries[1];
-        if(array_key_exists(2, $boundaries)) $location->city = $boundaries[2];   
-        if(array_key_exists(3, $boundaries)) $location->district = $boundaries[3];        
-                
+        if(array_key_exists(2, $boundaries)) $location->city = $boundaries[2];
+        if(array_key_exists(3, $boundaries)) $location->district = $boundaries[3];
+
         return $location;
     }
-	
-	
+
+    /**
+     * #496/#497/#498: az admin_level ország/megye/település sorrendbe rendezése.
+     *
+     * A location() pozíció szerint címkéz: a rendezett lista 0., 1., 2., 3. eleme
+     * lesz az ország, megye, település, kerület. Ez addig működik, amíg minden
+     * ország ugyanazokat a szinteket használja — de nem használják:
+     *
+     *   Magyarország  2 ország | 4 nagyrégió | 6 vármegye | 8 település | 9 kerület
+     *   Szlovákia     2 ország | 4 kraj      | 6 okres    | 8 obec
+     *   Szerbia       2 ország | 4 tartomány | 6 okrug    | 8 opstina    | 9 település
+     *   Ukrajna       2 ország | 4 oblaszty  | 6 rajon    |              | 9 település
+     *   Románia       2 ország | 4 judet     |    -       | 8 comuna/oras
+     *
+     * Romániában NINCS 6-os szint: a megyét a 4-es hordozza. A korábbi
+     * whereIn([2,6,8,9,10]) ezt kizárta, így a román templomoknál a lista
+     * [ország, település] lett — vagyis a TELEPÜLÉS csúszott a megye helyére,
+     * a location->city pedig NULL maradt. Ez 538 templomot érint (a határon túli
+     * állomány 80%-a), és mindenhová továbbgyűrűzik, ahol location.city-t
+     * használunk (home.twig ajánló, szomszédos templomok panel, Angular naptár).
+     *
+     * Ezért a 4-es szintet is behúzzuk, de CSAK akkor hagyjuk bent, ha nincs
+     * 6-os. Magyarországon van 6-os (vármegye), így a nagyrégió kiesik és a
+     * viselkedés bitre azonos marad a korábbival — a templomok 87%-át ez a
+     * változás nem érinti.
+     *
+     * @param array $boundaries admin_level szerint növekvőn rendezve
+     */
+    static function pickAdministrativeBoundaries(array $boundaries): array {
+        $hasCounty = false;
+        foreach ($boundaries as $boundary) {
+            if ((int) ($boundary['admin_level'] ?? 0) === 6) {
+                $hasCounty = true;
+                break;
+            }
+        }
+
+        if (!$hasCounty) {
+            return array_values($boundaries);
+        }
+
+        return array_values(array_filter(
+            $boundaries,
+            fn($boundary) => (int) ($boundary['admin_level'] ?? 0) !== 4
+        ));
+    }
+
+    /**
+     * #498: a templom országkódja (ISO 3166-1 alpha-2) az OSM-határból.
+     *
+     * A `templomok.orszag` oszlop kivezetésének az volt az egyik akadálya, hogy az
+     * „ország -> kód" leképezés kizárólag rajta keresztül létezett: az `orszagok`
+     * táblában nincs ISO-kód, csak `telkod`. A statisztika (`stat.php`, orszag=12)
+     * és az Angular naptárnak átadott országkód is emiatt ragadt hozzá.
+     *
+     * Az OSM országrelációi hordozzák az `ISO3166-1` taget, ezt a boundary-szinkron
+     * mostantól eltárolja. Itt csak kiolvassuk.
+     *
+     * NULL-t ad, ha a templomnak nincs országhatára (nincs koordinátája, vagy a
+     * szinkron még nem ért oda), illetve ha a szinkron az oszlop bevezetése óta még
+     * nem futott le rá. A hívónak KEZELNIE kell a NULL-t — ezért nem esünk vissza
+     * csendben a régi oszlopra, hogy a hiányzó lefedettség látható maradjon.
+     */
+    public function countryCode(): ?string {
+        $code = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->where('admin_level', 2)
+                ->whereNotNull('iso3166_1')
+                ->orderBy('boundaries.id')
+                ->value('iso3166_1');
+
+        $code = strtoupper(trim((string) $code));
+
+        return $code === '' ? null : $code;
+    }
+
+
 	public function getKozossegekAttribute($value) {
 		$api = new \ExternalApi\KozossegekApi();		
 		$api->query = "miserend/".$this->id;

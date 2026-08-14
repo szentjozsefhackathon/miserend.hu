@@ -65,7 +65,7 @@ export class CalendarUtil {
       title: (titles && titles.length > 0) ? translate.instant(titles.at(0)!) : "",
       start: date ? date : new Date(),
       duration: {hours: 1},
-      language: LanguageCode.HU,
+      language: [LanguageCode.HU], // #334: több nyelvű mise is lehet
       renum: Renum.NONE,
       selectedDays: date ? [DateTimeUtil.getShortEnDay(date)] : [Day.SU],
       comment: "",

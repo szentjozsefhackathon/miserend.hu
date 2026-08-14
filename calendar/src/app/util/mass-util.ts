@@ -68,7 +68,7 @@ export class MassUtil {
       // őket akkor sem, ha a kizárt periódusban egyáltalán nincs is külön mise.
       // Az auto `experiod`-ot ezután az exclude*PeriodMasses* helper-ek építik fel.
       ...(dialogEvent.manualExperiod && dialogEvent.manualExperiod.length > 0 && {manualExperiod: [...dialogEvent.manualExperiod]}),
-      lang: dialogEvent.language,
+      lang: MassUtil.languageCodesToLang(dialogEvent.language),
       comment: dialogEvent.comment
     };
   }
@@ -311,7 +311,7 @@ export class MassUtil {
       title: mass.title,
       start: new Date(mass.startDate),
       duration: mass.duration ? mass.duration : {hours: 1},
-      language: this.getLanguageCode(mass.lang),
+      language: this.languageCodes(mass.lang),
       renum: renum,
       selectedDays: mass.rrule && mass.rrule.byweekday ? mass.rrule.byweekday : [],
       comment: mass.comment ? mass.comment : '',
@@ -433,8 +433,29 @@ export class MassUtil {
     return this.tmpEventIdCounter--;
   }
 
-  private static getLanguageCode(value: string): LanguageCode {
-    return Object.values(LanguageCode).includes(value as LanguageCode) ? value as LanguageCode : LanguageCode.HU;
+  /**
+   * #334: egy mise több nyelvű is lehet (szlovák-latin, német-magyar). A backend a `lang`
+   * mezőben vesszővel elválasztva tárolja őket ("sk,la"), hogy a meglévő, egynyelvű
+   * adatok és a rájuk épülő keresés/export változatlanul működjön.
+   *
+   * Ismeretlen kódot eldobunk; ha semmi nem marad, magyarra esünk vissza — ez volt a
+   * korábbi viselkedés is.
+   */
+  public static languageCodes(value: string | null | undefined): LanguageCode[] {
+    const known = Object.values(LanguageCode) as string[];
+    const codes = (value ?? '')
+      .split(',')
+      .map(part => part.trim())
+      .filter(part => known.includes(part)) as LanguageCode[];
+
+    const unique = Array.from(new Set(codes));
+    return unique.length > 0 ? unique : [LanguageCode.HU];
+  }
+
+  /** A nyelvlista visszaalakítása a backend `lang` mezőjének formájára. */
+  public static languageCodesToLang(codes: LanguageCode[] | null | undefined): string {
+    const unique = Array.from(new Set(codes ?? []));
+    return unique.length > 0 ? unique.join(',') : LanguageCode.HU;
   }
 
   public static getRenumByMass(mass: Mass): Renum {

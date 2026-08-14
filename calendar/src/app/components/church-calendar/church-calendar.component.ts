@@ -58,6 +58,7 @@ import {DeletePeriodDialogComponent, DeletePeriodDialogData} from '../delete-per
 import {DeleteWarningDialogComponent} from '../delete-warning-dialog/delete-warning-dialog.component';
 import {MassTitleCategory} from '../../enum/mass-categories';
 import {MassTitleCategoryConfig} from '../../util/mass-title-category-config';
+import {CompressionResult, WeekCompressionUtil, WeekEvent} from '../../util/week-compression-util';
 
 export interface SimpleDialogData {
   dateTime: Date;
@@ -168,6 +169,25 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
   // Liturgical days data
   private liturgicalDays: {[date: string]: LiturgicalDay} = {};
 
+  // #358: heti nézet idősáv-tömörítés.
+  //
+  // borazslo issue-leírása: „A hét nézet nehezen fér el egy képernyőn, mert hát
+  // a reggeli misék és az esti misék között jó nagy a távolság. De nem lehet
+  // simán kiiktatni a közepét sem az éjszakát, mert van olyan hogy nagyszombat,
+  // és van olyan hogy valami extra."
+  //
+  // Felhasználói toggle (default: bekapcsolva). Csak `timeGridWeek` nézetben aktív.
+  // A `weekCompressionResult` a legutóbbi heti nézethez elvégzett analízist tárolja,
+  // hogy a footer-panel és a tooltip onnan tudjon olvasni.
+  public weekCompressionEnabled = true;
+  public weekCompressionResult: CompressionResult | null = null;
+  // #358: a middle-collapse-hoz - a slotLaneClassNames hook ebből dönti el, mely
+  // slot-lane-t jelölje meg (fc-empty-slot). minute-of-day (slot-kezdet) halmaz.
+  public collapsedSlotMinutes = new Set<number>();
+  // Aláírás a felesleges re-render elkerülésére (slotMin|slotMax|collapsed).
+  private lastCompressionSignature = '';
+  public currentViewType: string = '';
+
   constructor(
     private readonly eventService: EventService,
     private readonly searchService: SearchService,
@@ -212,6 +232,13 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
 
     this.userService.loadUser().subscribe(user => {
       if (user) {
+        // A suggestionSenderID deklarálva volt és el is ment a szerverre, de SOHA nem
+        // kapott értéket — ezért maradt a `sender_user_id` mindig NULL, és ezért nem
+        // lehetett az adminfelületen a beküldőt felhasználóhoz kötni.
+        if (user.uid) {
+          this.suggestionSenderID.setValue(user.uid);
+          this.suggestionSenderID.updateValueAndValidity();
+        }
         this.suggestionSenderName.setValue(user.username);
         this.suggestionSenderName.updateValueAndValidity();
         this.suggestionSenderEmail.setValue(user.email);
@@ -365,6 +392,19 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       ...this.calendarOptions,
       eventClick: (arg: any) => this.handleEventClick(arg),
       datesSet: (arg: any) => this.onDatesSet(arg),
+      // #358: az események csak a datesSet UTÁN érkeznek be, ezért minden
+      // event-set változásnál is újra-számoljuk a tömörítést.
+      eventsSet: () => this.onEventsSetForCompression(),
+      // #358: a KÖZÉPSŐ üres slotok megjelölése. A lane-td MINDEN sorban renderel
+      // (a :30-as axis-cellával ellentétben, ami class-generator nélküli bare td),
+      // ezért a slotLaneClassNames a megbízható horog. A faliidő kinyerése UGYANAZ,
+      // mint a utilban (minuteOfDay) — a naptár időzóna-plugin nélkül UTC-mezőkben
+      // tartja a faliidőt, ezért getHours() helyett getUTCHours() kell.
+      slotLaneClassNames: (arg: any) =>
+        (this.weekCompressionEnabled
+          && this.currentViewType === 'timeGridWeek'
+          && this.collapsedSlotMinutes.has(WeekCompressionUtil.minuteOfDay(arg.date)))
+          ? ['fc-empty-slot'] : [],
       // Render custom event content so we can append a language flag ant types in list views
       eventContent: (info: any) => this.renderEventContent(info),
       noEventsContent: () => this.renderNoEventsContent(),
@@ -1172,6 +1212,10 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     this.datesSet.emit(title);
     this.setCalendarsTitle(title);
 
+    // #358: a heti nézet idősáv-tömörítés újra-számolása minden dátum-váltáskor.
+    this.currentViewType = arg.view.type;
+    this.evaluateWeekCompression(arg.view);
+
     // Fetch liturgical days for the current view date range
     const start = arg.view.currentStart;
     const end = arg.view.currentEnd;
@@ -1225,6 +1269,135 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
 
     this.missingEasterMassWarning = viewIntersectsEaster && !churchHasEasterMass;
     this.missingChristmasMassWarning = viewIntersectsChristmas && !churchHasChristmasMass;
+  }
+
+  /**
+   * #358: a FullCalendar API-jából kiolvassuk a megjelenített eseményeket,
+   * a WeekCompressionUtil-lel kiszámoljuk az ajánlott slot-tartományt, majd
+   * alkalmazzuk vagy visszaállítjuk a default 00:00-24:00 ablakot.
+   *
+   * Csak `timeGridWeek` nézetben fut, és csak ha a felhasználói toggle aktív.
+   * Egyébként visszaáll a default tartomány (ne ragadjon be egy korábbi tömörítés).
+   */
+  private evaluateWeekCompression(view: any): void {
+    if (!this.calendarComponent) {
+      this.weekCompressionResult = null;
+      this.collapsedSlotMinutes = new Set<number>();
+      return;
+    }
+    const api = this.calendarComponent.getApi();
+
+    if (view.type !== 'timeGridWeek' || !this.weekCompressionEnabled) {
+      this.weekCompressionResult = null;
+      this.collapsedSlotMinutes = new Set<number>();
+      this.applyCompression(api, '00:00:00', '24:00:00', [], false);
+      return;
+    }
+
+    // #358 fix: a misék pont-események, gyakran `end` NÉLKÜL — a régi
+    // `!!e.start && !!e.end` szűrő mindet kidobta, így a toggle némán nem
+    // csinált semmit. A leképezés a WeekCompressionUtil-ban él, hogy tesztelhető
+    // legyen (pont ez a glue-kód volt fedetlen, amikor a hiba bekerült).
+    const weekEvents: WeekEvent[] = WeekCompressionUtil.toWeekEvents(api.getEvents());
+
+    const result = WeekCompressionUtil.analyze({
+      weekStart: view.currentStart,
+      weekEnd: view.currentEnd,
+      events: weekEvents,
+      options: {slotDurationMinutes: 30},
+    });
+
+    this.weekCompressionResult = result;
+
+    if (result.shouldCompress) {
+      this.collapsedSlotMinutes = new Set<number>(result.collapsedSlotMinutes);
+      this.applyCompression(api, result.slotMinTime, result.slotMaxTime, result.collapsedSlotMinutes, true);
+    } else {
+      this.collapsedSlotMinutes = new Set<number>();
+      this.applyCompression(api, '00:00:00', '24:00:00', [], false);
+    }
+  }
+
+  /**
+   * #358: slotMin/Max + height + a collapsed-lane újrarajzolás egy helyen.
+   * A slotLaneClassNames csak re-render-kor fut újra: a setOption(slotMinTime/
+   * height) a szokásos úton kikényszeríti; ha viszont CSAK a collapsed-halmaz
+   * változott (a slotMin/Max ugyanaz), explicit api.render() kell — az aláírás
+   * alapján pontosan egyszer, hogy ne rendereljünk kétszer.
+   */
+  private applyCompression(api: any, slotMin: string, slotMax: string, collapsed: number[], compress: boolean): void {
+    try {
+      let optionChanged = false;
+      if (api.getOption('slotMinTime') !== slotMin) { api.setOption('slotMinTime', slotMin); optionChanged = true; }
+      if (api.getOption('slotMaxTime') !== slotMax) { api.setOption('slotMaxTime', slotMax); optionChanged = true; }
+      // height:'auto' a tömörített nézetnél (különben ~340px üres sáv alul); egyébként
+      // a default 600px scroller. expandRows-t NEM állítunk (false marad, különben
+      // vissza-nyújtaná az összehúzott sorokat).
+      const targetHeight = compress ? 'auto' : '600px';
+      if (api.getOption('height') !== targetHeight) { api.setOption('height', targetHeight); optionChanged = true; }
+
+      const sig = slotMin + '|' + slotMax + '|' + collapsed.join(',');
+      if (sig !== this.lastCompressionSignature) {
+        this.lastCompressionSignature = sig;
+        // ha egy setOption már re-render-t váltott, ne rendereljünk kétszer;
+        // ha csak a collapsed-halmaz változott, itt kényszerítjük ki.
+        if (!optionChanged) {
+          api.render();
+        }
+      }
+    } catch (e) {
+      // API not ready / runtime error — biztonságos no-op
+    }
+  }
+
+  /**
+   * #358: az events:set callback-jéből hívva — újra-számolja a tömörítést
+   * az aktuális heti nézet eseményeivel. (A `datesSet` egyszer csak a nézet
+   * megnyitásakor fut, de az események később, async módon érkeznek.)
+   */
+  private onEventsSetForCompression(): void {
+    if (!this.calendarComponent || !this.calendarComponent.getApi) return;
+    const view = this.calendarComponent.getApi().view;
+    if (view) {
+      this.evaluateWeekCompression(view);
+    }
+  }
+
+  /**
+   * #358: a felhasználó által ki-/bekapcsolható tömörítés.
+   * Toggle után újraértékeljük az aktuális heti nézet alapján.
+   */
+  public toggleWeekCompression(): void {
+    this.weekCompressionEnabled = !this.weekCompressionEnabled;
+    if (this.calendarComponent && this.calendarComponent.getApi) {
+      const api = this.calendarComponent.getApi();
+      this.evaluateWeekCompression(api.view);
+    }
+  }
+
+  /** Tooltip a toggle-gombhoz: a diagnostics-ot emberi olvasásra fordítja. */
+  public getWeekCompressionTooltip(): string {
+    if (!this.weekCompressionEnabled) {
+      return 'Heti nézet idősáv-tömörítés: kikapcsolva (kattintsd bekapcsoláshoz)';
+    }
+    const r = this.weekCompressionResult;
+    if (!r) {
+      return 'Heti nézet idősáv-tömörítés: bekapcsolva';
+    }
+    if (r.shouldCompress) {
+      return `Tömörítve: ${r.slotMinTime.slice(0, 5)}–${r.slotMaxTime.slice(0, 5)}, `
+        + `a középső üres sáv (${r.diagnostics.gapStart}–${r.diagnostics.gapEnd}, ${r.diagnostics.gapSizeHours} ó) összehúzva. `
+        + `Kattintsd kikapcsoláshoz.`;
+    }
+    const reasonMap: Record<string, string> = {
+      'no-events': 'nincs esemény ezen a héten',
+      'too-few-events': 'túl kevés esemény a tömörítéshez',
+      'no-gap-detected': 'nincs felismerhető üres sáv (reggel-este)',
+      'gap-too-small': 'a felismert üres sáv túl kicsi',
+      'compressed': '',
+    };
+    return `Nincs tömörítés: ${reasonMap[r.diagnostics.reason] || r.diagnostics.reason}. `
+      + `Kattintsd kikapcsoláshoz.`;
   }
 
   private fetchLiturgicalDays(start: Date, end: Date): void {
@@ -1823,10 +1996,17 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       const flagMap: Record<string, string> = { hu: '🇭🇺', en: '🇬🇧', de: '🇩🇪', sk: '🇸🇰', ro: '🇷🇴' };
 
       let flagHtml = '';
-      if (lang && this.shouldShowFlag(lang)) {
-        const langLower = String(lang).toLowerCase();
-        const src = `/cal_images/flags/${langLower}.svg`;
-        flagHtml = `<img class="type-icon" style="height:18px; margin-left:6px" title="${escapeAttr(lang)}" src="${src}" alt="${escapeAttr(lang)}" />`;
+      // #334: lang can be a comma-separated list (e.g. "hu,fr"), so split it
+      // and render a separate flag for each language — same as the list view template.
+      if (lang) {
+        for (const l of this.languagesOf(lang)) {
+          if (this.shouldShowFlag(l)) {
+            const lLower = String(l).toLowerCase();
+            const src = `/cal_images/flags/${lLower}.svg`;
+            const tooltip = this.translateService.instant('LANGUAGES.' + l);
+            flagHtml += `<img class="type-icon" style="height:18px; margin-left:6px" title="${escapeAttr(tooltip)}" src="${src}" alt="${escapeAttr(tooltip)}" />`;
+          }
+        }
       }
 
       let typesHtml = '';
@@ -1897,14 +2077,22 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         const detailsHtml = `<span class="material-icons" title="További információ" style="margin-left:6px; height:18px; font-size:18px; vertical-align:top;">info</span>`;
         const monthHtml = `${timeHtml} ${dotHtml} <span class="fc-event-title" style="font-weight:400">${escapeAttr(info.event.title)}</span>`;
         const shouldShowDetails =
-          (lang && this.shouldShowFlag(lang)) ||
+          (lang && this.languagesOf(lang).some(l => this.shouldShowFlag(l))) ||
           (Array.isArray(types) && types.length > 0) ||
           !!comment;
         return { html: shouldShowDetails ? `${monthHtml} ${detailsHtml}` : monthHtml };
       }
 
-      // For other non-list views include icons
-      const combinedHtml = `${timeHtml} <span class="fc-event-title-wrap">${titleHtml} ${flagHtml} ${typesHtml} ${commentHtml}</span>`;
+      // #358: az ikonok az IDŐ sorába kerülnek, nem a cím mellé.
+      //
+      // A heti rácsban egy nap-oszlop ~75px széles: a „Szentmise" cím kitölti, mellé
+      // a zászló és a típus-ikonok már nem férnek. Korábban ezért új sorba törtek és
+      // kilógtak a színes blokkból (63px tartalom 48px dobozban); ha meg nowrappal
+      // levágtuk őket, egyszerűen eltűntek. Az idő („18:00") viszont rövid — ott
+      // elférnek mellette, és a cím kap egy saját, teljes sort.
+      const combinedHtml =
+        `<span class="mcal-event-head">${timeHtml}${flagHtml}${typesHtml}${commentHtml}</span>`
+        + `<span class="fc-event-title-wrap">${titleHtml}</span>`;
       return { html: combinedHtml };
     } catch (e) {
       return { html: info.event.title };
@@ -2309,6 +2497,15 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
    * @param country Optional country code. Uses currentChurch.country if not provided
    * @returns true if flag should be displayed, false otherwise
    */
+  /**
+   * #334: a mise `lang` mezője vesszővel elválasztva több nyelvet is tartalmazhat
+   * ("sk,la"). A sablonok ezen keresztül kapják a listát, hogy ne az egész karakterlánccal
+   * próbáljanak zászlót keresni (/cal_images/flags/sk,la.svg — nem létezik).
+   */
+  languagesOf(lang: string | null | undefined): string[] {
+    return MassUtil.languageCodes(lang);
+  }
+
   shouldShowFlag(language: string, country?: string): boolean {
     const churchCountry = country || this.currentChurch?.country;
     

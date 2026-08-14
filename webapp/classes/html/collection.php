@@ -9,9 +9,20 @@ class Collection extends Html {
     public function __construct() {
         parent::__construct();
 
-        preg_match('/(node|way|relation):([0-9]{1,8})$/i', $this->input['q'], $match);
+        // #391: a `q`-t eddig nyersen olvastuk a $this->input-ból, és a preg_match
+        // eredményét ellenőrzés nélkül használtuk. Hibás azonosítónál (pl. /collection)
+        // ez „Undefined array key 1/2" figyelmeztetéseket szórt, majd egy null
+        // boundary-n próbált tulajdonságot olvasni.
+        $q = (string) \Request::Text('q');
+        if (!preg_match('/(node|way|relation):([0-9]{1,8})$/i', $q, $match)) {
+            throw new \Exception('Hibás gyűjtemény-azonosító.');
+        }
+
         $osm = \Eloquent\Boundary::where('osmtype',$match[1])
                 ->where('osmid',$match[2])->first();
+        if (!$osm) {
+            throw new \Exception('Nincs ilyen gyűjtemény.');
+        }
         $this->setTitle($osm->name);
         
         $this->boundary = $match[1].':'.$match[2];

@@ -12,11 +12,22 @@ class Crons {
 	 * megőrzése, a régebbi statisztika-sorokat naponta töröljük. A `date` oszlopra
 	 * szűrünk (DATE típus). Cron-ként a crons.sql-ben 41-es id-vel regisztrálva.
 	 *
-	 * (A #351 nearby.log része már megoldott: \Api\NearBy::cleanOldLogs cron 37.)
+	 * (A #351 nearby.log része tárgytalan: a #724-gyel maga a napló szűnt meg.)
 	 */
 	public static function cleanExternalApiStats(): void {
 		$cutoff = date('Y-m-d', strtotime('-30 days'));
 		DB::table('stats_externalapi')->where('date', '<', $cutoff)->delete();
+	}
+
+	/**
+	 * #724: a használati statisztika napi sorai. Nem személyes adat (nincs benne se IP,
+	 * se süti, se User-Agent), tehát a megőrzést nem jogi határidő szabja, hanem az,
+	 * hogy meddig érdemes összehasonlítani — két év elég az éves trendhez.
+	 */
+	public static function cleanUsageStats(): void {
+		$cutoff = date('Y-m-d', strtotime('-' . \Stats::MEGORZES));
+		DB::table('stats_pageviews')->where('date', '<', $cutoff)->delete();
+		DB::table('stats_searches')->where('date', '<', $cutoff)->delete();
 	}
 
 	/**

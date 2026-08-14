@@ -14,7 +14,8 @@ class UploadImage extends Html {
         // Get PHP upload limits
         $this->uploadLimits = $this->getUploadLimits();
 
-        if (isset($_REQUEST['upload'])) {
+        // #391: közvetlen $_REQUEST helyett a \Request:: olvasás.
+        if (\Request::get('upload') !== false) {
             $this->ajax();
             exit;
         }

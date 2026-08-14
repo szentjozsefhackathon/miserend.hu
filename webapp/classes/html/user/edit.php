@@ -25,33 +25,41 @@ class Edit extends \Html\Html {
     function modify() {
         global $user;
         
-        // #545: az `edituser` egy többdimenziós $_REQUEST-tömb (uid, roles, terms,
-        // robot, ...) vegyes értéktípusokkal, a submit() az egészet fogyasztja.
-        // Mezőnkénti \Request:: átírás staging-tesztet igényel (regisztráció +
-        // jogosultság-mentés), ezért ez a blokk egyelőre marad.
-        $newuser = new \User(isset($_REQUEST['edituser']['uid']) ? $_REQUEST['edituser']['uid'] : false);
-        
-        if ((!isset($_REQUEST['terms']) OR $_REQUEST['terms'] != 1 ) AND $newuser->uid == 0 AND $user->uid == 0) {
+        // #391: az `edituser` egy többdimenziós mezőcsoport (uid, roles, nev, ...) vegyes
+        // értéktípusokkal, a submit() az egészet fogyasztja — mezőnkénti \Request::
+        // hívásokra nem bontható. Az viszont igen, hogy ne nyersen a szuperglobálishoz
+        // nyúljunk: a \Request::Fields() ellenőrzött MÁSOLATOT ad.
+        //
+        // A másolat itt előny is: a jogosultság-visszavonást eddig magán a $_REQUEST-en
+        // végeztük (globális állapot módosítása), most a saját tömbünkön.
+        $edituser = \Request::Fields('edituser');
+        if ($edituser === false) {
+            $edituser = [];
+        }
+
+        $newuser = new \User(isset($edituser['uid']) ? $edituser['uid'] : false);
+
+        if ((\Request::get('terms') != 1) AND $newuser->uid == 0 AND $user->uid == 0) {
             addMessage("El kell fogadni a <i>Házirendet és szabályzatot</i>!", 'danger');
             return false;
-        } else if ((!isset($_REQUEST['robot']) OR $_REQUEST['robot'] != 'MKPK' ) AND $newuser->uid == 0 AND $user->uid == 0) {
+        } else if ((\Request::get('robot') != 'MKPK') AND $newuser->uid == 0 AND $user->uid == 0) {
             addMessage("Sajnos, ha nem válaszol az MKPK-val kapcsolatos kérdésre, akkor önt robotnak nézzük és nem regisztrálhat!", 'danger');
             return false;
         } 		
 		else {
             try {
                 // Jogokat nem adhat akárki, de lemondhat akráki.
-                if(!$user->checkRole('user') AND isset($_REQUEST['edituser']['roles'])) {
-                    foreach($_REQUEST['edituser']['roles'] as $key => $value) {
+                if(!$user->checkRole('user') AND isset($edituser['roles']) AND is_array($edituser['roles'])) {
+                    foreach($edituser['roles'] as $key => $value) {
                         /* Ha eddig nem volt joga, de a formban joga lenne, akkor baj van */
-                        if(!in_array($key,$user->roles) AND $key == $value) {
-                            $_REQUEST['edituser']['roles'][$key] = false;
+                        if(!in_array($key, (array) $user->roles) AND $key == $value) {
+                            $edituser['roles'][$key] = false;
                             addMessage('A „'.$key.'” jogosultság megadásához nem rendelkezel elég jogosultsággal.','danger');
                         }
                     }
                 }
                 
-                if($newuser->submit($_REQUEST['edituser'])) {                
+                if($newuser->submit($edituser)) {                
                     if ($user->uid < 1) {
                         global $config;                    
                         //require_once('moduls/miserend.php');
@@ -82,9 +90,10 @@ class Edit extends \Html\Html {
 
 
         //Ha folyamatban van új felszanáló szerkesztése
-        if ($user->uid == 0 AND isset($_REQUEST['edituser'])) {    
+        $submitted = \Request::Fields('edituser');
+        if ($user->uid == 0 AND $submitted !== false) {
             $edituser = new \User();
-            foreach ($_REQUEST['edituser'] as $key => $value) {
+            foreach ($submitted as $key => $value) {
                 $edituser->$key = $value;
             }
 

@@ -110,6 +110,21 @@ class Report extends Api {
 
         $this->prepareRemark();
 
+        // #755: ugyanaz az észrevétel néha két-háromszor futott be. A mobilkliens
+        // ismételt küldése (rossz hálózaton a felhasználó újra nyom, vagy a kérés
+        // magától fut le kétszer) ugyanúgy termeli a duplikátumot, mint a webes űrlap,
+        // ezért itt is szűrünk. A válasz változatlan: a beküldő ne higgye, hogy nem
+        // ment el, mert akkor megint próbálkozna.
+        $duplicate = \Eloquent\Remark::findRecentDuplicate(
+            $this->remark->church_id,
+            $this->remark->email,
+            $this->remark->leiras
+        );
+        if ($duplicate) {
+            $this->return['text'] = 'Köszönjük. Elmentettük.';
+            return;
+        }
+
         try {
             $this->remark->save();
             $this->remark->emails();

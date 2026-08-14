@@ -447,7 +447,11 @@ export class SuggestionsComponent implements OnInit {
       ...(rite && rite.length > 0 && {rite: rite}),
       ...(duration && duration.length > 0 && {duration: duration}),
       ...(mass.comment && mass.comment.length > 0 && {comment: mass.comment}),
-      lang: this.translateService.instant(`LANGUAGES.${mass.lang}`),
+      // #334: a mise több nyelvű is lehet ("sk,la") — mindegyiket külön fordítjuk,
+      // különben a `LANGUAGES.sk,la` kulcs fordítás nélkül, nyersen jelenne meg.
+      lang: MassUtil.languageCodes(mass.lang)
+        .map(l => this.translateService.instant(`LANGUAGES.${l}`))
+        .join(', '),
       title: mass.title,
       time: time,
       startDate: DateTimeUtil.getReadableDateTimeFromIso(mass.startDate)

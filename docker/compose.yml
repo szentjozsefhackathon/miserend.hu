@@ -162,10 +162,22 @@ services:
       start_period: 40s
   miserend:
     image: ${MISEREND_IMAGE:-localhost/miserend:latest}
+    # #721/#720: itt NINCS `../webapp:/miserend/webapp` bind mount. Korábban volt, és
+    # eltakarta az image tartalmát: a Dockerfile hiába futtatta le az `ng build`-et a
+    # megfelelő NG_CONFIG-gal (és a calendar_deploy.py-t), futásidőben a hoszt git-
+    # checkoutja került a helyére. Így minden környezet a beversenyzett, régi naptár-
+    # csomagot szolgálta ki. Ugyanezért ragadt be a `vendor_data`/`node_modules_data`:
+    # a named volume csak az ELSŐ létrehozáskor kapja meg az image tartalmát, a
+    # production deploy pedig `up -d`-t hív `down -v` nélkül — így egy új composer/npm
+    # függőség (pl. a leaflet) soha nem jutott ki élesbe.
+    #
+    # A fejlesztői mountok a compose.dev.yml-be kerültek. Következmény: a szerveren
+    # a `webapp/` alatti kézi fájlmódosítás többé NEM érvényesül — a beállítás az
+    # `.env`-ből jön (a config.php minden értéke env()-en át olvas).
     volumes:
-       - ../webapp:/miserend/webapp
-       - vendor_data:/miserend/webapp/vendor
-       - node_modules_data:/miserend/webapp/node_modules    
+       # A feltöltött képek futásidőben keletkeznek és a hoszton élnek (a .dockerignore
+       # ki is hagyja őket az image-ből), ezért ez az egy könyvtár marad bind mount.
+       - ../webapp/kepek:/miserend/webapp/kepek
        - tmp:/miserend/webapp/fajlok/tmp
        - sqlite:/miserend/webapp/fajlok/sqlite
        - ./miserend/apache/ports.conf:/etc/apache2/ports.conf
@@ -192,16 +204,28 @@ services:
       # alapértéke érvényesült, és az .env-ben hiába állított volna bárki mást.
       - MYSQL_MISEREND_USER=${MYSQL_MISEREND_USER:-root}
       - MYSQL_MISEREND_PASSWORD=${MYSQL_MISEREND_PASSWORD:-pw}
+      # #171: a konténer maga ütemezze-e a cront. Alapból ki: az éles telepítés ma a
+      # hosztról ütemez, és ha mindkettő menne, kétszer futna minden munka.
+      - CRON_ENABLED=${CRON_ENABLED:-0}
+      - CRON_INTERVAL=${CRON_INTERVAL:-300}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-25}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_SECURE=${SMTP_SECURE:-}
+      # OSM letöltéshez, és méginkább módosításhoz szükség lehet adatokra
+      # a .env.example alapján a .env -ben vannak megadva
+      # a config.php -ban van default, vagy innen veszi
       - OSM_URL=${OSM_URL:-}
       - OSM_CLIENT=${OSM_CLIENT:-}
       - OSM_CLIENT_SECRET=${OSM_CLIENT_SECRET:-}
       - OSM_APPLICATION_CODE=${OSM_APPLICATION_CODE:-}
       - OSM_ACCESS_TOKEN=${OSM_ACCESS_TOKEN:-}
+      # A LoRaWAN gyóntatás-jelzők megosztott titka. Üresen a végpont a régi módon,
+      # azonosítás nélkül fogad adatot — l. Api\LoRaWAN::checkSharedSecret().
+      - LORAWAN_TOKEN=${LORAWAN_TOKEN:-}
+      # Az alap overpass túlterhelt lehet. Lásd: .env.example
+      - OVERPASS_APIURL=${OVERPASS_APIURL:-}
 
     networks:
       inner:

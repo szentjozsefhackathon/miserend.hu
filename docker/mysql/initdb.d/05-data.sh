@@ -45,7 +45,18 @@ for file in "$DATA_DIR"/*.sql; do
   echo "Importing data for table $table..."
   # A betöltést külön kezeljük: ha EZ a fájl hibázik, hangosan jelezzük, de a
   # ciklus MEGY tovább a következő táblára — egy rossz seed ne bénítsa az egészet.
-  if ! import_err=$($MYSQL_CMD < "$file" 2>&1); then
+  #
+  # #669/#706: idegenkulcs-ellenőrzés KIKAPCSOLVA a betöltés idejére. A ciklus
+  # BETŰRENDBEN halad, a hivatkozási irány viszont nem betűrend szerinti: az
+  # `external_calendars` a `templomok`-ra hivatkozik, de jóval előtte jön, ezért
+  # a betöltése "Cannot add or update a child row" hibával elhasalt. Mivel a
+  # szkript a végén exit 1-gyel zár, a MariaDB entrypoint fatálisnak vette, a
+  # konténer meghalt, és a staging-deploy "mysql is unhealthy"-vel megállt.
+  #
+  # Sorrendezés helyett kapcsoljuk ki az ellenőrzést: a seed egy önmagában
+  # konzisztens dump, és minden új idegen kulcs újra elrontaná a kézzel tákolt
+  # sorrendet. Ugyanezt teszi egy mysqldump-visszatöltés is.
+  if ! import_err=$( { echo "SET foreign_key_checks=0;"; cat "$file"; } | $MYSQL_CMD 2>&1); then
     echo "############################################################" >&2
     echo "SEED HIBA: '$table' ($file) betöltése MEGHIÚSULT." >&2
     echo "A TÖBBI tábla betöltése FOLYTATÓDIK (nem szakítjuk meg az egészet)." >&2

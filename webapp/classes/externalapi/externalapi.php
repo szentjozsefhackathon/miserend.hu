@@ -25,6 +25,30 @@ class ExternalApi {
     public $headerAuthorization;
     public $postfields;
     public $apiUrl;
+
+    /**
+     * Hibakereső üzemmódban se írjuk ki a hibát a lapra.
+     *
+     * Ott állítsd be, ahol a sikertelenség VÁRT kimenet, és a hívó kezeli is — a hiba
+     * ilyenkor is elérhető marad a $this->error / hasError() felől.
+     */
+    public $quiet = false;
+
+    /**
+     * A most kiszolgált kérés JSON-t ad-e vissza?
+     *
+     * Az ajax/api végpontok a törzsükbe semmilyen HTML-t nem tűrnek el, tehát a
+     * hibakereső üzemmód kiírásait sem. A `Path` a kérés elején beállítja.
+     */
+    private static $jsonResponse = false;
+
+    public static function markJsonResponse(bool $isJson = true): void {
+        self::$jsonResponse = $isJson;
+    }
+
+    public static function isJsonResponse(): bool {
+        return self::$jsonResponse;
+    }
 	
     function __construct() {
         
@@ -34,7 +58,52 @@ class ExternalApi {
         $this->runQuery();
     }
 
+    /**
+     * Ki van-e kapcsolva a kifelé menő hálózat?
+     *
+     * A funkcionális (Panther) tesztek a VALÓDI oldalt töltik be, a templom-oldal pedig
+     * külső szolgáltatásokat hív (kozossegek.hu, Overpass) — üres cache-sel ez helyben is
+     * ~12 másodperc, a CI-ban pedig a WebDriver 180 másodperces korlátját is átlépheti.
+     * Így bukott véletlenszerűen a ChurchDetailPageTest és a ChurchRemarkFormTest, olyan
+     * PR-eken is, amik hozzá se értek a kódhoz.
+     *
+     * A kapcsoló SZÁNDÉKOSAN opt-in: alapból nincs bekapcsolva, tehát dev és production
+     * viselkedése nem változik. A teszt-compose-ok állítják be (l. compose.test.yml,
+     * compose.coverage.yml).
+     */
+    public static function isOffline(): bool {
+        $value = env('EXTERNAL_APIS_OFFLINE', '');
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Ez a szolgáltatás a saját infrastruktúránk-e?
+     *
+     * Az Elasticsearch ugyanezen az ősosztályon keresztül beszél, pedig a compose-hálózaton
+     * belül van — nem harmadik fél. Az offline kapcsoló SEM vonatkozhat rá, különben a
+     * kereső is elnémulna a tesztek alatt (ezt a saját tesztjeim fogták meg: az
+     * ElasticsearchApiLoggerTest azonnal elbukott az első próbálkozásnál).
+     */
+    protected function isInternalService(): bool {
+        return false;
+    }
+
     function runQuery() {
+        // Offline módban meg sem próbálkozunk: se hálózat, se cache-írás. A hívók a
+        // szokásos „üres válasz" ágon mennek tovább, pontosan úgy, mintha a külső
+        // szolgáltatás nem adott volna adatot.
+        if (self::isOffline() && !$this->isInternalService()) {
+            $this->responseCode = 0;
+            $this->rawData = '';
+            if ($this->format == 'json') $this->jsonData = json_decode('[]');
+            if ($this->format == 'xml')  $this->xmlData = false;
+            $this->error = 'A külső API-k ki vannak kapcsolva (EXTERNAL_APIS_OFFLINE).';
+            if (isset($this->isTesting) and $this->isTesting == true) {
+                throw new \Exception($this->error);
+            }
+            return false;
+        }
+
 		if(isset($this->rawData)) unset($this->rawData);
         try {
         
@@ -54,7 +123,11 @@ class ExternalApi {
             // Ha a cache be van kapcsolva, akkor szeretnénk elmenteni a letöltött adatokat.
             // De pl. az overpass API-nál gyakori az 503, ha túlterhelt, és ilyenkor nem szeretnénk elmenteni a cache-be a hibás választ.
             // Viszont pl. a kozossegek.hu talán 404-et ad vissza sokszor, ha nem találja a keresett adatot, és ezeket a cache-be menteni szeretnénk, hogy ne kelljen újra lekérdezni az API-t.
-            if ($this->cache AND ( isset($this->responseCode) && !in_array($this->responseCode, [503, 504]) ) ) {
+            // #429: a rate-limit (429) ugyanolyan MÚLÓ hiba, mint az 503/504 — ha
+            // elmentenénk, egyetlen kvótatúllépés a teljes cache-élettartamra
+            // beégetné a hibaszöveget a válasz helyére. Az Overpass épp ezt csinálja,
+            // ha sok kérés megy egy IP-ről.
+            if ($this->cache AND ( isset($this->responseCode) && !in_array($this->responseCode, [429, 503, 504]) ) ) {
                 $this->saveToCache();
             }
             
@@ -67,8 +140,37 @@ class ExternalApi {
             if($this->format == 'json' ) $this->jsonData = [];
 			if($this->format == 'xml' ) $this->xmlData = [];
             $this->error = \Html\Html::printExceptionVerbose($e,true);
-            if($config['debug'] > 1) echo $this->error;
-            elseif($config['debug'] > 0) addMessage($this->error,'warning');
+
+            /*
+             * Van, ahol a sikertelenség VÁRT kimenet, és a hívó kezeli is (pl. a
+             * területi adatok pótlása a templomoldalon: ha az Overpass épp nem ér rá,
+             * a lap ugyanúgy megjelenik). Ott a hibakereső üzemmód teljes
+             * verem-kiírása csak a látogató képébe önti a belső működést — a
+             * stagingen pontosan ez történt egy templomoldalon.
+             *
+             * A hibát ilyenkor is eltesszük ($this->error, hasError()), csak nem
+             * tesszük ki a lapra.
+             */
+            /*
+             * JSON-választ SOHA nem szennyezünk. A hibakereső üzemmód eddig
+             * feltétel nélkül kiechózta a teljes verem-kiírást — egy ajax végponton
+             * ez a JSON törzs elé került, tehát a válasz értelmezhetetlen lett, a
+             * látogató pedig fájlútvonalakat és belső hívásláncot látott. Élő eset:
+             * az Overpass 429-e a főoldal egyházmegye-rétegénél.
+             *
+             * A hibát ilyenkor is eltesszük ($this->error, hasError()), és a
+             * szerver-naplóba is kiírjuk — csak nem a válaszba.
+             */
+            if (!empty($this->quiet) || self::isJsonResponse()) {
+                if (function_exists('logThrowable')) {
+                    logThrowable('External API hiba (' . static::class . ')', $e);
+                } else {
+                    error_log('[miserend] External API hiba (' . static::class . '): ' . $e->getMessage());
+                }
+            } else {
+                if($config['debug'] > 1) echo $this->error;
+                elseif($config['debug'] > 0) addMessage($this->error,'warning');
+            }
             return false;
         }
         return true;
@@ -277,6 +379,28 @@ class ExternalApi {
 		return $return;	
 	}
 	
+	/**
+	 * Van-e egyáltalán mit lefuttatni ezen a végponton?
+	 *
+	 * A „nem tudjuk ellenőrizni" NEM ugyanaz, mint a „hibás". A /health eddig
+	 * mindkettőt pirosra festette, így a Mapquest — aminek szándékosan nincs
+	 * testQuery-je, mert a hívás fizetős kvótát fogyaszt (#129) — hónapok óta
+	 * hibaként virított. Az állandó piros pedig pont azt öli meg, amiért az oldal
+	 * van: egy idő után senki nem nézi meg, mi az.
+	 */
+	function isTestable(): bool {
+		return isset($this->testQuery);
+	}
+
+	/**
+	 * Ha nincs ellenőrzés, itt mondhatja meg a leszármazott, hogy MIÉRT nincs.
+	 * Enélkül csak annyi látszik, hogy nem tudjuk — az meg gyanúsan hasonlít a
+	 * „valaki elfelejtette megírni"-ra.
+	 */
+	function testSkipReason(): ?string {
+		return isset($this->testSkipReason) ? $this->testSkipReason : null;
+	}
+
 	function curl_setopt($name, $value) {
 		$this->curl_opts[$name] = $value;
 	}

@@ -30,6 +30,14 @@ if ($env !== 'production' && PHP_SAPI !== 'cli' && !headers_sent()) {
 }
 
 error_reporting($config['error_reporting'] ? $config['error_reporting'] : 0);
+
+// #725: a végzetes hibák és az elkapatlan kivételek naplózása. A php.ini-ben
+// `display_errors = Off`, tehát a látogató ettől semmit nem lát többet — csak a
+// `docker logs` lesz használható. Enélkül egy 500-as oldalról semmi nyom nem maradt.
+registerFatalErrorLogger();
+set_exception_handler(static function (\Throwable $e): void {
+    logThrowable('Uncaught', $e);
+});
 define('DOMAIN', $config['path']['domain']);
 
 Translator::init('hu'); // vagy autodetect
@@ -64,6 +72,7 @@ $twig->addFilter(new \Twig\TwigFilter('facebook_path', 'twig_facebook_path'));
 $twig->addFilter(new \Twig\TwigFilter('readable_rrule', 'twig_readable_rrule'));
 // DANGER: a twig declarálva van / meg van hívva a Class/Html/Html.php -ban is. Így ott is módosítani kellhet a filterket
 $twig->addGlobal('domain', DOMAIN); // Environment-specific domain for email templates
+$twig->addGlobal('mcal_version', mcalVersion()); // naptár-bundle cache-buster, l. mcalVersion()
 
 //
 //  Useful CONSTANTS

@@ -29,57 +29,66 @@
 
 {% block content %}
 
-    {% if user.isadmin %}
-    
-    <h3>Helyadatok</h3>
-    <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
-    
-    <h5>Minden helyadat</h5>
-    <p>Az API/NearBy az elmúlt időben {{ stats.nearbylog|length }} db helyadatot gyűjtött. </p>
-    <div id="map"></div>    
-    <script>
+    {# #724: süti- és IP-mentes látogatottság. Napi darabszám útvonalanként — nincs benne
+       semmi, ami egy látogatóhoz köthető, ezért nem is kell hozzá süti-elfogadó ablak. #}
+    <h3>Használat (utolsó 30 nap)</h3>
+    {% if usage.dailyTotals is empty %}
+        <p class="text-muted">Még nincs adat. A gyűjtés a #724 bevezetése óta tart.</p>
+    {% else %}
+        <p>Összesen <b>{{ usage.total|number_format(0, ',', ' ') }}</b> oldalletöltés,
+           napi átlagban <b>{{ usage.dailyAverage|number_format(0, ',', ' ') }}</b>.
+           Robotokat nem számolunk.</p>
 
-        var map = L.map('map').setView([47.1625, 19.5033], 7);
-        // #376: CARTO Voyager (a direkt tile.openstreetmap.org produkcióra tiltott).
-        var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            subdomains: 'abcd', maxZoom: 19,
-            attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        }).addTo(map);
+        <table class="table table-sm table-striped">
+            <thead><tr><th>Nap</th><th class="text-end">Letöltés</th></tr></thead>
+            <tbody>
+            {% for nap in usage.dailyTotals|slice(-14) %}
+                <tr><td>{{ nap.date }}</td><td class="text-end">{{ nap.count|number_format(0, ',', ' ') }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
 
-        var nearbyLogPoints = {{ stats.nearbylog|json_encode()|raw }};
-        var heat = L.heatLayer(nearbyLogPoints, {
-                radius: 50,
-                blur: 15
-            
-                }).addTo(map);
+        <h5>Legnépszerűbb oldalak</h5>
+        <table class="table table-sm table-striped">
+            <thead><tr><th>Útvonal</th><th>Típus</th><th class="text-end">Letöltés</th></tr></thead>
+            <tbody>
+            {% for sor in usage.topRoutes %}
+                <tr><td><code>{{ sor.route }}</code></td><td>{{ sor.kind }}</td>
+                    <td class="text-end">{{ sor.count|number_format(0, ',', ' ') }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
 
-    </script>
-
-    <h5>Mise alatt és után</h5>
-    <p>Az API/MassRightNow az elmúlt időben {{ stats.massrightnowlog|length }} db helyadatot gyűjtött. </p>
-    <div id="map-massrightnow"></div>    
-    <script>
-
-        var mapMassRightNow = L.map('map-massrightnow').setView([47.1625, 19.5033], 7);
-        // #376: CARTO Voyager (a direkt tile.openstreetmap.org produkcióra tiltott).
-        var tilesMassRightNow = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            subdomains: 'abcd', maxZoom: 19,
-            attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        }).addTo(mapMassRightNow);
-
-        var massRightNowLogPoints = {{ stats.massrightnowlog|json_encode()|raw }};
-        var heatMassRightNow = L.heatLayer(massRightNowLogPoints, {
-            radius: 20,
-            maxZoom: 0.15,
-            blur: 20,
-            max: 10.0
-            }).addTo(mapMassRightNow);
-
-        </script>
+        <h5>Mit keresnek</h5>
+        <div class="row">
+            <div class="col-md-6">
+                <p class="text-muted">Van találat</p>
+                <table class="table table-sm table-striped">
+                    {% for sor in usage.topSearchesFound %}
+                        <tr><td>{{ sor.keyword }}</td><td class="text-end">{{ sor.count }}</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="col-md-6">
+                {# Ez a jegy legértékesebb adata: mit keresnek nálunk, amit nem találnak meg. #}
+                <p class="text-muted"><b>Nincs találat</b> — ezekre érdemes ránézni</p>
+                <table class="table table-sm table-striped">
+                    {% for sor in usage.topSearchesMissing %}
+                        <tr><td>{{ sor.keyword }}</td><td class="text-end">{{ sor.count }}</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
     {% endif %}
 
 
-    <h3>Templom statisztikák</h3>    
+    {# #724: itt két helyadat-hőtérkép állt, a `nearby.log`-ból. Az a napló a hívók
+       koordinátáját, User-Agentjét és pontos idejét tárolta egy hónapig — szemben a saját
+       adatvédelmi tájékoztatónkkal, ami azt ígéri, hogy a helyadatot „semmilyen formában
+       nem rögzítjük". A naplózás megszűnt, vele a térképek is. #}
+
+
+    <h3>Templom statisztikák</h3>
     {{ stats.chart_templomaink.html|raw }}
 	{{ stats.chartN.html|raw }}
 	

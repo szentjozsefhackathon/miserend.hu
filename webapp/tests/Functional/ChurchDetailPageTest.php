@@ -3,7 +3,6 @@
 namespace Tests\Functional;
 
 use Facebook\WebDriver\WebDriverDimension;
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 5: Church Detail Page Test
@@ -11,21 +10,13 @@ use Symfony\Component\Panther\PantherTestCase;
  * Tests individual church pages to verify data is rendered correctly,
  * the schedule (miserend) is displayed, and no PHP errors occur.
  */
-final class ChurchDetailPageTest extends PantherTestCase
+final class ChurchDetailPageTest extends FunctionalTestCase
 {
     private $client;
 
     protected function setUp(): void
     {
-        $this->client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        $this->client = static::pantherClient();
     }
 
     /**

@@ -20,7 +20,7 @@
             href="/templom/{{ array.id }}" 
             class="link" 
             title="{{ array.ismertnev }} ({{ ( array.distance / 1000 )|number_format(1, '.', '') }} km)"  
-            onclick="ga('send', 'event', 'Inbound Links', 'Szomszedsag', '?templom={{ array.id }}')">
+           >
             {{ array.nev }}{% if location.city.name != array.location.city.name  %} ({{ array.location.city.name  }}){% endif %}
         </a>
     </li>

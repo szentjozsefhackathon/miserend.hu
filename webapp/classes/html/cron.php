@@ -20,13 +20,73 @@ class Cron extends Html {
             echo "Új cron felvéve: " . htmlspecialchars($job) . "<br>\n";
         }
 
+        $healed = \Eloquent\Cron::healUnschedulable();
+        foreach ($healed as $job) {
+            echo "Ütemezhetővé tett cron (hiányzott a deadline_at): " . htmlspecialchars($job) . "<br>\n";
+        }
+
+        // #724: a registryből kivett munkák sorát is takarítjuk. Enélkül egy megszűnt
+        // függvény sora örökre ottmarad, és minden esedékességnél hibát dob.
+        $removed = \Eloquent\Cron::pruneRemoved();
+        foreach ($removed as $job) {
+            echo "Eltávolított cron (már nincs a registryben): " . htmlspecialchars($job) . "<br>\n";
+        }
+
         if (\Request::Integer('cron_init')) {
-            if ($created === []) {
+            if ($created === [] && $healed === [] && $removed === []) {
                 echo "Minden cron a helyén van, nem kellett újat felvenni.<br>\n";
             }
             return;
         }
 
+        // Az updateMasses fél óráig is futhat (500 ezer liturgikus esemény), a hoszt
+        // crontabja viszont 5 percenként kopogtat. Zár nélkül tehát 6-8 futás indult
+        // egymásra: mindegyik megnövelte az attempts-et, egyik sem ért véget, és 10
+        // fölött a scopeNextJobs 12 órára kizárta a munkát. A konténerbeli cron-loop
+        // sorosan fut, ezért ott ez nem látszott — élesben viszont a hosztról ütemezünk.
+        //
+        // Az adatbázis-szintű zár azért jó ide, mert a hoszt-cron, a konténer-loop és a
+        // böngészőből indított kézi futás mind ugyanahhoz a MySQL-hez megy, és a zár a
+        // kapcsolat megszakadásakor magától elenged (nincs beragadó lockfile).
+        if (!self::acquireLock()) {
+            echo "Már fut egy cron-munka, ezt a kört kihagyom.<br>\n";
+            return;
+        }
+
+        try {
+            $this->run();
+        } finally {
+            self::releaseLock();
+        }
+    }
+
+    private const LOCK_NAME = 'miserend_cron';
+
+    private static function acquireLock(): bool {
+        try {
+            $row = \Illuminate\Database\Capsule\Manager::selectOne(
+                'SELECT GET_LOCK(?, 0) AS acquired', [self::LOCK_NAME]
+            );
+        } catch (\Throwable $e) {
+            // Ha a zár nem kérhető, inkább fussunk le, mint hogy a cron néma legyen.
+            error_log('[cron] a zár nem kérhető: ' . $e->getMessage());
+            return true;
+        }
+
+        return (int) ($row->acquired ?? 0) === 1;
+    }
+
+    private static function releaseLock(): void {
+        try {
+            \Illuminate\Database\Capsule\Manager::selectOne(
+                'SELECT RELEASE_LOCK(?)', [self::LOCK_NAME]
+            );
+        } catch (\Throwable $e) {
+            error_log('[cron] a zár elengedése nem sikerült: ' . $e->getMessage());
+        }
+    }
+
+    private function run(): void {
         if($jobId = \Request::Integer('cron_id')) {
             $nextjob = \Eloquent\Cron::find($jobId);
 			if (!$nextjob) return;
@@ -57,18 +117,39 @@ class Cron extends Html {
         $start = microtime(true);
         try {
             $this->runJob($job);
-        } catch (\Exception $exception) {
+        } catch (\Throwable $exception) {
+            // \Throwable, nem \Exception: a TypeError/Error a PHP 8-ban NEM \Exception,
+            // ezért eddig átment ezen a catch-en, megölte az egész kérést, és a job
+            // némán annyiban maradt — se hibaüzenet, se success. Így akadt el hónapokra
+            // a \User::deleteNonActivatedUsers() is.
             $this->error = true;
+
+            /*
+             * A hiba eddig CSAK a kimenetre ment. A konténerbeli cron-loop ezt a
+             * `docker logs`-ba fűzi, a hosztról ütemezett futásnál viszont a kimenet
+             * jellemzően a semmibe megy — ott a bukás nyomtalanul eltűnt. A /health
+             * annyit mutatott, hogy „soha nem futott le sikeresen", az OKÁT viszont
+             * sehol nem lehetett megnézni. Ezért a szerver-naplóba is kiírjuk.
+             */
+            logThrowable('Cron ' . $job->class . '->' . $job->function . '()', $exception);
+
             echo "<strong>" . $job->class . "->" . $job->function . "() futtatása sikertelen.</strong>\n";
             $this->printExceptionVerbose($exception);
+            // A következő próbálkozás a szokásos ritmus szerint jöjjön. Enélkül a bukott
+            // munka „esedékes" maradt, minden kopogás újrapróbálta, és percek alatt
+            // átlépte a 10-es korlátot — onnan pedig 12 órára kizárta magát.
+            $job->backOff();
         }
 
         if (!isset($this->error)) {
             $job->success();
         }
         $elapsed = microtime(true) - $start;
+        // A `%` egészre vár, az $elapsed viszont float: PHP 8.1 óta minden cron-futás
+        // "Implicit conversion from float ... to int loses precision" figyelmeztetést
+        // hagyott maga után. fmod()-dal ugyanaz az eredmény, zaj nélkül.
         $hours = (int) floor($elapsed / 3600);
-        $minutes = (int) floor(($elapsed % 3600) / 60);
+        $minutes = (int) floor(fmod($elapsed, 3600) / 60);
         $seconds = $elapsed - ($hours * 3600) - ($minutes * 60);
         $s = round($seconds, 2);
 

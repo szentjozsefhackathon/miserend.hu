@@ -66,7 +66,11 @@ class Churchrelationships extends Api {
                     'lon'  => (float) $c->lon,
                     'rank' => $c->rank,
                 ],
-                'type'     => $node['type'],
+                // #391/#663: a hierarchia-struktúra (`['church' => …, 'children' => …]`)
+                // már NEM tartalmaz `type`-ot — a kapcsolat-típus fogalma kivezetés
+                // alatt van. A mezőt a válaszban meghagyjuk (a kliensek szerződése ne
+                // változzon váratlanul), de nem olvassuk ellenőrzés nélkül.
+                'type'     => $node['type'] ?? null,
                 'children' => $this->serializeTree($node['children']),
             ];
         }

@@ -13,7 +13,7 @@ class EditPhotos extends \Html\Html {
    
         // #545: kép-szerkesztő nyers inputja. A mezőnkénti \Request:: átírás
         // staging-tesztet igényel (kép-feltöltés/-törlés), ezért marad.
-        $this->input = $_REQUEST;
+        $this->input = \Request::all();
         $this->tid = $path[0];
         $this->church = \Eloquent\Church::find($this->tid);
         if (!$this->church) {
@@ -38,13 +38,16 @@ class EditPhotos extends \Html\Html {
     }
 
     function modify() {
-        if ($this->input['church']['id'] != $this->tid) {
+        // #391: a mezőcsoportok a \Request::Fields()-en át jönnek — ellenőrzött másolat,
+        // hiányzó vagy nem-tömb bemenetnél false, tehát nincs „Undefined array key".
+        $churchFields = \Request::Fields('church');
+        if ($churchFields === false || !isset($churchFields['id']) || $churchFields['id'] != $this->tid) {
             throw new \Exception("Gond van a módosítandó templom azonosítójával.");
         }
 
-   
-        if (isset($this->input['photos'])) {
-            foreach ($this->input['photos'] as $modPhoto) {
+        $photos = \Request::Fields('photos');
+        if ($photos !== false) {
+            foreach ($photos as $modPhoto) {
                 $origPhoto = \Eloquent\Photo::find($modPhoto['id']);
                 if ($origPhoto) {
                     if ($modPhoto['flag'] == 'i')

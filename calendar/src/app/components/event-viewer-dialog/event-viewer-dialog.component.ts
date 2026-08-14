@@ -45,6 +45,12 @@ import {EditConfirmationService} from '../../services/edit-confirmation.service'
 })
 export class EventViewerDialogComponent {
 
+  /** #334: a `lang` vesszős listáját bontja szét a zászlók kirajzolásához. */
+  languagesOf(lang: string | null | undefined): string[] {
+    return MassUtil.languageCodes(lang);
+  }
+
+
   readonly dialogRef = inject(MatDialogRef<EventViewerDialogComponent>);
   readonly dialog = inject(MatDialog);
   readonly data = inject<EventViewerDialogData>(MAT_DIALOG_DATA);

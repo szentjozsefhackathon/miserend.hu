@@ -10,7 +10,7 @@
 | Cél | Host | Port | Mire kell | Forrás (osztály) |
 |---|---|---|---|---|
 | **OSM Nominatim** | `nominatim.openstreetmap.org` | 443 | Cím vagy terület neve → koordináta keresés (geocoding) | `\ExternalApi\NominatimApi` |
-| **OSM Overpass** | `overpass-api.de` | 80 | Templom-elemek és határok lekérése OSM-ből (`url:miserend` tag) | `\ExternalApi\OverpassApi` |
+| **OSM Overpass** | `overpass-api.de` | 443 | Templom-elemek és határok lekérése OSM-ből (`url:miserend` tag) | `\ExternalApi\OverpassApi` |
 | **OSM opening_hours evaluator** | `openingh.openstreetmap.de` | 443 | `opening_hours` mező parse / evaluate | `\ExternalApi\OpeninghApi` |
 | **OSM OAuth** | fejlesztéshez `master.apis.dev.openstreetmap.org`, élesen:  `api.openstreetmap.org` | 443 | OSM adatok módosítása | `\ExternalApi\OpenStreetMapApi` |
 | **Mapquest Directions** | `open.mapquestapi.com` | 80 | Útvonal-távolság számítás templomok között (cron) | `\ExternalApi\MapquestApi` |
