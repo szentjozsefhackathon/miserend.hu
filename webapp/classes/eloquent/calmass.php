@@ -397,6 +397,15 @@ class CalMass extends CalModel
             $massesFromImport = [];
 
             foreach ($masses as $mass) {
+                // Körönként nullázni kell, különben átszivárog az előző miséről.
+                // A period nélküli, importált sorozatok ága ugyanis NEM állítja be
+                // ($massesFromImport-ba teszi a misét, és külön, lentebb dolgozza fel) —
+                // a lenti `foreach ($periods ...)` viszont utána is lefut. Így az ilyen
+                // mise az ELŐZŐ mise periódusaival is legenerálódott, rossz dátumokkal.
+                // (Az első ilyennél `$periods` egyszerűen null volt: "foreach() argument
+                // must be of type array|object, null given".)
+                $periods = collect([]);
+
                 /*
                 $this->logDebug("Mise feldolgozás indul", [
                     'mass_id' => $mass->id,
@@ -646,25 +655,40 @@ class CalMass extends CalModel
             foreach($massesFromImport as $mass) {
 echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year ".$year."<br>\n";
 
-                $endsBeforeGlobalEnd = false;
+                // A ciklusváltozókat KÖRÖNKÉNT nullázni kell. Korábban az `if` blokkokon
+                // belül keletkeztek, tehát az előző mise értéke átszivárgott a következőre:
+                // egy `until` nélküli szabály némán az előző mise záródátumát kapta meg,
+                // az első ilyennél pedig — amikor még semmi nem volt beállítva — a
+                // `$until->toIso8601String()` nullra futott:
+                //   "Call to a member function toIso8601String() on null"
+                // Élesben ez két darabot buktatott az újraindexelésből (~200 templom).
+                $until = null;
+                $dtstart = null;
+
+                // A nevek korábban félrevezetők voltak: itt az a kérdés, hogy a szabály
+                // teljes egészében kívül esik-e az indexelt éven.
+                $endsBeforeWindow = false;
                 if(isset($mass->rrule['until'])) {
                     $until = Carbon::parse($mass->rrule['until']);
                     if($until->lt($globalStart)) {
-                        $endsBeforeGlobalEnd = true;
+                        $endsBeforeWindow = true;
                     }
                 }
-                $startsBeforeGlobalStart = false;
+                $startsAfterWindow = false;
                 if(isset($mass->rrule['dtstart'])) {
                     $dtstart = Carbon::parse($mass->rrule['dtstart']);
                     if($dtstart->gt($globalEnd)) {
-                        $startsBeforeGlobalStart = true;
+                        $startsAfterWindow = true;
                     }
                 }
 
-                if(!$endsBeforeGlobalEnd and !$startsBeforeGlobalStart) {
-                    
+                if(!$endsBeforeWindow and !$startsAfterWindow) {
+
                 $newRrule = $mass->rrule;  // Az aktuális tömb lekérése
-                $newRrule['until'] = $until->toIso8601String();  // Módosítás
+                // Nyitott végű szabálynál (nincs UNTIL — pl. "minden vasárnap", ami a
+                // Google-naptárakban a leggyakoribb) az indexelt év vége a záródátum.
+                // Az évet úgyis évenként külön generáljuk, tehát ez nem vág le semmit.
+                $newRrule['until'] = ($until ?? $globalEnd)->toIso8601String();
                 $mass->rrule = $newRrule;  // Explicit reasszignálás az Eloquentnek
                
                 $newMassPeriod = [

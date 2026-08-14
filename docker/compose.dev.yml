@@ -22,6 +22,10 @@ services:
     build:
       context: ..
       dockerfile: docker/miserend/Dockerfile
+      args:
+        # A Dockerfile alapértéke `production`, ami a naptárnak a
+        # https://miserend.hu/calendar/ apiUrl-t égeti be. Helyben a localProd kell.
+        NG_CONFIG: localProd
     depends_on:
       npm-init:
         condition: service_completed_successfully
@@ -29,6 +33,8 @@ services:
       - SMTP_HOST=mailcatcher
       - SMTP_PORT=1025
       - MISEREND_WEBAPP_ENVIRONMENT=development
+    # #721: a forrás-mount és a függőség-volume-ok CSAK fejlesztéshez kellenek (szerkesztek
+    # egy PHP fájlt, és azonnal látszik). Élesben pont ez takarta el az image tartalmát.
     volumes:
       - ../webapp:/miserend/webapp
       - vendor_data:/miserend/webapp/vendor

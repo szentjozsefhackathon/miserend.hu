@@ -30,6 +30,14 @@ if ($env !== 'production' && PHP_SAPI !== 'cli' && !headers_sent()) {
 }
 
 error_reporting($config['error_reporting'] ? $config['error_reporting'] : 0);
+
+// #725: a végzetes hibák és az elkapatlan kivételek naplózása. A php.ini-ben
+// `display_errors = Off`, tehát a látogató ettől semmit nem lát többet — csak a
+// `docker logs` lesz használható. Enélkül egy 500-as oldalról semmi nyom nem maradt.
+registerFatalErrorLogger();
+set_exception_handler(static function (\Throwable $e): void {
+    logThrowable('Uncaught', $e);
+});
 define('DOMAIN', $config['path']['domain']);
 
 Translator::init('hu'); // vagy autodetect
