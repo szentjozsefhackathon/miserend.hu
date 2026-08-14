@@ -36,22 +36,60 @@ class OSM {
         ];
 
         foreach ($churches as $church) {
-            $this->checkBoundariesForOne($church, $referenceData);
+            if (!$this->checkBoundariesForOne($church, $referenceData)) {
+                /*
+                 * #570/#700: ha az Overpass elhasalt, a köteg többi templomával
+                 * tovább kopogtatni értelmetlen — jellemzően rate-limit (429) az ok,
+                 * amit a további kérések csak mélyítenek. Megállunk; a következő
+                 * cron-futás ugyanezekkel a templomokkal folytatja, mert bélyeget
+                 * nem tettünk rájuk.
+                 */
+                error_log('[miserend] OSM: a határ-lekérdezés elhasalt (templom #'
+                    . $church->id . '), a köteget megszakítom.');
+                return;
+            }
         }
     }
 
-    function checkBoundariesForOne($church, array $referenceData = []) {
+    /**
+     * Egy templom határainak felderítése.
+     *
+     * #570/#700: eddig MINDEN esetben rákerült a `boundaries_checked_at` bélyeg,
+     * akkor is, ha az Overpass elhasalt (429/503/időtúllépés). A batch a legrégebben
+     * ellenőrzöttet veszi előre, tehát a sikertelen próbálkozás a templomot a sor
+     * VÉGÉRE tette — határok nélkül, örökre. Egyetlen rate-limitelt futás így
+     * tömegével tett templomot elérhetetlenné a települési keresés számára, és ez
+     * sehol nem látszott hibaként: a felhasználó csak annyit lát, hogy „Pécs" alatt
+     * nem jön ki a Szent Ferenc-templom.
+     *
+     * A sikertelenséget innentől megkülönböztetjük a „lekérdeztük, de nincs határ"
+     * esettől: hibánál NEM bélyegzünk, tehát a templom a sor elején marad, és a
+     * következő futás újra próbálja.
+     *
+     * @return bool sikerült-e a lekérdezés (false: a hívó állítsa le a köteget)
+     */
+    function checkBoundariesForOne($church, array $referenceData = []): bool {
         $boundaries = $this->downloadBoundaries($church->lat, $church->lon);
 
-        // Mindig jelöljük, hogy megpróbáltuk – akár sikeres volt, akár nem (pl. Overpass 503).
-        // Ez megakadályozza az örökös hurkot: a következő futásban más templomok kerülnek sorra.
+        // A `null` a régi jelzés volt mindenféle kudarcra; kezeljük ugyanúgy, hogy
+        // egy régebbi hívó vagy teszt-dublőr se okozzon hamis „ellenőrizve" bélyeget.
+        if ($boundaries === false || $boundaries === null) {
+            // Nem tudjuk, van-e határa — ne állítsuk azt, hogy ellenőriztük.
+            return false;
+        }
+
+        // Idáig eljutva a lekérdezés SIKERES volt. A bélyeg ilyenkor kell: enélkül a
+        // valóban határ nélküli templomok (pl. tengerpart, hiányos OSM-adat) minden
+        // futásban újra sorra kerülnének, és kiszorítanák a többit.
         \Eloquent\Church::where('id', $church->id)
             ->update(['boundaries_checked_at' => date('Y-m-d H:i:s')]);
 
-        if ($boundaries === null || count($boundaries) < 1) return;
+        if (count($boundaries) < 1) return true;
 
         $church->boundaries()->sync($boundaries);
         $church->MmigrateBoundaries($referenceData);
+
+        return true;
     }
     
     function deleteOrphanBoundaries() {
@@ -100,19 +138,32 @@ class OSM {
         // stagingen pontosan ez csúfította el egy templom oldalát.
         $overpass->quiet = true;
 
+        /*
+         * #570/#700: a visszatérés HÁROM különböző dolgot jelenthetett, mind `null`-t
+         * adott, és a hívó nem tudta megkülönböztetni őket:
+         *   - a lekérdezés elhasalt (429/503/időtúllépés)  -> most: false
+         *   - lefutott, de nincs itt határ                 -> most: []
+         *   - lefutott, van határ                          -> tömb
+         * A különbség azért számít, mert csak a második kettőnél szabad
+         * „ellenőrizve" bélyeget tenni a templomra.
+         */
         try {
             $overpass->downloadEnclosingBoundaries($lat, $lon);
         } catch (\Exception $e) {
             // ExternalApi::runQuery() should catch internally, but just in case
-            return null;
-        }
-        
-        if ($overpass->hasError()) {
-            return null;
+            return false;
         }
 
-        if (!isset($overpass->jsonData->elements) || empty($overpass->jsonData->elements)) {
-            return null;
+        if ($overpass->hasError()) {
+            return false;
+        }
+
+        if (!isset($overpass->jsonData->elements)) {
+            return false;
+        }
+
+        if (empty($overpass->jsonData->elements)) {
+            return [];
         }
          
         foreach($overpass->jsonData->elements as $element) {            

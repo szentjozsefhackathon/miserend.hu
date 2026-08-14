@@ -22,7 +22,27 @@ export class DateTimeUtil {
     return DateTimeUtil.DATETIME_FORMAT_HU.format(date);
   }
 
+  /** Érvényes, valódi dátum-e? Egy Invalid Date getTime()-ja NaN. */
+  public static isValidDate(value: unknown): value is Date {
+    return value instanceof Date && !Number.isNaN(value.getTime());
+  }
+
+  /**
+   * Ez a függvény gyártotta a `2026-01-01TNaN:NaN:NaN` kezdéseket, amik némán eltűntek
+   * az oldalról: a `pad(NaN)` a "NaN" sztringet adja, a szerver pedig ellenőrzés nélkül
+   * kiírta. A hibás mise a szerkesztőben látszott, a keresőben soha — a nagyatádi
+   * Őrangyalok-kápolna miserendje így volt láthatatlan hét hónapig.
+   *
+   * A `periodDate` külön csúsztatta el a felismerést: a dátum-rész attól helyes maradt,
+   * tehát az érték "majdnem jónak" nézett ki.
+   *
+   * Inkább hangosan elszállunk, mint hogy értelmezhetetlen időpontot mentsünk.
+   */
   public static getIsoString(dateTime: Date, periodDate?: string): string {
+    if (!DateTimeUtil.isValidDate(dateTime)) {
+      throw new Error('Érvénytelen időpont: a mise kezdete nem értelmezhető.');
+    }
+
     const pad = (n: number) => n.toString().padStart(2, '0');
 
     const date: string = periodDate ? periodDate : DateTimeUtil.getOnlyDateString(dateTime);

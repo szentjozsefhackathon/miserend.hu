@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 4: Mass Search Results with Filters Test
@@ -10,21 +9,13 @@ use Symfony\Component\Panther\PantherTestCase;
  * Tests the mass (miserend) search functionality with various filters.
  * This is the most complex test validating foreach loops for results, filters, and liturgical days.
  */
-final class MassSearchResultsTest extends PantherTestCase
+final class MassSearchResultsTest extends FunctionalTestCase
 {
     private $client;
 
     protected function setUp(): void
     {
-        $this->client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        $this->client = static::pantherClient();
     }
 
     public function testMassSearchPageLoads(): void
