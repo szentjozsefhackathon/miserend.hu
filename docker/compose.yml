@@ -151,7 +151,7 @@ services:
       # azonosítás nélkül fogad adatot — l. Api\LoRaWAN::checkSharedSecret().
       - LORAWAN_TOKEN=${LORAWAN_TOKEN:-}
       # Az alap overpass túlterhelt lehet. Lásd: .env.example
-      - OVERPASS_APIURL=${OVERPASS_APIURL:-}
+      - OVERPASS_API_URL=${OVERPASS_API_URL:-}
 
     networks:
       inner:
