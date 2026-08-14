@@ -222,7 +222,7 @@ function twig_readable_rrule($rrule) {
 /**
  * A naptár-bundle cache-buster verziója.
  *
- * A `main.js` / `styles.css` neve a #750 óta STABIL (angular.json:
+ * A `main.js` / `styles.css` neve a #751 óta STABIL (angular.json:
  * outputHashing = "media"), mert a tartalomhash-elt fájlnév minden branchen
  * más lett, és emiatt MINDEN nyitott PR ütközött a `webapp/js/mcal/main-*.js`
  * fájlon (rename/rename). Stabil név mellett viszont kell egy külön

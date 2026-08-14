@@ -1,0 +1,327 @@
+{
+  "SELECTED_DAY": "Ezen a napon",
+  "SELECTED_DAYS": "Ezeken a napokon",
+  "DAYS": {
+    "MO": "Hétfő",
+    "TU": "Kedd",
+    "WE": "Szerda",
+    "TH": "Csütörtök",
+    "FR": "Péntek",
+    "SA": "Szombat",
+    "SU": "Vasárnap",
+    "SHORT": {
+      "MO": "HÉT",
+      "TU": "KED",
+      "WE": "SZE",
+      "TH": "CSÜ",
+      "FR": "PÉN",
+      "SA": "SZO",
+      "SU": "VAS"
+    },
+    "ON": {
+      "MO": "hétfőn",
+      "TU": "kedden",
+      "WE": "szerdán",
+      "TH": "csütörtökön",
+      "FR": "pénteken",
+      "SA": "szombaton",
+      "SU": "vasárnap"
+    }
+  },
+  "CHRISTMAS_DAY": "Karácsony napja",
+  "EASTER_DAY": "Húsvét napja",
+  "CHRISTMAS_DAYS": {
+    "DEC_24": "Szenteste",
+    "DEC_25": "Karácsony",
+    "DEC_26": "Karácsony másnapja"
+  },
+  "EASTER_DAYS": {
+    "TH": "Nagycsütörtök",
+    "FR": "Nagypéntek",
+    "SA": "Húsvéti vigília",
+    "SU": "Húsvétvasárnap",
+    "MO": "Húsvéthétfő"
+  },
+  "ADD_NEW_MASS": "Új liturgia rögzítése",
+  "COPY_NEW_MASS": "Új liturgia rögzítése",
+  "EDIT_MASS": "Meglévő liturgia szerkesztése",
+  "OTHER_SETTINGS": "Tulajdonságok",
+  "ADVANCED_SETTINGS": "Speciális",
+  "COMMENT": "Megjegyzés",
+
+  "RECURRENCE": "Ismétlődés",
+  "PERIOD": "Időszak",
+  "MANUAL_EXPERIOD": "Kézzel kivett időszakok",
+  "MANUAL_EXPERIOD_HINT": "A kiválasztott időszakokban semmiképp nem fog megjelenni.",
+  "EXCEPTION_DATES": "Kizárt dátumok",
+  "EXCEPTION_DATES_HINT": "Azon egyedi napok, amikor az ismétlődő esemény mégsem lesz megtartva.",
+  "ADD_EXCEPTION_DATE": "Dátum hozzáadása",
+  "REMOVE_DATE": "Dátum törlése",
+  "SELECT_DATE": "Válassz dátumot",
+  "EXCLUDED_COUNT": {
+    "DATES_SINGULAR": "kizárva 1 dátum",
+    "DATES_PLURAL": "kizárva {{count}} dátum",
+    "PERIODS_SINGULAR": "kizárva 1 időszak",
+    "PERIODS_PLURAL": "kizárva {{count}} időszak",
+    "BOTH": "kizárva {{dateCount}} dátum, {{periodCount}} időszak",
+    "NONE": "Nincs beállítva"
+  },
+  "LANGUAGE": "Nyelv",
+  "START_DATE": "Dátum",
+  "START_TIME": "Időpont",
+  "TIMEZONE": "Időzóna",
+  "DURATION": "Időtartam",
+  "DURATION_DAYS": "nap",
+  "DURATION_HOURS": "óra",
+  "DURATION_MINUTES": "perc",
+  "DURATION_EXTENDED_DAYS": "nap",
+  "TITLE": "Liturgia neve",
+  "RITE": "Rítus",
+
+  "CANCEL": "Mégsem",
+  "SAVE": "Mentés",
+  "SEND_TO_APPROVE": "Javaslat beküldése",
+  "CONTINUE": "Folytatás",
+  "OK": "Rendben",
+  "SEND": "Beküldés",
+  "EDIT": "Szerkesztés",
+  "DELETE": "Törlés",
+  "COPY_THIS_MASS": "Mise másolása",
+  "DELETE_WARNING": "Biztosan törölni szeretnéd az alábbi eseményt?",
+  "DELETE_CONFIRM": "Törlés",
+  "DELETE_PERIOD": "Időszak eseményeinek törlése",
+  "DELETE_PERIOD_TITLE": "Időszak eseményeinek törlése",
+  "DELETE_PERIOD_WARNING": "Valóban törölni szeretnéd az időszak összesen {{count}} eseményét? A törlés vissza nem vonható, de az átalakított miserend mentéséig nem kerül rögzítésre az adatbázisban.",
+  "COPY_PERIOD": "Időszak másolása",
+  "COPY_PERIOD_INFO": "Az időszak összesen {{count}} eseménye kerül lemásolásra az új időszakra.",
+  "PERIODS": {
+    "START_DATE": "Kezdete",
+    "END_DATE": "Vége",
+    "NO_PERIOD": "Nincs időszak"
+  },
+
+  "ROMAN_CATHOLIC": "Római katolikus",
+  "GREEK_CATHOLIC": "Görögkatolikus",
+  "TRADITIONAL": "Régi rítusú szentmise",
+
+  "MASS_TITLE": {
+    "HOLY_MASS": "Szentmise",
+    "LITURGY_OF_THE_WORD": "Igeliturgia",
+    "ADORATION": "Szentségimádás",
+    "CONFESSION": "Gyóntatás",
+    "BREVIARY": "Zsolozsma",
+    "LITANY": "Litánia",
+    "STATIONS_OF_THE_CROSS": "Keresztút",
+    "ROSARY": "Rózsafüzér",
+    "DIVINE_LITURGY": "Szent Liturgia",
+    "LITURGY_OF_THE_PRESANCTIFIED_GIFTS": "Előszenteltek liturgiája",
+    "MATINS": "Utrenye",
+    "VESPRES": "Vecsernye",
+    "MASS_OF_THE_LORD_S_SUPPER": "Az utolsó vacsora emlékmiséje",
+    "GOOD_FRIDAY_LITURGY": "Nagypénteki szertartás",
+    "EASTER_VIGIL": "Húsvét vigíliája",
+    "TRADITIONAL_LATIN_MASS": "Régi rítusú szentmise",
+    "TRADITIONAL_MASS_OF_THE_LORD_S_SUPPER": "Az utolsó vacsora emlékmiséje (régi rítusú)",
+    "TRADITIONAL_GOOD_FRIDAY_LITURGY": "Nagypénteki szertartás (régi rítusú)",
+    "TRADITIONAL_EASTER_VIGIL": "Húsvét vigíliája (régi rítusú)"
+  },
+
+  "MASS_TITLE_CATEGORY": {
+    "MASS": "Mise(félék)",
+    "ADORATION": "Szentségimádások",
+    "CONFESSION": "Gyóntatások",
+    "OTHER": "Egyéb imaalkalmak"
+  },
+
+  "MASS_FILTER": {
+    "TITLE": "Kategória szűrés",
+    "SELECT_ALL": "Összes kijelölése",
+    "DESELECT_ALL": "Kijelölések törlése"
+  },
+
+  "MASS_TYPES": "Jellemzők",
+  "FAMILY": "Családos/mocorgós",
+  "STUDENT": "Diák",
+  "UNIVERSITY_YOUTH": "Egyetemista/ifjúsági",
+  "GUITAR": "Gitáros",
+  "ORGAN": "Orgonás",
+  "SINGER": "Énekes",
+  "SILENT": "Csendes",
+
+  "LANGUAGES": {
+    "cu": "ószláv",
+    "en": "angol",
+    "fr": "francia",
+    "gr": "görög",
+    "hr": "horvát",
+    "va": "latin",
+    "pl": "lengyel",
+    "hu": "magyar",
+    "de": "német",
+    "it": "olasz",
+    "ru": "orosz",
+    "pt": "portugál",
+    "ro": "román",
+    "rue": "ruszin",
+    "es": "spanyol",
+    "sk": "szlovák",
+    "si": "szlovén",
+    "tl": "tagalog/filippínó",
+    "ua": "ukrán"
+  },
+
+  "MONTHS": {
+    "1" : "január",
+    "2" : "február",
+    "3" : "március",
+    "4" : "április",
+    "5" : "május",
+    "6" : "június",
+    "7" : "július",
+    "8" : "augusztus",
+    "9" : "szeptember",
+    "10" : "október",
+    "11" : "november",
+    "12" : "december"
+  },
+
+  "EVENT_VIEWER": {
+    "EQUAL_TIMEZONE": "Az Önével azonos időzónában.",
+    "DIFFERENT_TIMEZONE": "Figyelem! A kezdési idő más időzónában ({{eventTimeZone}}) lett megadva, mint az öné ({{localTimeZone}})!",
+    "RECURRENCE": "Ismétlődés",
+    "EDIT": "Szerkesztés",
+    "EDIT_ONE": "Ennek az egy alkalomnak a szerkesztése",
+    "EDIT_ALL": "Az összes ismétlődés szerkesztése",
+    "DELETE": "Törlés",
+    "DELETE_ONE": "Ennek az egy alkalomnak a törlése",
+    "DELETE_ALL": "Az összes ismétlődés törlése",
+    "CLOSE": "Bezárás",
+    "SUGGEST": "Javaslat küldése",
+    "IMPORTED_NOT_EDITABLE": "Ez a liturgia külső naptárból származik, ezért itt nem szerkeszthető. A módosítást a külső naptárban kell elvégezni, a napi szinkron átveszi.",
+    "IMPORTED_BADGE": "külső naptárból"
+  },
+
+  "RRULE": {
+    "NO_RECURRENCE": "Egyszeri alkalom",
+    "ON": {
+      "EVEN": "páros heteken",
+      "ODD": "páratlan heteken",
+      "EVERY_WEEK": "minden héten",
+      "FIRST_WEEK": "minden hónapban az első",
+      "SECOND_WEEK": "minden hónapban a második",
+      "THIRD_WEEK": "minden hónapban a harmadik",
+      "FOURTH_WEEK": "minden hónapban az negyedik",
+      "FIFTH_WEEK": "minden hónapban az ötödik",
+      "LAST_DAY_OF_MONTH": "minden hónapban az utolsó",
+      "EVERY_YEAR": "minden évben"
+    }
+  },
+  "SEPARATOR_AND": " és ",
+
+  "SUGGESTION": {
+    "SELECTED_PACKAGE": "Kiválasztott csomag",
+    "STATES": {
+      "ACCEPTED": "Elfogadott",
+      "REJECTED": "Elutasított",
+      "PENDING": "Függőben"
+    },
+    "STATE_PENDING_INFO": "Ez a javaslat függőben van - elfogadhatod vagy elutasíthatod.",
+    "STATE_ACCEPTED_INFO": "Ez a javaslat már elfogadásra került.",
+    "STATE_REJECTED_INFO": "Ez a javaslat már elutasításra került.",
+    "HANDLED_BY": "Kezelte",
+    "SENDER": {
+      "NAME": "Javaslattevő neve",
+      "EMAIL": "Javaslattevő email címe",
+      "USERID": "Javaslattevő felhasználói azonosítója",
+      "MESSAGE": "Kiegészítő üzenete"
+    },
+    "STATE": "Javaslatcsomag állapota",
+    "THERE_IS_NO_SUGGESTION": "Jelenleg nincs beküldött ajánlás a templomhoz!",
+    "HEADER": {
+      "PREV": "Előző",
+      "NEXT": "Következő",
+      "LIST" : "Lista",
+      "TODAY": "Ma",
+      "DAY": "Nap",
+      "WEEK": "Hét",
+      "MONTH": "Hónap"
+    },
+    "ORIGINAL_CALENDAR": "Aktuális miserend",
+    "NEW_CALENDAR": "Módosítás utáni miserend",
+    "APPROVE": "Jóváhagy",
+    "REJECT": "Elutasít"
+  },
+
+  "PERIODS": {
+    "YEAR_EDITOR_TITLE": "Időszakok beállítása",
+    "YEAR_EDITOR_HINT": "Azokat az időszakokat lehet itt beállítani, amik évenként eltérő időpontokban vannak, és nem egy másik időszaktól függenek. Amennyiben olyan időszakról van szó, ami átnyúlik egy adott naptári éven, akkor mindig a kezdeti időpontja szerint kell kezelni. Generálni a már mentett adatokkal lehet. Amíg nincs egy generálás sem, addig a naptárban nem jelennek meg az események, még az időszak nélküliek sem.",
+    "START_DATE": "Kezdete",
+    "END_DATE": "Vége",
+    "SAVE": "Mentés",
+    "GENERATE": "Generálás",
+    "NO_PERIOD": "Időszak nélkül",
+    "OLDER_MASSES_EXPANDABLE": "Vannak még régebbi misék is. Kattints ide a kibontáshoz",
+    "OLDER_EXCEPTION_DATES_SHOW": "Régebbiek megjelenítése",
+    "OLDER_EXCEPTION_DATES_HIDE": "Régebbiek elrejtése",
+    "EXCEPTION_AUTO": "Automatikusan kizárva a {{periodName}} időszakból.",
+    "EXCEPTION_MANUAL": "Kézzel beállítva, hogy a {{periodName}} időszakban ne jelenjen meg.",
+    "EXCEPTION_DATE": "Ismétlődő esemény kézzel törölve erről erről a napról."
+  },
+
+  "SIMPLE_EVENT": {
+    "MORE_SETTINGS": "További beállítások",
+    "SAVE": "Mentés"
+  },
+
+  "ERRORS": {
+    "REQUIRED_PERIOD": "Meg kell adni, hogy melyik időszakban ismétlődik.",
+    "REQUIRED_DAY": "Meg kell adni, hogy melyik napon van.",
+    "REQUIRED_DAYS": "Meg kell adni, hogy melyik napo(ko)n van.",
+    "REQUIRED_EASTER_DAY": "Meg kell adni, hogy mely napon van a liturgia.",
+    "REQUIRED_CHRISTMAS_DAY": "Meg kell adni, hogy mely napon van a liturgia."
+  },
+
+
+  "MASS_DETAILS_DATETIME": "A liturgia időpontja és ismétlődései",
+  "OTHER_SETTINGS_DETAILS": "A liturgia egyéb tulajdonságai",
+
+  "COPY_PERIOD": "Másolás új időszakra",
+  "COPY_PERIOD_DIALOG": {
+    "TITLE": "Másolás az időszakra",
+    "CURRENT_PERIOD": "Jelenlegi időszak",
+    "TARGET_PERIOD": "Cél időszak",
+    "SELECTED_TARGET": "Kiválasztott cél időszak"
+  },
+
+  "BOUNDARY": {
+    "region": "régió",
+    "statistical": "statisztika",
+    "political": "politika",
+    "judicial": "törvénykezés",
+    "forest_planning": "erdészet",
+    "tourism_region": "turisztikai régió",
+    "historic": "történelem",
+    "forestry_authority": "erdészeti hatóság",
+    "wine_community": "borközösség",
+    "wine_growing_area": "borvidék",
+    "police": "rendőrség"
+  },
+
+  "SCHEDULE_OUTDATED_MESSAGE_YEARS": "éve nem volt frissítve a miserend.",
+  "SCHEDULE_OUTDATED_MESSAGE_MONTHS": "hónapja nem volt frissítve a miserend.",
+  "SCHEDULE_OUTDATED_MESSAGE_SUFFIX": "Kérlek frissítsd az adatokat. Ha így jó ahogy van, kattints ide:",
+  "SCHEDULE_MARK_AS_CURRENT": "A miserend így pontos",
+
+  "CHURCH_RANK": {
+    "parish":           "plébánia",
+    "auxiliary":  "oldallagosan ellátott plébánia",
+    "filial":    "fília",
+    "rectoral":        "templomigazgatóság",
+    "unknown":          "ismeretlen"
+  },
+  "CHURCH_RELATIONSHIP_TYPE": {
+    "subordinate":               "alá-fölé rendelt",
+    "associated":                "mellérendelt",
+    "territorially_independent": "területileg ott van, de lényegében független"
+  }
+}

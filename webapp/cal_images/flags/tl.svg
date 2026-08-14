@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" width="640" height="480">
+  <!-- Philippine flag simplified vector -->
+  <rect width="640" height="240" y="0" fill="#0038A8"/>
+  <rect width="640" height="240" y="240" fill="#CE1126"/>
+  <polygon points="0,0 240,240 0,480" fill="#ffffff"/>
+
+  <!-- Sun (centered in white triangle) -->
+  <g transform="translate(120,240)">
+    <circle r="36" fill="#FCD116" />
+    <!-- 8 long rays -->
+    <g fill="#FCD116">
+      <rect x="-6" y="-86" width="12" height="34" rx="6" transform="rotate(0)"/>
+      <rect x="-6" y="52" width="12" height="34" rx="6" transform="rotate(0) translate(0,0) rotate(180)"/>
+      <rect x="-86" y="-6" width="34" height="12" rx="6" transform="rotate(0)"/>
+      <rect x="52" y="-6" width="34" height="12" rx="6" transform="rotate(0) translate(0,0) rotate(180)"/>
+      <rect x="-58" y="-58" width="16" height="34" rx="8" transform="rotate(45)"/>
+      <rect x="42" y="42" width="16" height="34" rx="8" transform="rotate(45)"/>
+      <rect x="-58" y="42" width="16" height="34" rx="8" transform="rotate(-45)"/>
+      <rect x="42" y="-58" width="16" height="34" rx="8" transform="rotate(-45)"/>
+    </g>
+  </g>
+
+  <!-- Three stars -->
+  <g fill="#FCD116">
+    <polygon points="48,120 57,154 92,154 63,174 73,208 48,187 23,208 33,174 4,154 39,154" transform="translate(8,8) scale(0.6)"/>
+    <polygon points="48,120 57,154 92,154 63,174 73,208 48,187 23,208 33,174 4,154 39,154" transform="translate(8,392) scale(0.6)"/>
+    <polygon points="48,120 57,154 92,154 63,174 73,208 48,187 23,208 33,174 4,154 39,154" transform="translate(200,240) scale(0.6)"/>
+  </g>
+</svg>

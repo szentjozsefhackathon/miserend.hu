@@ -59,15 +59,19 @@ composer.phar
 # Test results
 /test-results/
 
-# #750: az Angular-naptár fordított kimenete. Ezeket a `calendar_deploy.py`
+# #751: az Angular-naptár fordított kimenete. Ezeket a `calendar_deploy.py`
 # állítja elő, és a Docker image BUILD közben maga futtatja le
 # (docker/miserend/Dockerfile) — az éles kiszolgálás tehát sosem a
 # verziókövetett példányt használta. Commitolva viszont minden branch más
 # tartalmat kapott (tartalomhash-elt fájlnév), és emiatt MINDEN nyitott PR
 # ütközött rajtuk. Forrás: calendar/src és calendar/public.
+#
+# FIGYELEM: csak a buildenként VÁLTOZÓ kimenet kerül ide. A `webapp/i18n/` és a
+# `webapp/cal_images/` verziókövetett marad: azokat a PHP oldal is használja
+# (a Translator az i18n/hu.json-ból fordít, a twig sablonok a cal_images
+# ikonjaira hivatkoznak), és nem a build változtatja őket, hanem a forrásuk
+# szerkesztése — ott a konfliktus valódi tartalmi eltérés, nem zaj.
 /webapp/js/mcal/
 /webapp/css/styles.css
 /webapp/css/styles-*.css
-/webapp/i18n/
-/webapp/cal_images/
 /webapp/fonts/
