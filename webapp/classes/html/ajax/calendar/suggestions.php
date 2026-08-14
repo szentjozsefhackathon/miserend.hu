@@ -9,7 +9,9 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Support\Facades\Log;
 
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+// A ?? azért kell, mert CLI-ből (teszt, cron) nincs REQUEST_METHOD, és a fájl
+// betöltése önmagában figyelmeztetést dobott.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     header("Access-Control-Allow-Origin: *");
     header("Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE");
     header("Access-Control-Allow-Headers: Content-Type");
@@ -109,6 +111,18 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
             $this->sendJsonError('Nincs ilyen templom: '.$churchId, 404);
         }
 
+        // Az elfogadás/elutasítás ágán EDDIG SEMMILYEN jogosultság-ellenőrzés nem volt:
+        // a `handle()` csak a GET-nél nézte a writeAccess-t. Bárki, bejelentkezés nélkül,
+        // egyetlen POST-tal elfogadhatta vagy elutasíthatta bármelyik templom bármelyik
+        // javaslatát — kipróbálva: sima curl, süti nélkül, HTTP 200, az állapot átállt.
+        //
+        // Ez egyben a megfigyelt tünetet is magyarázza: a kezelő „vendégként" jelent meg,
+        // mert tényleg vendégként ment át a művelet.
+        $modifyChurch->append(['writeAccess']);
+        if (!$modifyChurch->writeAccess) {
+            $this->sendJsonError('Hiányzó jogosultság!', 403);
+        }
+
         // #592: nem a külső naptár léte a tiltó ok, hanem az, ha a javaslat épp egy
         // importált misét módosítana — azt a következő szinkron úgyis felülírná.
         $importedTargets = \Eloquent\CalMass::importedIdsAmong(
@@ -122,7 +136,16 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
         }
 
 
+        // Ki döntött róla, és mikor. Eddig CSAK az állapot tárolódott, a kezelő nem —
+        // az adminfelületen ezért nem lehetett látni a nevét. A munkamenetből vesszük,
+        // nem a kliens szavából.
+        global $user;
+        $kezelo = !empty($user->uid) ? (int) $user->uid : null;
+        $kezelesIdeje = date('Y-m-d H:i:s');
+
         $package->state = $input['state'];
+        $package->handled_by_user_id = $kezelo;
+        $package->handled_at = $kezelesIdeje;
         $package->save();
 
 
@@ -130,14 +153,22 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
         $identicalIds = $this->findIdenticalSuggestions($package);
         
         CalSuggestionPackage::whereIn('id', $identicalIds)
-            ->update(['state' => $input['state']]);
+            ->update([
+                'state' => $input['state'],
+                'handled_by_user_id' => $kezelo,
+                'handled_at' => $kezelesIdeje,
+            ]);
 
         if ($input['state'] === 'ACCEPTED') {
             //Ugyanarra a misére vonatkozó javaslatok kezelése
             $massIds = $this->findSuggestionsForMass($package);
             
             CalSuggestionPackage::whereIn('id', $massIds)
-                ->update(['state' => 'ACCEPTED']);
+                ->update([
+                    'state' => 'ACCEPTED',
+                    'handled_by_user_id' => $kezelo,
+                    'handled_at' => $kezelesIdeje,
+                ]);
 
             Capsule::connection()->beginTransaction();
 
@@ -318,12 +349,23 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
             );
         }
 
-        Capsule::connection()->transaction(function () use ($input) {
+        // A beküldő kilétét a MUNKAMENETBŐL vesszük, nem a kliens szavából. A naptár-
+        // alkalmazás a `senderUserId`-t sosem küldte el (a FormControl deklarálva volt,
+        // de soha nem kapott értéket), a `senderName`-be pedig a `*vendeg*` belső jelölő
+        // is bekerülhetett — így a felület nem tudta a beküldőt felhasználóhoz kötni.
+        // Bejelentkezett felhasználónál a szerver tudja a választ; a kliens értéke csak
+        // a valódi vendégeknél számít.
+        global $user;
+        $bejelentkezett = !empty($user->uid);
+
+        Capsule::connection()->transaction(function () use ($input, $user, $bejelentkezett) {
             $package = CalSuggestionPackage::create([
                 'church_id' => $input['churchId'] ?? null,
-                'sender_name' => $input['senderName'] ?? null,
-                'sender_email' => $input['senderEmail'] ?? null,
-                'sender_user_id' => $input['senderUserId'] ?? null,
+                'sender_name' => $bejelentkezett
+                    ? self::displayName($user)
+                    : self::cleanSenderName($input['senderName'] ?? null),
+                'sender_email' => $bejelentkezett ? ($user->email ?? null) : ($input['senderEmail'] ?? null),
+                'sender_user_id' => $bejelentkezett ? (int) $user->uid : null,
                 'sender_message' => $input['senderMessage'] ?? null,
                 'state' => $input['state'] ?? 'PENDING',
                 'created_at' => $input['created_at'] ?? null,
@@ -354,5 +396,32 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
             $this->content = json_encode(["success" => true, "id" => $package->id]);
         });
     }
-        
+
+    /**
+     * Emberi név a megjelenítéshez. A `username` a bejelentkezési azonosító, és
+     * vendégnél a `*vendeg*` belső jelölő — egyik sem való adatmezőbe.
+     */
+    public static function displayName($user): ?string {
+        foreach ([$user->name ?? null, $user->nickname ?? null, $user->username ?? null] as $jelolt) {
+            $jelolt = self::cleanSenderName($jelolt);
+            if ($jelolt !== null) {
+                return $jelolt;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A `*vendeg*` / `*vendég*` belső jelölő SOHA nem kerülhet a beküldő nevébe: az nem
+     * név, hanem a "nincs bejelentkezve" állapot jelölése. Eddig így lett a felületen
+     * minden ilyen beküldésből „vendég".
+     */
+    public static function cleanSenderName($nev): ?string {
+        $nev = trim((string) $nev);
+        if ($nev === '' || preg_match('/^\*vend[eé]g\*$/u', $nev)) {
+            return null;
+        }
+        return $nev;
+    }
+
 }
