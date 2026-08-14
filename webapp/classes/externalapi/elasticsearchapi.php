@@ -678,23 +678,24 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			// pedig sosem került sorra. Mostantól a hibás darab kimarad, a többi lefut,
 			// és a végén dobunk — így a cron továbbra is hibásnak látszik, de nem
 			// hagyunk magunk után nagy lyukat az indexben.
-			$failedChunks = [];
-			foreach (array_chunk($tids,  $chunksize) as $index => $chunk) {
-				try {
-					static::updateMasses($years, $chunk, $logger);
-				} catch (\Throwable $e) {
-					$failedChunks[] = ($index + 1) . '. darab (templomok: '
-						. implode(', ', array_slice($chunk, 0, 5))
-						. (count($chunk) > 5 ? ', …' : '') . '): ' . $e->getMessage();
-					$log("Hibás darab kihagyva: " . end($failedChunks));
-				}
-			}
+			$failedChurches = self::reindexChunks(
+				$tids,
+				$chunksize,
+				function (array $group) use ($years, $logger): void {
+					static::updateMasses($years, $group, $logger);
+				},
+				$log
+			);
 
-			if (!empty($failedChunks)) {
+			if (!empty($failedChurches)) {
 				// Vízjelet ilyenkor SZÁNDÉKOSAN nem írunk: az index hiányos, a következő
 				// futásnak újra neki kell futnia.
+				$reszletek = [];
+				foreach ($failedChurches as $tid => $uzenet) {
+					$reszletek[] = 'templom #' . $tid . ': ' . $uzenet;
+				}
 				throw new \Exception(
-					count($failedChunks) . " darab újraindexelése hibázott:\n" . implode("\n", $failedChunks)
+					count($failedChurches) . " templom újraindexelése hibázott:\n" . implode("\n", $reszletek)
 				);
 			}
 
@@ -869,6 +870,52 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		}
 
 		return $byChurch;
+	}
+
+	/**
+	 * Templomok újraindexelése darabokban, a hibás templom KIEMELÉSÉVEL.
+	 *
+	 * Eddig a 100-as darab egyben veszett el, és a hibaüzenet is csak az első öt
+	 * templom azonosítóját mondta — abból nem derült ki, MELYIK templom a hibás, a
+	 * másik 99 pedig kimaradt az indexből. Mivel a teljes futás egyetlen hibától is
+	 * kivételt dob, a cron így soha nem lett sikeres, és minden körben elölről
+	 * kezdte az egészet.
+	 *
+	 * Hibánál a darabot templomonként újrafuttatjuk: a hibás templom pontosan
+	 * megnevezhető, a többi bekerül. Ez csak hiba esetén fut le, tehát az ép futást
+	 * nem lassítja.
+	 *
+	 * A darabolást szándékosan itt, I/O nélkül tartjuk — így tesztelhető.
+	 *
+	 * @param  int[]    $tids
+	 * @param  callable $runner  fn(int[] $tids): void — a tényleges indexelés
+	 * @param  callable $log
+	 * @return array<int,string> templom-id => hibaüzenet
+	 */
+	static function reindexChunks(array $tids, int $chunksize, callable $runner, callable $log): array
+	{
+		$failedChurches = [];
+
+		foreach (array_chunk($tids, $chunksize) as $index => $chunk) {
+			try {
+				$runner($chunk);
+				continue;
+			} catch (\Throwable $e) {
+				$log("A(z) " . ($index + 1) . ". darab hibázott (" . $e->getMessage()
+					. ") — templomonként újrapróbálom.");
+			}
+
+			foreach ($chunk as $tid) {
+				try {
+					$runner([$tid]);
+				} catch (\Throwable $inner) {
+					$failedChurches[$tid] = $inner->getMessage();
+					$log("Templom #" . $tid . " újraindexelése hibázott: " . $inner->getMessage());
+				}
+			}
+		}
+
+		return $failedChurches;
 	}
 
 	function churchIdsWithMassesInPeriod($startDate, $endDate) {
