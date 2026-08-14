@@ -227,7 +227,7 @@ services:
       # Az alap overpass túlterhelt lehet. Lásd: .env.example
       - OVERPASS_API_URL=${OVERPASS_API_URL:-}
       # Opcionális lokális útvonaltervező. Lásd: docs/osrm.md
-      - OSMR_URL=${OSMR_URL:-}
+      - OSRM_URL=${OSRM_URL:-}
 
     networks:
       inner:
