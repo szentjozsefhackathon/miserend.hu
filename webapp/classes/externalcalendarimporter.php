@@ -251,13 +251,40 @@ class ExternalCalendarImporter {
         return true;
     }
 
+    /**
+     * #756: az indexelendő évek — ÉSSZERŰ ablakra vágva.
+     *
+     * Eddig a feed MINDEN `DTSTART` évét indexeltük. Egy régóta vezetett Google
+     * naptárban viszont ott van a teljes múlt is, sőt hibás/epoch dátumból 1970 is —
+     * a templom/276 naplója ezért volt tele „... in year 1970" sorokkal. Az 1970-es
+     * misékre senki nem keres, viszont minden ilyen év végigfut a teljes
+     * mise-generáláson, tehát csak a futásidőt szorozza.
+     *
+     * Az ablak alja a tavalyi év (ennyi kell a „mikor volt utoljára" jellegű
+     * kérdésekhez), a teteje pedig egy felső korlát: enélkül egyetlen elgépelt
+     * évszám (pl. 29999) beláthatatlanul sok kört jelentene.
+     */
+    private const INDEX_YEARS_BACK = 1;
+    private const INDEX_YEARS_AHEAD = 5;
+
     /** @return int[] */
     private static function extractIndexedYears(string $icsContent): array {
+        $thisYear = (int)date('Y');
+        $min = $thisYear - self::INDEX_YEARS_BACK;
+        $max = $thisYear + self::INDEX_YEARS_AHEAD;
+
         preg_match_all('/^DTSTART(?:;[^:]*)?:(\d{4})/mi', $icsContent, $matches);
-        $years = array_map('intval', $matches[1] ?? []);
-        $years[] = (int)date('Y') - 1;
-        $years[] = (int)date('Y');
-        $years[] = (int)date('Y') + 1;
+        $years = array_filter(
+            array_map('intval', $matches[1] ?? []),
+            static fn (int $y): bool => $y >= $min && $y <= $max
+        );
+
+        // A kereséshez ez a három év mindig kell, akkor is, ha a feed egyetlen
+        // eseménye sem esik ide (pl. csak régi vagy csak nagyon távoli dátumok).
+        $years[] = $thisYear - 1;
+        $years[] = $thisYear;
+        $years[] = $thisYear + 1;
+
         $years = array_values(array_unique($years));
         sort($years);
         return $years;
@@ -426,6 +453,39 @@ class ExternalCalendarImporter {
     }
 
     /**
+     * #756: a `cal_masses.title` varchar(255) — a hosszabb SUMMARY-tól az import
+     * elhasalt („Data too long"). Élő eset a templom/282 gyászmise-bejegyzése, ami a
+     * teljes gyászjelentést beleírta a címbe (~430 karakter).
+     *
+     * Nem az egész eseményt dobjuk el egy hosszú cím miatt: levágjuk. Szóhatáron,
+     * hogy ne maradjon csonka szó, és többájtos-biztosan (mb_*), különben egy
+     * kettévágott ékezetes karakter érvénytelen UTF-8-at adna.
+     *
+     * A `comment` mezőbe NEM tehetjük át a maradékot: azt az IMPORT_MARKER foglalja,
+     * és pontos egyezéssel dolgozik a `replaceAll()` törlése és az `isImported()` is.
+     */
+    private const TITLE_MAX_LENGTH = 255;
+
+    public static function trimSummary(string $summary): string {
+        // Az iCal SUMMARY tartalmazhat sortörést és folytatósort; egy sorba hozzuk.
+        $summary = trim(preg_replace('/\s+/u', ' ', $summary) ?? $summary);
+
+        if (mb_strlen($summary) <= self::TITLE_MAX_LENGTH) {
+            return $summary;
+        }
+
+        $cut = mb_substr($summary, 0, self::TITLE_MAX_LENGTH - 1);
+
+        // Csak akkor vágunk vissza szóhatárig, ha nem veszítjük el a cím felét.
+        $lastSpace = mb_strrpos($cut, ' ');
+        if ($lastSpace !== false && $lastSpace > (int)(self::TITLE_MAX_LENGTH / 2)) {
+            $cut = mb_substr($cut, 0, $lastSpace);
+        }
+
+        return rtrim($cut, " ,;:-–—") . '…';
+    }
+
+    /**
      * Convert iCalendar VEVENT to CalMass object
      */
     private static function createCalMassFromEvent($event, $churchId) {
@@ -450,7 +510,7 @@ class ExternalCalendarImporter {
 
         $calMass = \Eloquent\CalMass::make([
             'church_id' => $churchId,
-            'title' => $summary,
+            'title' => self::trimSummary($summary),
             'start_date' => $startDate,
             'rrule' => $rrule,
             'exdate' => !empty($exdates) ? $exdates : null,
