@@ -7,6 +7,16 @@
     <form method=get id="panel-search-church-form">
         <input type=hidden name=q value=SearchResultsChurches>
         <input type=hidden id=keresestipus name=keresestipus value=0>
+        {# #722: a hely szerinti szűrés eddig elveszett, ha a sidebarból indult új keresés
+           — a mise-panelnek (_panelsearchmass.twig) volt ilyenje, a templom-panelnek nem. #}
+        {% if nearbyOrigin is defined and nearbyOrigin %}
+            <input type=hidden name=nearby_lat value="{{ nearbyOrigin.lat }}">
+            <input type=hidden name=nearby_lon value="{{ nearbyOrigin.lon }}">
+            <input type=hidden name=nearby_radius value="{{ nearbyRadius }}">
+        {% elseif form.hely is defined and form.hely.value %}
+            <input type=hidden name=hely value="{{ form.hely.value }}">
+            <input type=hidden name=tavolsag value="{{ form.tavolsag.value|default(0) }}">
+        {% endif %}
         <style>
             #panel-search-form > .row{
                 margin-bottom:10px;

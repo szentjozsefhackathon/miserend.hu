@@ -6,6 +6,37 @@ use Illuminate\Database\Capsule\Manager as DB;
 
 class SearchResultsChurches extends Html {
 
+    /** #722: a hely szerinti szűrés kiindulópontja, hogy a sidebar tovább tudja vinni. */
+    public $nearbyOrigin;
+    public $nearbyRadius;
+
+    /**
+     * #722: koordináta-hármas ellenőrzése. Tiszta függvény (se DB, se HTTP), hogy
+     * tesztelhető legyen, és hogy a templom- és a misekereső ugyanazt a határt húzza meg.
+     *
+     * @return array{lat: float, lon: float, radius: float}|null
+     */
+    public static function validNearbyPoint($lat, $lon, $radiusKm): ?array {
+        if ($lat === false || $lat === '' || $lon === false || $lon === '') {
+            return null;
+        }
+        if (!is_numeric($lat) || !is_numeric($lon) || !is_numeric($radiusKm)) {
+            return null;
+        }
+        $lat = (float) $lat;
+        $lon = (float) $lon;
+        $radiusKm = (float) $radiusKm;
+
+        if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
+            return null;
+        }
+        if ($radiusKm <= 0 || $radiusKm > 200) {
+            return null;
+        }
+
+        return ['lat' => $lat, 'lon' => $lon, 'radius' => $radiusKm];
+    }
+
     /**
      * #89: helynév -> koordináta. Külön metódus, hogy a mise-kereső is ezt használja,
      * és egy helyen dőljön el, mi történik, ha a geokóder nem érhető el.
@@ -47,6 +78,12 @@ class SearchResultsChurches extends Html {
 		    // alkalmazta; a templomkereső pedig nem is ismerte őket.
 		    'hely' => \Request::Text('hely'),
 		    'tavolsag' => \Request::IntegerwDefault('tavolsag', 0),
+		    // #722: a koordináta-mezők a címlapi űrlapon eddig is elmentek a templomkereséssel
+		    // (egy formban vannak), de ez az oldal nem olvasta be őket — az „Egyéni közeli
+		    // keresés" tehát a templomkeresésre teljesen hatástalan volt.
+		    'nearby_lat' => \Request::Text('nearby_lat'),
+		    'nearby_lon' => \Request::Text('nearby_lon'),
+		    'nearby_radius' => \Request::Text('nearby_radius'),
 		    // #667: a keresőűrlap rítus-gombjai (zöld/piros/semleges) eddig csak a
 		    // mise-keresőre hatottak; a templomkereső némán figyelmen kívül hagyta őket.
 		    'rites' => \Request::StringArray('rites'),
@@ -156,7 +193,26 @@ class SearchResultsChurches extends Html {
 
         // #89: hely körüli keresés. A `hely` szöveget geokódoljuk, majd geo_distance
         // szűrőt teszünk a templom-index `location` mezőjére.
-        if (!empty($params['hely']) && (int) $params['tavolsag'] > 0) {
+        //
+        // #722: a koordináta erősebb jelzés, mint a helynév — ha megvan, azt használjuk,
+        // és nem geokódolunk fölöslegesen. (A mise-kereső is így dönt, l. #608.) Az
+        // űrlapon a JS a beírt helyet úgyis koordinátává alakítja, tehát a két ág
+        // ugyanoda vezet; a helynév-ág JS nélkül és kézzel írt URL-nél él.
+        $radius = $params['nearby_radius'] !== false && $params['nearby_radius'] !== ''
+            ? (float) $params['nearby_radius']
+            : (float) $params['tavolsag'];
+        $coordinates = self::validNearbyPoint($params['nearby_lat'], $params['nearby_lon'], $radius);
+
+        // A sidebar „Új keresés" űrlapja ezekből viszi tovább a hely szerinti szűrést.
+        $this->form['hely']['value'] = $params['hely'] !== false ? $params['hely'] : '';
+        $this->form['tavolsag']['value'] = (int) $params['tavolsag'];
+
+        if ($coordinates !== null) {
+            $this->nearbyOrigin = ['lat' => $coordinates['lat'], 'lon' => $coordinates['lon']];
+            $this->nearbyRadius = $coordinates['radius'];
+            $search->nearLocation($coordinates['lat'], $coordinates['lon'], $coordinates['radius'],
+                $params['hely'] !== false && $params['hely'] !== '' ? $params['hely'] : 'a megadott pont');
+        } elseif (!empty($params['hely']) && (int) $params['tavolsag'] > 0) {
             $point = self::geocodePlace($params['hely']);
             if ($point === false) {
                 addMessage(
