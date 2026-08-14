@@ -25,8 +25,15 @@ class Cron extends Html {
             echo "Ütemezhetővé tett cron (hiányzott a deadline_at): " . htmlspecialchars($job) . "<br>\n";
         }
 
+        // #724: a registryből kivett munkák sorát is takarítjuk. Enélkül egy megszűnt
+        // függvény sora örökre ottmarad, és minden esedékességnél hibát dob.
+        $removed = \Eloquent\Cron::pruneRemoved();
+        foreach ($removed as $job) {
+            echo "Eltávolított cron (már nincs a registryben): " . htmlspecialchars($job) . "<br>\n";
+        }
+
         if (\Request::Integer('cron_init')) {
-            if ($created === [] && $healed === []) {
+            if ($created === [] && $healed === [] && $removed === []) {
                 echo "Minden cron a helyén van, nem kellett újat felvenni.<br>\n";
             }
             return;

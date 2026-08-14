@@ -219,32 +219,10 @@ class Stat extends Html {
 		}
 		
 		$this->magyar = $results;
-		
-		
-		
-				
-		/* nearBy.log  */
-		$this->stats['nearbylog'] = [];
-		$this->stats['massrightnowlog'] = [];
-		$filePath = '../nearby.log';
-		if (file_exists($filePath)) {
-			$file = fopen($filePath, 'r');
-			if ($file) {
-				while (($line = fgetcsv($file)) !== false) {
-					if (count($line) > 1) {
-						$this->stats['nearbylog'][] = [ $line[1], $line[2] ];
-						if (isset($line[4]) && $line[4] === 'true') {
-							$this->stats['massrightnowlog'][] = [ $line[1], $line[2] ];
-						}
-					}
-				}
-				fclose($file);
-			} else { 
-				error_log("Failed to open file: $filePath");
-			}
-		} else {
-			error_log("File does not exist: $filePath");
-		}
+					
+		// #724: a helyadat-hőtérkép megszűnt. A `nearby.log` a hívók koordinátáját,
+		// User-Agentjét és pontos idejét tárolta, szemben a saját adatvédelmi
+		// tájékoztatónkkal — a naplózás megszűnt, így nincs mit megjeleníteni.
 
 	}
 
