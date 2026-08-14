@@ -66,12 +66,16 @@ composer.phar
 # tartalmat kapott (tartalomhash-elt fájlnév), és emiatt MINDEN nyitott PR
 # ütközött rajtuk. Forrás: calendar/src és calendar/public.
 #
-# FIGYELEM: csak a buildenként VÁLTOZÓ kimenet kerül ide. A `webapp/i18n/` és a
-# `webapp/cal_images/` verziókövetett marad: azokat a PHP oldal is használja
-# (a Translator az i18n/hu.json-ból fordít, a twig sablonok a cal_images
-# ikonjaira hivatkoznak), és nem a build változtatja őket, hanem a forrásuk
-# szerkesztése — ott a konfliktus valódi tartalmi eltérés, nem zaj.
+# A `webapp/i18n/` is ide tartozik: a szótár egyetlen forrása a
+# `calendar/public/i18n/`, a webapp alatti példány csak azért kell, hogy a
+# böngésző HTTP-n elérje. A PHP Translator a #751 óta közvetlenül a forrást
+# olvassa, tehát build nélkül is működik.
+#
+# A `webapp/cal_images/` viszont VERZIÓKÖVETETT marad: a twig sablonok
+# (home.twig, search/resultsmasses.twig) közvetlenül hivatkoznak rá, és nem a
+# build változtatja, hanem új ikon felvétele.
 /webapp/js/mcal/
 /webapp/css/styles.css
 /webapp/css/styles-*.css
+/webapp/i18n/
 /webapp/fonts/

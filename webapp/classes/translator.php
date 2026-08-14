@@ -10,6 +10,30 @@ class Translator {
         self::init($lang);
     }
 
+    /**
+     * A szótár helye.
+     *
+     * #751: a `webapp/i18n/` a naptár-build kimenete — a `calendar_deploy.py`
+     * másolja oda a `calendar/public/i18n/`-ből, hogy a böngésző HTTP-n el tudja
+     * érni. Emiatt már nincs verziókövetve, a PHP viszont ugyanezt a szótárat
+     * használja (a kategória-szűrő innen kapja a magyar mise-címeket, #299).
+     * Ezért ELŐSZÖR a forrást nézzük — így a fordítás egy helyen él, és friss
+     * klónban, build nélkül is működik. A `webapp/i18n/` csak tartalék.
+     */
+    private static function dictionaryPath(string $lang): ?string
+    {
+        $candidates = [
+            __DIR__ . '/../../calendar/public/i18n/' . $lang . '.json',
+            __DIR__ . '/../i18n/' . $lang . '.json',
+        ];
+        foreach ($candidates as $path) {
+            if (is_file($path) && is_readable($path)) {
+                return $path;
+            }
+        }
+        return null;
+    }
+
     public static function init($lang = null)
     {
         if (self::$inited) {
@@ -26,12 +50,12 @@ class Translator {
         }
 
         $lang = preg_replace('/[^a-z]/', '', strtolower($lang)) ?: 'en';
-        $path = __DIR__ . '/../i18n/' . $lang . '.json';
+        $path = self::dictionaryPath($lang);
 
         // fallback to English if requested language file is missing
-        if (!is_file($path) || !is_readable($path)) {
-            $fallback = __DIR__ . '/../i18n/en.json';
-            if (is_file($fallback) && is_readable($fallback)) {
+        if ($path === null) {
+            $fallback = self::dictionaryPath('en');
+            if ($fallback !== null) {
                 $path = $fallback;
             } else {
                 // nothing to load, mark initialized to avoid repeated attempts
