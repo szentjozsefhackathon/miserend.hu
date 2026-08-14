@@ -11,12 +11,16 @@ class Stat extends Html {
     public $s2;
     public $s5;
     public $magyar;
+    /** #724: süti- és IP-mentes látogatottság. */
+    public $usage = [];
 
     public function __construct() {
         parent::__construct();
         $this->setTitle('Statisztika');
 		$this->stats = [];
-        
+
+        $this->usage = $this->collectUsage();
+
         global $user;
         /*
         if (!$user->loggedin) {
@@ -215,13 +219,39 @@ class Stat extends Html {
 		}
 		
 		$this->magyar = $results;
-		
-		
-		
-				
+					
 		// #724: a helyadat-hőtérkép megszűnt. A `nearby.log` a hívók koordinátáját,
 		// User-Agentjét és pontos idejét tárolta, szemben a saját adatvédelmi
 		// tájékoztatónkkal — a naplózás megszűnt, így nincs mit megjeleníteni.
+
 	}
-		
+
+	/**
+	 * #724: a jegy kérdése az volt, „kb mennyien használják a honlapunkat (illetve az
+	 * API-t)". Ez a blokk erre válaszol — nagyságrend, legnépszerűbb oldalak, és az, hogy
+	 * mit keresnek. Az utóbbiból a NULLA találatos lista a leghasznosabb.
+	 *
+	 * A tábla hiányát külön kezeljük: élesben az initdb nem fut újra, tehát a séma
+	 * érkezhet később, mint a kód. Ilyenkor a /stat maradjon működőképes.
+	 */
+	private function collectUsage(): array {
+		$ures = ['dailyTotals' => [], 'topRoutes' => [], 'topSearchesFound' => [],
+		         'topSearchesMissing' => [], 'total' => 0, 'dailyAverage' => 0];
+		try {
+			$napok = \Stats::dailyTotals(30);
+			$osszes = array_sum(array_map(static fn($sor) => (int) $sor->count, $napok));
+
+			return [
+				'dailyTotals' => $napok,
+				'topRoutes' => \Stats::topRoutes(30, 20),
+				'topSearchesFound' => \Stats::topSearches(true, 30, 15),
+				'topSearchesMissing' => \Stats::topSearches(false, 30, 15),
+				'total' => $osszes,
+				'dailyAverage' => $napok ? (int) round($osszes / count($napok)) : 0,
+			];
+		} catch (\Throwable $e) {
+			return $ures;
+		}
+	}
+
 }
