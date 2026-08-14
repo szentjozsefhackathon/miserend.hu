@@ -17,13 +17,40 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
         $this->deadline_at = date('Y-m-d H:i:s', strtotime('now +' . $this->frequency));
     }
 
+    /**
+     * A sorrend a LEGRÉGEBBEN esedékes munkával kezdődik.
+     *
+     * Eddig `attempts ASC` volt az elsődleges rendezés, és ez kiéheztetett: a futtató
+     * egy körben EGY munkát indít, tehát amelyik egyszer felhalmozott néhány próbálkozást,
+     * az örökre a sor végére került, és csak akkor jutott szóhoz, ha épp semmi más nem
+     * volt esedékes. Ezért állt élesben a \User::deleteNonActivatedUsers() 135 napja
+     * (65 próbálkozás, egyetlen siker nélkül) — a hibái mellett a rendezés is fogva
+     * tartotta.
+     *
+     * Az attempts már csak holtverseny-döntő: azonos esedékességnél a kevesebbszer
+     * bukott munka megy előbb.
+     */
     public function scopeNextJobs($query) {
         return $query->where('deadline_at', '<', date('Y-m-d H:i:s'))
                         ->where(function($query) {
                             $query->where('attempts', '<', 10)
                             ->orWhere('updated_at', '<', date('Y-m-d H:i:s', strtotime('-12 hour')));
                         })
-                        ->orderBy('attempts', 'ASC')->orderBy('deadline_at', 'ASC');
+                        ->orderBy('deadline_at', 'ASC')->orderBy('attempts', 'ASC');
+    }
+
+    /**
+     * Sikertelen futás után a következő esedékesség a szokásos ritmus szerint jön.
+     *
+     * A deadline_at eddig CSAK sikerre újult meg, tehát egy bukó munka örökre
+     * "esedékes" maradt: minden kopogás újrapróbálta, az attempts percenként nőtt, és
+     * 10 fölött 12 órára ki is zárta magát. A fenti, esedékesség szerinti rendezés
+     * mellett ráadásul minden mást maga elé engedett volna — egy tartósan hibás munka
+     * megbénította volna a többit.
+     */
+    public function backOff(): void {
+        $this->renewDeadline();
+        $this->save();
     }
 
     public function initialize() {
