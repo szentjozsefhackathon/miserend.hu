@@ -27,6 +27,7 @@ import {DialogResponse} from '../../enum/dialog-response';
 import {MatExpansionModule} from '@angular/material/expansion';
 import {GeneratedPeriod} from '../../model/generated-period';
 import {ScriptUtil} from '../../util/script-util';
+import {DateTimeUtil} from '../../util/date-time-util';
 import {DateTime} from 'luxon';
 import {MatRadioButton, MatRadioGroup} from "@angular/material/radio";
 import {MatDivider} from "@angular/material/divider";
@@ -99,6 +100,7 @@ export class AddFullEventDialogComponent {
   public dayError: boolean = false;
   public christmasDayError: boolean = false;
   public easterDayError: boolean = false;
+  public startTimeError: boolean = false;
 
   selectedDays: Day | Day[] = this.data.event.selectedDays;
   selectedChristmasDay?: ChristmasDay | null = this.data.event.selectedChristmasDay;
@@ -222,11 +224,20 @@ export class AddFullEventDialogComponent {
   }
 
   onSave(): void {
+    // Az időpontot eddig SENKI nem ellenőrizte. Ha a timepicker üres maradt vagy
+    // értelmezhetetlent kapott, a modellben Invalid Date ült, amiből a mentés
+    // `2026-01-01TNaN:NaN:NaN` kezdést csinált. Az ilyen mise a szerkesztőben látszik,
+    // a keresőben viszont soha nem jelenik meg — a gondnok jogosan hiszi, hogy felvitte.
+    this.startTimeError = !DateTimeUtil.isValidDate(this.data.event.start);
+    if (this.startTimeError) {
+      return;
+    }
+
     // Ensure data.event.period is synced from FormControl if needed
     if (this.data.event.period === null && this.periodCtr.value !== null) {
       this.data.event.period = this.periodCtr.value;
     }
-    
+
     if (!this.singleEvent && ScriptUtil.isNull(this.data.event.period)) {
       this.periodCtr.setErrors({required: true});
       return;
