@@ -107,6 +107,29 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
 
     public function save(ChangeRequest $changeRequest): void
     {
+        // A mentés eddig ELLENŐRZÉS NÉLKÜL írta ki, amit a frontend küldött. Így került az
+        // adatbázisba `2026-01-01TNaN:NaN:NaN` kezdés (a szerkesztőben üresen maradt
+        // időpontból), és az ilyen mise NÉMÁN eltűnt: az újraindexelő kihagyja
+        // ("Invalid RRULE dtstart, skipping mass ID …"), tehát a keresőben soha nem
+        // jelenik meg, a szerkesztőben viszont ott van — a gondnok jogosan hiszi, hogy
+        // felvitte. A /health "elastic-misék nélküli misézőhelyek" listáján bukkant elő.
+        //
+        // Előbb MINDENT ellenőrzünk, és csak utána írunk: fél-mentett miserendet ne
+        // hagyjunk magunk után.
+        foreach ($changeRequest->masses as $mass) {
+            $ellenorzendo = CalModel::arrayKeysToSnakeCase(is_array($mass) ? $mass : (array) $mass);
+            $hiba = CalMass::invalidDateTimeReason($ellenorzendo);
+            if ($hiba !== null) {
+                $cim = trim((string) ($ellenorzendo['title'] ?? ''));
+                $this->sendJsonError(
+                    'Hiányzó vagy értelmezhetetlen időpont'
+                    . ($cim !== '' ? ' ennél: „' . $cim . '”' : '')
+                    . '. ' . $hiba,
+                    400
+                );
+            }
+        }
+
         // Törlendő misék
         if (!empty($changeRequest->deletedMasses)) {
             CalMass::whereIn('id', $changeRequest->deletedMasses)->delete();
