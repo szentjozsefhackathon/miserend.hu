@@ -58,3 +58,25 @@ composer.phar
 
 # Test results
 /test-results/
+
+# #751: az Angular-naptár fordított kimenete. Ezeket a `calendar_deploy.py`
+# állítja elő, és a Docker image BUILD közben maga futtatja le
+# (docker/miserend/Dockerfile) — az éles kiszolgálás tehát sosem a
+# verziókövetett példányt használta. Commitolva viszont minden branch más
+# tartalmat kapott (tartalomhash-elt fájlnév), és emiatt MINDEN nyitott PR
+# ütközött rajtuk. Forrás: calendar/src és calendar/public.
+#
+# FIGYELEM: csak a buildenként VÁLTOZÓ kimenet kerül ide.
+#
+# A `webapp/i18n/` és a `webapp/cal_images/` VERZIÓKÖVETETT marad. Nem azért,
+# mert nem generált — hanem mert a CI a `Dockerfile.github`-ból épült image-et
+# használja, ami CSAK a `webapp/`-ot és a `docker/miserend/`-et másolja be, a
+# `calendar/`-t nem; a compose pedig a checkoutot mountolja `/miserend/webapp`-ra.
+# Ha ezek nincsenek a checkoutban, a konténerben sehonnan nem érhetők el (a PHP
+# Translator a szótárból veszi a magyar mise-címeket a kategória-szűrőhöz, #299).
+# Konfliktust nem okoznak: nem a build változtatja őket, hanem a forrásuk
+# szerkesztése — ott az eltérés valódi tartalmi változás, nem zaj.
+/webapp/js/mcal/
+/webapp/css/styles.css
+/webapp/css/styles-*.css
+/webapp/fonts/
