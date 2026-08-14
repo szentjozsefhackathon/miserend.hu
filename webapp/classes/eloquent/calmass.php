@@ -787,6 +787,44 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
         }
     }
 
+    /**
+     * #747: lefedi-e a `$coverId` időszak MINDEN generált tartománya a `$innerId`-ét?
+     *
+     * Igaz, ha az inner minden generált tartományához van olyan cover-tartomány, ami
+     * teljesen tartalmazza. Ilyenkor a kizárás nem felülírás lenne, hanem kiürítés.
+     *
+     * Szándékosan konzervatív: ha bármelyik oldalnak nincs generált tartománya, vagy
+     * a két időszak ugyanaz, false-t adunk — tehát marad a régi, súly szerinti
+     * viselkedés. Így a javítás CSAK a ténylegesen lefedett esetre nyúl hozzá.
+     */
+    static private function periodCovers($calGeneratedPeriods, $coverId, $innerId): bool
+    {
+        if (empty($coverId) || empty($innerId) || $coverId == $innerId) {
+            return false;
+        }
+
+        $cover = $calGeneratedPeriods[$coverId] ?? null;
+        $inner = $calGeneratedPeriods[$innerId] ?? null;
+        if (empty($cover) || empty($inner)) {
+            return false;
+        }
+
+        foreach ($inner as $i) {
+            $covered = false;
+            foreach ($cover as $c) {
+                if ($c->start_date <= $i->start_date && $c->end_date >= $i->end_date) {
+                    $covered = true;
+                    break;
+                }
+            }
+            if (!$covered) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     static private function applyCollisionAvoidance(array $masses): array
     {
         // Kevés CalPeriod van, és minden misénél kell, ezért inkább előre egyszer töltjük be mindet.
@@ -832,6 +870,27 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
                         foreach ($currentMasses as $higherMass) {
                             $mPeriodExists = $calGeneratedPeriods[$lowerMass->period_id] ?? false;
                             if ($mPeriodExists) {
+                                // #747: a súly önmagában nem elég. Ha a nagyobb súlyú időszak
+                                // tartománya TELJESEN LEFEDI a kisebbét, akkor a kizárás nem
+                                // "felülírás", hanem kiürítés: a kisebb súlyú mise sehol nem
+                                // marad látható. Élő adattal ez a Nyári szünet (súly 3,
+                                // 06-30–09-01) és a Nyári időszámítás (súly 5, 03-30–10-26)
+                                // párosa — aki átmásolta a miséit, annak az eredeti némán
+                                // eltűnt a naptárból.
+                                //
+                                // Ilyenkor a SZŰKEBB időszak a valóban specifikusabb, tehát
+                                // a saját tartományában ő nyer: nem őt zárjuk ki, hanem
+                                // fordítva. A súly csak akkor dönt, ha egyik tartomány sem
+                                // tartalmazza a másikat.
+                                if (self::periodCovers($calGeneratedPeriods, $higherMass->period_id, $lowerMass->period_id)) {
+                                    $experiod = $higherMass->experiod ?? [];
+                                    if (!in_array($lowerMass->period_id, $experiod)) {
+                                        $experiod[] = $lowerMass->period_id;
+                                        $higherMass->experiod = $experiod; // csak a tömbben frissítjük
+                                    }
+                                    continue;
+                                }
+
                                 $experiod = $lowerMass->experiod ?? [];
                                 if (!in_array($higherMass->period_id, $experiod)) {
                                     $experiod[] = $higherMass->period_id;
@@ -839,7 +898,7 @@ echo "Period nélküli RRULE-os mise: ".$mass->id." - ".$mass->title." in year "
                                 }
                             }
                         }
-                    } 
+                    }
                 }
             }
             
