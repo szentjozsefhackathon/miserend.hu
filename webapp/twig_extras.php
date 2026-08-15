@@ -242,3 +242,40 @@ function mcalVersion(): string {
     $version = $mtime ? (string) $mtime : '0';
     return $version;
 }
+
+/**
+ * A Twig-környezet összeállítása — EGY helyen.
+ *
+ * Eddig két teljes másolat élt belőle (load.php és Html\Html::loadTwig), mindkettőn
+ * ott a figyelmeztetés, hogy a másikat is módosítani kell. A tesztek bootstrapja lett
+ * volna a harmadik, ezért inkább összevontam: egy szűrő felvétele így nem tud
+ * félbemaradni.
+ *
+ * A DOMAIN-t azért nem közvetlenül a konstansból veszem, mert azt a load.php
+ * definiálja — CLI-ből (teszt, cron) a környezet enélkül is használható kell legyen.
+ */
+function buildTwigEnvironment(?string $templatesPath = null): \Twig\Environment {
+    global $config;
+
+    $loader = new \Twig\Loader\FilesystemLoader(PATH . ($templatesPath ?? 'templates'));
+    $twig = new \Twig\Environment($loader);
+
+    $twig->addFilter(new \Twig\TwigFilter('miserend_date', 'twig_hungarian_date_format'));
+    $twig->addFilter(new \Twig\TwigFilter('trans', 'twig_translate'));
+    $twig->addFilter(new \Twig\TwigFilter('floor', 'floor'));
+    $twig->addFilter(new \Twig\TwigFilter('phone_links', 'twig_phone_links'));
+    $twig->addFilter(new \Twig\TwigFilter('strip_protocol', 'twig_strip_protocol'));
+    $twig->addFilter(new \Twig\TwigFilter('facebook_path', 'twig_facebook_path'));
+    $twig->addFilter(new \Twig\TwigFilter('readable_rrule', 'twig_readable_rrule'));
+
+    // Az email-sablonok abszolút hivatkozásaihoz kell.
+    $twig->addGlobal('domain', defined('DOMAIN') ? DOMAIN : ($config['path']['domain'] ?? ''));
+    $twig->addGlobal('mcal_version', mcalVersion()); // naptár-bundle cache-buster, l. mcalVersion()
+    // #766: az Overpass-végpont a böngészőből induló lekérdezésekhez is. A PHP oldal
+    // már a config['overpass']['apiUrl']-t használja (#376), a térkép-sablonok viszont
+    // beégetve hívták az overpass-api.de-t — ráadásul http-n. Így a mirror-váltás
+    // rájuk is érvényes.
+    $twig->addGlobal('overpass_api_url', $config['overpass']['apiUrl'] ?? 'https://overpass-api.de/api/interpreter');
+
+    return $twig;
+}
