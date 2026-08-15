@@ -44,13 +44,41 @@ class SimpleRRule
         }
     }
 
-    private function normalizeByWeekday(array $days): array
+    /**
+     * #765: a `byweekday` STRINGKÉNT is érkezhet, nem csak tömbként.
+     *
+     * A külső naptár importálója a `BYDAY=2SU` alakot (minden hónap 2. vasárnapja)
+     * egyetlen stringgel adta vissza, míg a `BYDAY=SU,MO` alakot tömbbel — a típus-
+     * kikötés miatt az előbbi TypeError-ral megölte az egész import futását.
+     *
+     * Az importálót külön javítom, de itt is elfogadjuk: az adatbázisban MÁR ott vannak
+     * a korábbi futások stringes sorai, és azok különben minden generáláskor újra
+     * elhasalnának.
+     *
+     * @param array|string|null $days
+     */
+    private function normalizeByWeekday($days): array
     {
+        if ($days === null || $days === '') {
+            return [];
+        }
+        if (!is_array($days)) {
+            $days = [$days];
+        }
+
         $map = [
             'MO' => 1, 'TU' => 2, 'WE' => 3, 'TH' => 4,
             'FR' => 5, 'SA' => 6, 'SU' => 7,
         ];
-        return array_map(fn($d) => $map[strtoupper($d)] ?? $d, $days);
+
+        $out = [];
+        foreach ($days as $d) {
+            if ($d === null || $d === '') {
+                continue;
+            }
+            $out[] = $map[strtoupper((string) $d)] ?? $d;
+        }
+        return $out;
     }
 
     public function getOccurrences(): array
