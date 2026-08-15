@@ -79,7 +79,13 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
      * @param  int|null    $now            időbélyeg (teszthez); null = most
      * @return string|null                 az elakadás oka, vagy null ha rendben van
      */
-    public static function stuckReason(?string $lastSuccessAt, string $frequency, ?int $now = null): ?string {
+    public static function stuckReason(
+        ?string $lastSuccessAt,
+        string $frequency,
+        ?int $now = null,
+        ?string $windowFrom = null,
+        ?string $windowUntil = null
+    ): ?string {
         $now = $now ?? time();
 
         // A régi sorokban a "soha" nem NULL-ként, hanem nulla-dátumként szerepel.
@@ -103,18 +109,76 @@ class Cron extends \Illuminate\Database\Eloquent\Model {
         }
         $periodSeconds = $period - $now;
 
-        // Háromszoros periódus a türelmi határ: egy-két kimaradt futás még belefér
-        // (ütközhetett másik jobbal, vagy kívül esett a from/until ablakon).
-        $elapsed = $now - $last;
+        /*
+         * Csak azt az időt számoljuk, amikor a munka egyáltalán FUTHATOTT VOLNA.
+         *
+         * Sok munkának napi ablaka van (`from`–`until`, tipikusan 1am–6am). Az eltelt
+         * nyers idő ilyennél félrevezet: egy 15 perces, 1–6 óra közti munkánál a
+         * háromszoros türelem 45 perc, az ablak viszont reggel 6-kor bezár — vagyis
+         * 6:45-től másnap hajnalig GARANTÁLTAN „elakadtnak" látszott, holott pontosan
+         * a beállítás szerint viselkedett. Élesben ez naponta három hamis riasztást
+         * jelentett, és pont az ilyen állandó piros teszi használhatatlanná a /health-et.
+         */
+        $elapsed = self::eligibleSecondsBetween($last, $now, $windowFrom, $windowUntil);
         if ($elapsed <= 3 * $periodSeconds) {
             return null;
         }
 
+        $ablakos = self::hasWindow($windowFrom, $windowUntil) ? ' (az ablakán belül számolva)' : '';
+
         $days = (int) floor($elapsed / 86400);
         if ($days >= 1) {
-            return $days . ' napja nem futott le sikeresen';
+            return $days . ' napja nem futott le sikeresen' . $ablakos;
         }
-        return (int) floor($elapsed / 3600) . ' órája nem futott le sikeresen';
+        return (int) floor($elapsed / 3600) . ' órája nem futott le sikeresen' . $ablakos;
+    }
+
+    private static function hasWindow(?string $from, ?string $until): bool {
+        return trim((string) $from) !== '' && trim((string) $until) !== '';
+    }
+
+    /**
+     * Mennyi FUTÁSRA ALKALMAS idő telt el két időpont között?
+     *
+     * Ablak nélkül a teljes eltelt idő. Napi ablaknál csak az átfedő szakaszok összege.
+     * Az éjfélen átnyúló ablakot (pl. 22:00–02:00) is kezeli.
+     *
+     * Tiszta függvény, hogy tesztelhető legyen.
+     */
+    public static function eligibleSecondsBetween(int $from, int $to, ?string $windowFrom, ?string $windowUntil): int {
+        if ($to <= $from) {
+            return 0;
+        }
+        if (!self::hasWindow($windowFrom, $windowUntil)) {
+            return $to - $from;
+        }
+
+        $osszeg = 0;
+        // Egy nappal korábbról indulunk az éjfélen átnyúló ablak miatt.
+        $nap = strtotime('-1 day', strtotime(date('Y-m-d', $from)));
+        // Felső korlát, hogy egy évekkel korábbi lastsuccess se pörgesse végtelenbe.
+        $maxNap = 400;
+
+        while ($nap <= $to && $maxNap-- > 0) {
+            $datum = date('Y-m-d', $nap);
+            $kezd = strtotime($datum . ' ' . $windowFrom);
+            $veg  = strtotime($datum . ' ' . $windowUntil);
+
+            if ($kezd !== false && $veg !== false) {
+                if ($veg <= $kezd) {
+                    $veg = strtotime('+1 day', $veg);   // éjfélen átnyúló ablak
+                }
+                $also = max($kezd, $from);
+                $felso = min($veg, $to);
+                if ($felso > $also) {
+                    $osszeg += $felso - $also;
+                }
+            }
+
+            $nap = strtotime('+1 day', $nap);
+        }
+
+        return $osszeg;
     }
 
     /**

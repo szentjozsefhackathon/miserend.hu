@@ -111,7 +111,12 @@ class Health extends Html {
 		foreach ($this->cronjobs as $i => $cron) {
 			$reason = \Eloquent\Cron::stuckReason(
 				$cron['lastsuccess_at'] ?? null,
-				(string) ($cron['frequency'] ?? '')
+				(string) ($cron['frequency'] ?? ''),
+				null,
+				// A napi ablak nélkül a számolás félrevezet: az ablakon KÍVÜLI órák nem
+				// a munka hibái. L. Cron::eligibleSecondsBetween().
+				$cron['from'] ?? null,
+				$cron['until'] ?? null
 			);
 			$this->cronjobs[$i]['stuck_reason'] = $reason;
 			if ($reason !== null) {
