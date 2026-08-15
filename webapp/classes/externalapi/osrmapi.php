@@ -31,9 +31,18 @@ class OsrmApi extends \ExternalApi\ExternalApi {
     public $testQuery;
     public $testSkipReason;
 
-    function __construct()
+    /**
+     * @param string|null $apiUrl a végpont; null esetén az OSRM_URL env-ből
+     *
+     * A paraméter a TESZTELHETŐSÉG miatt van. Az `env()` implementációja
+     * környezetfüggő — a projekté csak akkor él, ha az Illuminate helpere még nem
+     * definiálta —, és a `putenv()` nem mindenhol látszik rajta keresztül. Emiatt egy
+     * env-et állítgató teszt helyben átment, a CI-ban viszont elbukott. Kifejezett
+     * paraméterrel a viselkedés mindenhol ugyanaz.
+     */
+    function __construct(?string $apiUrl = null)
     {
-        $this->apiUrl = rtrim((string) env('OSRM_URL', ''), '/');
+        $this->apiUrl = rtrim($apiUrl ?? (string) env('OSRM_URL', ''), '/');
 
         if ($this->apiUrl === '') {
             $this->testSkipReason = 'Nincs beállítva az OSRM_URL — az útvonaltervező '

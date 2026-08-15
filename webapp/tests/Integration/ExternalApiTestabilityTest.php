@@ -68,35 +68,27 @@ final class ExternalApiTestabilityTest extends TestCase {
         }
     }
 
-    /** #673: beállított OSRM_URL mellett az útvonaltervező is a figyelt végpontok közé kerül. */
+    /**
+     * #673: beállított végpont mellett az útvonaltervező is a figyelt végpontok közé kerül.
+     *
+     * A végpontot KIFEJEZETTEN adjuk át, nem env-en keresztül. Az `env()` viselkedése
+     * környezetfüggő (a projekté csak akkor él, ha az Illuminate helpere még nem
+     * definiálta, és a `putenv()` nem mindenhol látszik rajta keresztül) — egy
+     * env-et állítgató teszt helyben átment, a CI-ban viszont elbukott, és a master
+     * CI-ját is elvitte.
+     */
     public function testOsrmIsCheckedWhenConfigured(): void {
-        $eredeti = getenv('OSRM_URL');
-        putenv('OSRM_URL=http://osrm:5000');
-        $_ENV['OSRM_URL'] = 'http://osrm:5000';
+        $api = new \ExternalApi\OsrmApi('http://osrm:5000');
 
-        try {
-            $api = new \ExternalApi\OsrmApi();
-            self::assertTrue($api->isTestable(), 'beállított OSRM_URL mellett ellenőrizni kell');
-            self::assertNull($api->testSkipReason());
-        } finally {
-            if ($eredeti === false) {
-                putenv('OSRM_URL');
-                unset($_ENV['OSRM_URL']);
-            } else {
-                putenv('OSRM_URL=' . $eredeti);
-                $_ENV['OSRM_URL'] = $eredeti;
-            }
-        }
+        self::assertTrue($api->isTestable(), 'beállított végpont mellett ellenőrizni kell');
+        self::assertNull($api->testSkipReason());
     }
 
     /** Beállítás nélkül viszont mondja meg, MIÉRT nincs ellenőrzés. */
     public function testOsrmExplainsWhyItIsNotChecked(): void {
-        $api = new \ExternalApi\OsrmApi();
+        $api = new \ExternalApi\OsrmApi('');
 
-        if ($api->isTestable()) {
-            self::markTestSkipped('Ebben a környezetben be van állítva az OSRM_URL.');
-        }
-
+        self::assertFalse($api->isTestable());
         self::assertNotNull($api->testSkipReason());
         self::assertStringContainsString('OSRM_URL', $api->testSkipReason());
     }
