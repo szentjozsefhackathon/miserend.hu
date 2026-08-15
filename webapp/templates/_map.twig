@@ -101,7 +101,7 @@
                                         var points = new OpenLayers.Layer.Vector("Templomok",
                                                 {strategies: [new OpenLayers.Strategy.BBOX()],
                                                     protocol: new OpenLayers.Protocol.HTTP({
-                                                        url: "http://overpass-api.de/api/interpreter?data=[timeout:30];(node[amenity=place_of_worship][denomination~catholic](bbox);way[amenity=place_of_worship][denomination~catholic](bbox);rel[amenity=place_of_worship][denomination~catholic](bbox););(._;>;);out body;",
+                                                        url: "{{ overpass_api_url }}?data=[timeout:30];(node[amenity=place_of_worship][denomination~catholic](bbox);way[amenity=place_of_worship][denomination~catholic](bbox);rel[amenity=place_of_worship][denomination~catholic](bbox););(._;>;);out body;",
                                                         format: new OpenLayers.Format.OSM(),
                                                     }),
                                                     projection: map.displayProjection,
@@ -113,7 +113,7 @@
                                         var dioceses = new OpenLayers.Layer.Vector("Egyházmegyék",
                                                 {strategies: [new OpenLayers.Strategy.BBOX()],
                                                     protocol: new OpenLayers.Protocol.HTTP({
-                                                        url: "http://overpass-api.de/api/interpreter?data=[timeout:30];(relation[boundary=religious_administration][denomination=roman_catholic][admin_level=6](bbox););(._;>;);out body;",
+                                                        url: "{{ overpass_api_url }}?data=[timeout:30];(relation[boundary=religious_administration][denomination=roman_catholic][admin_level=6](bbox););(._;>;);out body;",
                                                         format: new OpenLayers.Format.OSM(),
                                                     }),
                                                     projection: map.displayProjection,
@@ -124,7 +124,7 @@
                                         var deaneries = new OpenLayers.Layer.Vector("Espereskerületek",
                                                 {strategies: [new OpenLayers.Strategy.BBOX()],
                                                     protocol: new OpenLayers.Protocol.HTTP({
-                                                        url: "http://overpass-api.de/api/interpreter?data=[timeout:30];(relation[boundary=religious_administration][denomination=roman_catholic][admin_level=7](bbox););(._;>;);out body;",
+                                                        url: "{{ overpass_api_url }}?data=[timeout:30];(relation[boundary=religious_administration][denomination=roman_catholic][admin_level=7](bbox););(._;>;);out body;",
                                                         format: new OpenLayers.Format.OSM(),
                                                     }),
                                                     projection: map.displayProjection,

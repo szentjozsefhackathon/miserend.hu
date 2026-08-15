@@ -101,12 +101,25 @@ final class ExternalApiQuietTest extends TestCase {
     public function testBoundaryDownloadStaysSilentOnFailure(): void {
         global $config;
         $originalUrl = $config['overpass']['apiUrl'] ?? null;
+        $originalFallback = $config['overpass']['fallbackUrls'] ?? null;
         $config['overpass']['apiUrl'] = 'http://127.0.0.1:9/nincs-itt-semmi';
+        /*
+         * #766: a tartalék végpontok itt KI vannak kapcsolva. Nélküle ez a teszt már nem
+         * azt méri, amit a neve mond: az elérhetetlen elsődleges után a valódi, publikus
+         * tükrök válaszolnának, tehát nem lenne kudarc, amin csendben lehetne maradni.
+         */
+        $config['overpass']['fallbackUrls'] = ['http://127.0.0.1:9/ez-sem-letezik'];
 
+        /*
+         * Cache nélkül. Az ExternalApi a lekérdezés TARTALMÁBÓL képzi a cache-kulcsot,
+         * nem a hosztból — egy korábbi, sikeres futás válasza tehát akkor is kijönne,
+         * ha most egyetlen végpont sem elérhető, és a teszt hamis zöldet mutatna.
+         * A koordináta is szándékosan egyedi, hogy ne találjon régi bejegyzést.
+         */
         try {
             $result = null;
             $output = $this->captureOutput(function () use (&$result) {
-                $result = (new \OSM())->downloadBoundaries(47.5, 19.05);
+                $result = (new \OSM())->downloadBoundaries(47.5001234, 19.0501234);
             });
 
             // #570/#700: a kudarc jelzése `false` lett, hogy megkülönböztethető legyen
@@ -119,6 +132,11 @@ final class ExternalApiQuietTest extends TestCase {
                 unset($config['overpass']['apiUrl']);
             } else {
                 $config['overpass']['apiUrl'] = $originalUrl;
+            }
+            if ($originalFallback === null) {
+                unset($config['overpass']['fallbackUrls']);
+            } else {
+                $config['overpass']['fallbackUrls'] = $originalFallback;
             }
         }
     }
