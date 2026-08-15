@@ -77,7 +77,14 @@ class OsmBoundariesTest extends TestCase {
     }
 
     /** Create a partial mock of OSM that stubs downloadBoundaries() */
-    private function osmWithMockedDownload(?array $returnValue): OSM {
+    /**
+     * #570/#700: a `downloadBoundaries()` háromféle választ ad — `false` (a lekérdezés
+     * elhasalt), `[]` (lefutott, de nincs itt határ) és a határok tömbje. A dublőrnek
+     * mindhármat tudnia kell, mert épp a köztük lévő különbség a lényeg.
+     *
+     * @param array|false|null $returnValue
+     */
+    private function osmWithMockedDownload($returnValue): OSM {
         $osm = $this->getMockBuilder(OSM::class)
             ->onlyMethods(['downloadBoundaries'])
             ->getMock();
@@ -207,18 +214,50 @@ class OsmBoundariesTest extends TestCase {
     }
 
     /**
-     * Ha az API null-t ad vissza (Overpass hiba), boundaries_checked_at akkor is frissüljön.
-     * Ez akadályozza meg az örökös hurkot.
+     * #570/#700: API-hibánál NEM szabad „ellenőrizve" bélyeget tenni.
+     *
+     * Ez a teszt korábban az ellenkezőjét rögzítette (az örökös hurok elkerülésére),
+     * és pontosan ettől lett vak a települési keresés: a batch a legrégebben
+     * ellenőrzöttet veszi előre, tehát egy rate-limitelt futás a templomot határok
+     * NÉLKÜL tette a sor végére — véglegesen. A hurok elleni védelem most máshol van:
+     * hibánál megszakítjuk a köteget, tehát nem pörgünk ugyanazon.
      */
-    public function testCheckBoundariesForOneUpdatesBoundariesCheckedAtOnApiFailure(): void {
-        $osm = $this->osmWithMockedDownload(null);
+    public function testCheckBoundariesForOneDoesNotStampOnApiFailure(): void {
+        foreach ([false, null] as $kudarc) {
+            DB::table('templomok')->where('id', $this->testChurchId)
+                ->update(['boundaries_checked_at' => null]);
 
-        $church = \Eloquent\Church::find($this->testChurchId);
-        $osm->checkBoundariesForOne($church);
+            $osm = $this->osmWithMockedDownload($kudarc);
+            $church = \Eloquent\Church::find($this->testChurchId);
 
-        $updated = DB::table('templomok')->where('id', $this->testChurchId)->first();
-        $this->assertNotNull($updated->boundaries_checked_at,
-            'boundaries_checked_at kell, hogy frissüljön még API hiba/null esetén is - örökös hurok megelőzése.');
+            $sikeres = $osm->checkBoundariesForOne($church);
+
+            $updated = DB::table('templomok')->where('id', $this->testChurchId)->first();
+            $this->assertFalse($sikeres, 'A kudarcot jeleznie kell a hívó felé.');
+            $this->assertNull($updated->boundaries_checked_at,
+                'API-hibánál nem állíthatjuk, hogy ellenőriztük — különben a templom határok nélkül esik ki a sorból.');
+        }
+    }
+
+    /** Kudarc esetén a köteg álljon meg: a rate-limitet további kérésekkel csak mélyítenénk. */
+    public function testCheckBoundariesStopsTheBatchOnFailure(): void {
+        $this->insertChurch(['lat' => 47.6, 'lon' => 19.1, 'boundaries_checked_at' => null]);
+        $this->insertChurch(['lat' => 47.7, 'lon' => 19.2, 'boundaries_checked_at' => null]);
+
+        $hivasok = 0;
+        $osm = $this->getMockBuilder(OSM::class)
+            ->onlyMethods(['downloadBoundaries'])
+            ->getMock();
+        $osm->method('downloadBoundaries')
+            ->willReturnCallback(function () use (&$hivasok) {
+                $hivasok++;
+                return false;
+            });
+
+        $osm->checkBoundaries(10);
+
+        $this->assertSame(1, $hivasok,
+            'Az első kudarc után nem szabad tovább kopogtatni az Overpasson.');
     }
 
     /**

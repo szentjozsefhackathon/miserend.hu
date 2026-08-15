@@ -111,6 +111,30 @@
 		{% endfor %}
 	</table>
 	
+	{# A távolság szerinti templomkeresés kizárólag a `location` geo_pointra szűr.
+	   Ha az indexben nincs kitöltve, a keresés némán nem talál semmit — nem hiba,
+	   csak nulla találat. Egyedül teljes újraindexelés javítja. #}
+	<p style="margin-top: 15px;">
+		<h4>Indexelt templomok <code>location</code> nélkül (távolság-keresés):</h4>
+		{% if churchesMissingLocation is null %}
+			<span class="badge bg-secondary" style="font-size: 1.1em; padding: 0.5em 0.8em;">nem kérdezhető</span>
+		{% elseif churchesMissingLocation.missing == 0 %}
+			<span class="badge bg-success" style="font-size: 1.3em; padding: 0.6em 0.9em;">0</span>
+			<small class="text-muted">/ {{ churchesMissingLocation.indexed }} indexelt</small>
+		{% else %}
+			{% set arany = churchesMissingLocation.indexed > 0
+				? (churchesMissingLocation.missing * 100 / churchesMissingLocation.indexed)|round
+				: 0 %}
+			<span class="badge {{ arany > 10 ? 'bg-danger' : 'bg-warning' }}" style="font-size: 1.3em; padding: 0.6em 0.9em;">{{ churchesMissingLocation.missing }}</span>
+			<small class="text-muted">/ {{ churchesMissingLocation.indexed }} indexelt ({{ arany }}%)</small>
+			<div class="alert alert-warning" style="margin-top: 8px;">
+				Ezeket a templomokat a „X km-en belül" keresés <strong>nem találja meg</strong>.
+				Teljes újraindexelés kell: <code>/index.php?q=cron&amp;cron_id=38</code>
+				(vagy <code>\ExternalApi\ElasticsearchApi::updateChurches()</code> templom-azonosítók nélkül).
+			</div>
+		{% endif %}
+	</p>
+
 	<p style="margin-top: 15px;">
 		<h4>Misézőhelyek misékkel, de elastic-misék nélkül:</h4>
 		{% if churchesWithNoElasticMassesCount < 10 %}

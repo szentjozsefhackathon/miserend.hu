@@ -107,7 +107,7 @@ class Remark extends Html {
        
    
     function pageAdded() {
-                
+
         $remark = new \Eloquent\Remark;
 
         $remark->church_id = $this->church->id;
@@ -125,15 +125,30 @@ class Remark extends Html {
             $remark->email = $user->email;
         }
         
+        // #755: ugyanaz az észrevétel néha két-háromszor futott be, pár másodperc
+        // különbséggel — a beküldő türelmetlenül többször nyomta a gombot, illetve a
+        // /remark/add POST-ra nincs átirányítás, tehát egy frissítés is újraküldi.
+        //
+        // Kiszolgáló oldalon fogjuk meg, mert az fedi le mindhárom okot (dupla
+        // kattintás, újraküldés, hálózati ismétlés). Azonos templom + azonos email +
+        // BETŰRE azonos szöveg rövid időn belül nem lehet szándékos második
+        // észrevétel. A beküldő ugyanazt a visszajelzést kapja, különben azt hinné,
+        // hogy nem ment el, és megint próbálkozna.
+        if (\Eloquent\Remark::findRecentDuplicate($remark->church_id, $remark->email, $remark->leiras)) {
+            global $config;
+            $this->debug = $config['debug'];
+            return;
+        }
+
         $megbizhato = \Eloquent\Remark::select('megbizhato')->where('email',$remark->email)->orderBy('created_at','desc')->limit(1)->first();
         if($megbizhato)
             $remark->megbizhato = $megbizhato->megbizhato;
         else
             $remark->megbizhato = '?';
-                                
+
         if (!$remark->save())
             addMessage("Nem sikerült elmenteni az észrevételt. Sajánljuk.", "danger");
-                
+
         if (!$remark->emails())
             addMessage("Nem sikerült elküldeni az értesítő emaileket.", "warning");
                 

@@ -1,19 +1,12 @@
 <?php
 
-use Symfony\Component\Panther\PantherTestCase;
 
-final class HomepageLogoTest extends PantherTestCase {
+use Tests\Functional\FunctionalTestCase;
+
+final class HomepageLogoTest extends FunctionalTestCase {
 
     public function testLogoExistsAndImageIsLoaded(): void {
-        $client = static::createPantherClient(
-            array(
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ),
-            array(),
-            array(
-                'browser' => static::CHROME,
-            )
-        );
+        $client = static::pantherClient();
 
         $crawler = $client->request('GET', '/');
 

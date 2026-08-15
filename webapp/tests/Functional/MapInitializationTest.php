@@ -1,7 +1,6 @@
 <?php
 
 use Facebook\WebDriver\WebDriverDimension;
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * #640: a /terkep elsőre hibára futott, ctrl+R-re viszont megjavult.
@@ -15,14 +14,12 @@ use Symfony\Component\Panther\PantherTestCase;
  *
  * Ez a teszt azt őrzi, hogy a térkép ELSŐ betöltésre is hibátlanul álljon fel.
  */
-final class MapInitializationTest extends PantherTestCase {
+use Tests\Functional\FunctionalTestCase;
+
+final class MapInitializationTest extends FunctionalTestCase {
 
     private function client() {
-        return static::createPantherClient(
-            ['external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000'],
-            [],
-            ['browser' => static::CHROME]
-        );
+        return static::pantherClient();
     }
 
     /*

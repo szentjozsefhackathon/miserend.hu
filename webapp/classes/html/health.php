@@ -15,6 +15,7 @@ class Health extends Html {
     public $elasticsearch;
     public $churchesWithNoElasticMasses;
     public $churchesWithNoElasticMassesCount;
+    public $churchesMissingLocation;
     public $externalapis;
     public $boundariesStats;
     public $schemaCheck;
@@ -129,6 +130,21 @@ class Health extends Html {
 		$elastic->run();		
 		if(isset($elastic->jsonData))
 			$this->elasticsearch = $elastic->jsonData;
+
+		/*
+		 * A távolság szerinti templomkeresés a `location` geo_pointra szűr. Ha az
+		 * indexben nincs kitöltve, a keresés NÉMÁN nem talál semmit — nem hiba, csak
+		 * nulla találat, amit „nincs ilyen templom"-nak olvas a felhasználó. Pontosan
+		 * ez történt: a mapping és a dokumentum-építés is rendben volt, de az index
+		 * nagy része a javítás előtti teljes újraindexelésből maradt.
+		 *
+		 * A szám SOHA ne vigye le a /health-et — a többi ellenőrzés fontosabb.
+		 */
+		try {
+			$this->churchesMissingLocation = $elastic->churchesMissingLocation();
+		} catch (\Throwable $e) {
+			$this->churchesMissingLocation = null;
+		}
 
 		$ids = $elastic->churchIdsWithMassesInPeriod(date('Y-01-01'), date('Y-12-31'));
 		$this->churchesWithNoElasticMasses = \Eloquent\Church::whereNotIn('id', $ids)->has('massrules')->get()->toArray();

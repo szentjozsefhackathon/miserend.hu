@@ -1,0 +1,40 @@
+# #750: adatbázis-nézelődés éles környezetben, kézi másolgatás nélkül.
+#
+# Eddig két rossz út volt: (1) az adminer.php-t kézzel bemásolni a webapp mellé,
+# aztán elfelejteni letörölni, vagy (2) image-et újraépíteni miatta. Mindkettő
+# nyomot hagy: az adminer.php a docroot alatt marad, és a `Require all granted`
+# miatt bárkinek kiszolgálódik.
+#
+# Ez a fájl külön szolgáltatásként hozza be, `adminer` profil mögé rejtve — az
+# alap `docker compose up` NEM indítja el.
+#
+# HASZNÁLAT (a szerveren, SSH-n belül):
+#
+#   docker compose -f docker/compose.yml -f docker/compose.adminer.yml \
+#     --profile adminer up adminer
+#
+# Nincs `-d`: ha kilépsz a shellből, a konténer leáll. Ha véletlenül mégis
+# bentmarad, a `docker compose ... --profile adminer down adminer` leszedi.
+#
+# A port SZÁNDÉKOSAN csak a loopbackre kötődik (127.0.0.1), tehát kívülről
+# semmilyen tűzfal-hiba mellett sem érhető el. A gépedről SSH-tunnellel nézed:
+#
+#   ssh -N -L 8080:127.0.0.1:${ADMINER_PORT:-8080} <user>@<szerver>
+#   # utána: http://127.0.0.1:8080
+#
+# Belépés: szerver `mysql`, felhasználó/jelszó a szerver .env-jéből
+# (MYSQL_USER/MYSQL_PASSWORD, vagy root + MYSQL_ROOT_PASSWORD).
+services:
+  adminer:
+    image: adminer:5
+    profiles: [adminer]
+    restart: "no"
+    ports:
+      - 127.0.0.1:${ADMINER_PORT:-8080}:8080
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - inner
