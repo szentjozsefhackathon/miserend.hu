@@ -67,6 +67,26 @@ class Generate extends \Html\Ajax\Calendar\CalendarApi {
             exit;
         }
 
+        // Ezen a végponton EDDIG SEMMILYEN jogosultság-ellenőrzés nem volt, pedig a PUT
+        // teljes mise-újraindexelést indít. Kipróbálva: bejelentkezés nélkül, sima
+        // curl-lel HTTP 200, és le is futott. Egy teljes futás 15+ perc és
+        // erősen terheli az Elasticsearchöt — bárki, korlátlanul indíthatta.
+        //
+        // Ugyanaz a szabály, mint a szerkesztésnél: aki a templomhoz írhat, az
+        // regenerálhatja is a miséit. Minden kért templomra megköveteljük.
+        foreach ($this->tids as $tid) {
+            $church = \Eloquent\Church::find($tid);
+            if (!$church) {
+                $this->sendJsonError('Nincs ilyen templom: ' . $tid, 404);
+                exit;
+            }
+            $church->append(['writeAccess']);
+            if (!$church->writeAccess) {
+                $this->sendJsonError('Hiányzó jogosultság!', 403);
+                exit;
+            }
+        }
+
         
 
         switch ($_SERVER['REQUEST_METHOD']) {

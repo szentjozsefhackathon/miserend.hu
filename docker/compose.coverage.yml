@@ -1,6 +1,13 @@
 services:
   miserend:
     image: ghcr.io/szentjozsefhackathon/miserend.hu-coverage:${COVERAGE_IMAGE_TAG:-latest}
+    # A CI a FUTÓ konténer ellen futtatja a Panther-teszteket (PANTHER_EXTERNAL_BASE_URI),
+    # tehát az oldalt ez a szolgáltatás szolgálja ki. A templom-oldal külső API-kat hívna
+    # (kozossegek.hu, Overpass); üres cache-sel ez másodperceket vesz, és a WebDriver
+    # 180 másodperces korlátját is átlépheti — ettől bukott véletlenszerűen a
+    # ChurchDetailPageTest és a ChurchRemarkFormTest. Teszt alatt nincs kifelé menő hálózat.
+    environment:
+      - EXTERNAL_APIS_OFFLINE=1
     volumes:
       - ../webapp:/miserend/webapp
       - vendor_data:/miserend/webapp/vendor

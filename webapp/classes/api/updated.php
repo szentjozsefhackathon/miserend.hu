@@ -62,7 +62,11 @@ class Updated extends Api {
         $sqlite = new \Api\Sqlite();
         $sqlite->version = $this->version;        
         if(!$sqlite->checkSqliteFile()) {
-            if($this->input['format'] == 'json') {
+            // #391: az 51. sor már feloldotta a formátumot (bemenet vagy alapérték),
+            // itt mégis a nyers bemenetet olvastuk — ami hiányzó `format` esetén
+            // „Undefined array key" figyelmeztetést adott, és az alapértéket
+            // (`text`) figyelmen kívül hagyta.
+            if($this->format == 'json') {
                 $this->return = [
                     "error" => 1, 
                     "text" => "Sqlite file is not available.",
@@ -74,12 +78,20 @@ class Updated extends Api {
         }
 
         if( DB::table('templomok')->where('frissites','>=',$this->date)->count() > 0)  {
-            if($this->input['format'] == 'json') {
+            // #391: az 51. sor már feloldotta a formátumot (bemenet vagy alapérték),
+            // itt mégis a nyers bemenetet olvastuk — ami hiányzó `format` esetén
+            // „Undefined array key" figyelmeztetést adott, és az alapértéket
+            // (`text`) figyelmen kívül hagyta.
+            if($this->format == 'json') {
                 $this->return = ["error" => 0, "updated" => true];
             } else
                 $this->return = "1";
         } else 
-            if($this->input['format'] == 'json') {
+            // #391: az 51. sor már feloldotta a formátumot (bemenet vagy alapérték),
+            // itt mégis a nyers bemenetet olvastuk — ami hiányzó `format` esetén
+            // „Undefined array key" figyelmeztetést adott, és az alapértéket
+            // (`text`) figyelmen kívül hagyta.
+            if($this->format == 'json') {
                 $this->return = ["error" => 0, "updated" => false];
             } else  
                 $this->return = "0";

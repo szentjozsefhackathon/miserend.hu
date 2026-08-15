@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 2: Homepage Form Elements Test
@@ -10,22 +9,14 @@ use Symfony\Component\Panther\PantherTestCase;
  * Validates that all critical form elements on the homepage are present and rendered correctly.
  * This includes search inputs, dropdowns, date pickers, and dynamic filter buttons.
  */
-final class HomepageFormElementsTest extends PantherTestCase
+final class HomepageFormElementsTest extends FunctionalTestCase
 {
     private static $client;
     private static $crawler;
 
     public static function setUpBeforeClass(): void
     {
-        self::$client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        self::$client = static::pantherClient();
         self::$crawler = self::$client->request('GET', '/');
     }
 

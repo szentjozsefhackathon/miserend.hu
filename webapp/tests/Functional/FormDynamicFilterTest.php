@@ -2,7 +2,6 @@
 
 namespace Tests\Functional;
 
-use Symfony\Component\Panther\PantherTestCase;
 
 /**
  * Test 7: Form Dynamic Filter Test
@@ -10,22 +9,14 @@ use Symfony\Component\Panther\PantherTestCase;
  * Tests JavaScript-driven filter buttons on the homepage.
  * Validates that filter buttons change state and update hidden inputs correctly.
  */
-final class FormDynamicFilterTest extends PantherTestCase
+final class FormDynamicFilterTest extends FunctionalTestCase
 {
     private $client;
     private $crawler;
 
     protected function setUp(): void
     {
-        $this->client = static::createPantherClient(
-            [
-                'external_base_uri' => getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000',
-            ],
-            [],
-            [
-                'browser' => static::CHROME,
-            ]
-        );
+        $this->client = static::pantherClient();
         $this->crawler = $this->client->request('GET', '/');
         $this->client->waitFor('body', 10);
     }

@@ -15,7 +15,11 @@ $environment['default'] = [
         'useitforsearch' => false
     ],
 	'openstreetmap' => [
-		'apiUrl' => 'https://api.openstreetmap.org/'
+		'client_id' => env('OSM_CLIENT', ''),
+		'client_secret' => env('OSM_CLIENT_SECRET', ''),
+		'application_code' => env('OSM_APPLICATION_CODE', ''),		
+		'access_token' => env('OSM_ACCESS_TOKEN', ''),
+		'apiUrl' => env('OSM_URL', 'https://api.openstreetmap.org/')	
     ],
     // #376: konfigurálható Overpass-endpoint. A fő overpass-api.de instabil lehet;
     // prod átállhat egy stabil, EU-s mirrorra az OVERPASS_API_URL env-vel. Ajánlott:
@@ -49,7 +53,14 @@ $environment['default'] = [
         'debugger' => 'eleklaszlosj@gmail.com'
     ],
     'debug' => 0,
-    'error_reporting' => false
+    // #725: eddig `false` volt, amiből a load.php `error_reporting(0)`-t csinált — és az
+    // nem csak a kijelzést, a NAPLÓZÁST is elnémítja. Élesben (a `production` ág ezt az
+    // alapértéket örökli) ezért egyetlen fatal errorról sem maradt nyom: a `docker logs`
+    // csak az access-log 500-as sorát mutatta, hibaüzenetet nem.
+    //
+    // A látogató ettől semmit nem lát: a php.ini-ben `display_errors = Off`. A warning és
+    // notice szint szándékosan marad kint, hogy a napló ne fulladjon zajba.
+    'error_reporting' => E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR
 ];
 
 $environment['testing'] = [
@@ -72,17 +83,7 @@ $environment['staging'] = [
     ],
     'path' => [
         'domain' => 'http://staging.miserend.hu'
-    ],
-	'openstreetmap' => [
-		'client_id' => '',
-		'client_secret' => '',
-		'application_code' => '',		
-		'access_token' => '',
-		'apiUrl' => 'https://master.apis.dev.openstreetmap.org/'	
     ],	
-	
-	
-	
     'error_reporting' => E_ERROR | E_WARNING | E_PARSE
 ];
 

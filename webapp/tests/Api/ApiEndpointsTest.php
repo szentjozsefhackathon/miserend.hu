@@ -72,6 +72,40 @@ class ApiEndpointsTest extends TestCase {
         }
     }
 
+    public function testNearbyMassesAreLimitedByRadiusAndSortedByDistance(): void {
+        $response = $this->apiRequest('/api/v4/nearbymasses', [
+            'lat' => 47.4979,
+            'lon' => 19.0402,
+            'radius' => 15.0,
+            'from' => date('Y-m-d') . 'T00:00:00+02:00',
+            'until' => date('Y-m-d', strtotime('+1 day')) . 'T00:00:00+02:00',
+            'limit' => 20,
+        ]);
+
+        $this->assertSame(0, $response['error']);
+        $this->assertNotEmpty($response['misek']);
+        $distances = array_column($response['misek'], 'distance_km');
+        $sortedDistances = $distances;
+        sort($sortedDistances, SORT_NUMERIC);
+        $this->assertSame($distances, $sortedDistances);
+        foreach ($distances as $distance) {
+            $this->assertLessThanOrEqual(15.0, $distance);
+        }
+    }
+
+    public function testNearbyMassesRejectAnInvertedTimeRange(): void {
+        $response = $this->apiRequest('/api/v4/nearbymasses', [
+            'lat' => 47.4979,
+            'lon' => 19.0402,
+            'radius' => 15.0,
+            'from' => '2026-08-08T12:00:00+02:00',
+            'until' => '2026-08-08T10:00:00+02:00',
+        ]);
+
+        $this->assertEquals(1, $response['error']);
+        $this->assertStringContainsString('until', $response['text']);
+    }
+
     /**
      * @dataProvider providerTestApiSignup
      */
@@ -481,8 +515,39 @@ class ApiEndpointsTest extends TestCase {
     }
 
     /**
+     * A munkamenet-süti megszerzése a webes bejelentkező űrlappal. A naptár-végpontok
+     * nem API-tokennel, hanem munkamenettel dolgoznak.
+     */
+    private function sessionCookie(): string
+    {
+        $ch = curl_init($this->baseUrl . '/');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query([
+                'login'  => self::FIXTURE_USERNAME,
+                'passw'  => self::FIXTURE_PASSWORD,
+                'logout' => 'false',
+            ]),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER         => true,
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+        $valasz = (string) curl_exec($ch);
+        curl_close($ch);
+
+        preg_match_all('/^Set-Cookie:\s*([^;]+)/mi', $valasz, $m);
+        $this->assertNotEmpty($m[1], 'Nem sikerült bejelentkezni a teszthez.');
+
+        return implode('; ', $m[1]);
+    }
+
+    /**
      * Regression test: /calendar/generate must return valid JSON.
      * Before the fix, echo statements inside updateMasses() corrupted the JSON response.
+     *
+     * A végpont bejelentkezést kíván: korábban SEMMILYEN jogosultság-ellenőrzés nem volt
+     * rajta, pedig a PUT teljes mise-újraindexelést indít. A JSON-helyesség vizsgálata
+     * ettől független, csak be kell hozzá jelentkezni.
      */
     public function testCalendarGenerateReturnsValidJson(): void
     {
@@ -492,6 +557,7 @@ class ApiEndpointsTest extends TestCase {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 120,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_COOKIE         => $this->sessionCookie(),
         ]);
         $raw      = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

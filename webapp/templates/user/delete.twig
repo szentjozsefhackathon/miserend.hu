@@ -1,0 +1,50 @@
+{% extends "layout.twig" %}
+
+{% block content %}
+
+{% if not user2delete or user2delete.uid == 0 %}
+	<p>Nincs ilyen felhasználó.</p>
+
+{% elseif isSelf %}
+	<h2>Fiókod törlése</h2>
+
+	<div class="alert alert-warning">
+		<p><strong>Ez a lépés nem vonható vissza.</strong></p>
+		<p>Ha törlöd a fiókodat:</p>
+		<ul class="mb-0">
+			<li>a <strong>bejelentkezési adataid és személyes adataid</strong> (név, becenév, e-mail cím) törlődnek;</li>
+			<li>a <strong>kedvenc templomaid</strong> törlődnek;</li>
+			<li>a <strong>gondnokságaid</strong> megszűnnek — az általad kezelt templomokat innentől más gondozza;</li>
+			<li>a <strong>beküldött észrevételeid és miserend-javaslataid megmaradnak</strong>, de névtelenné válnak.
+				Ezekre a templomok felelőseinek szükségük lehet, ezért nem töröljük őket, csak leválasztjuk rólad.</li>
+		</ul>
+	</div>
+
+	<p>Ha ezután mégis használnád az oldalt, bármikor regisztrálhatsz újra — de a régi adataidat
+		nem tudjuk visszaadni.</p>
+
+	<form method="post" action="/user/{{ user2delete.uid }}/delete">
+		<div class="form-group">
+			<label for="password">A megerősítéshez add meg a jelszavadat:</label>
+			<input type="password" class="form-control" id="password" name="password"
+			       autocomplete="current-password" required style="max-width: 22em;">
+		</div>
+		<p>
+			<button type="submit" class="btn btn-danger">Véglegesen törlöm a fiókomat</button>
+			<a href="/user/{{ user2delete.uid }}/edit" class="btn btn-secondary">Mégsem</a>
+		</p>
+	</form>
+
+{% else %}
+	<h2>Felhasználó törlése</h2>
+
+	<p>Biztosan törölni akarod a következő felhasználót?</p>
+	<p><strong>{{ user2delete.username }}</strong> ({{ user2delete.nev }})</p>
+
+	<p>
+		<a href="/user/{{ user2delete.uid }}/delete?confirmation=confirmed" class="btn btn-danger">Igen</a>
+		<a href="/user/{{ user2delete.uid }}/edit" class="btn btn-secondary">Nem</a>
+	</p>
+{% endif %}
+
+{% endblock %}

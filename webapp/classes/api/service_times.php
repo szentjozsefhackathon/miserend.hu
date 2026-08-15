@@ -52,7 +52,9 @@ class Service_times extends Api {
 						$serviceTimes .= "(ERROR/BUG no start_date) ";
 					}
 					if($mass['rite'] != 'ROMAN_CATHOLIC') $serviceTimes .= $mass['rite']." ";
-					$serviceTimes .= $mass['title']." (".$mass['lang'].")";	
+					// #334: a nyelv lista lehet (szlovák-latin mise), a kimenet viszont szöveg.
+					$massLangs = is_array($mass['lang']) ? $mass['lang'] : \Eloquent\CalMass::splitLanguages($mass['lang']);
+					$serviceTimes .= $mass['title']." (".implode('-', $massLangs).")";	
 					if(!empty($mass['types'])) {
 						$serviceTimes .= ', '.implode(', ', $mass['types']);
 					}

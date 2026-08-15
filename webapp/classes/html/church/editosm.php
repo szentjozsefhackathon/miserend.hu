@@ -20,7 +20,7 @@ class EditOsm extends \Html\Html {
 
         // #545: többdimenziós OSM-szerkesztő nyers inputja. A mezőnkénti
         // \Request:: átírás staging-tesztet igényel (OSM-kötés), ezért marad.
-        $this->input = $_REQUEST;
+        $this->input = \Request::all();
         $this->tid = $path[0];
         $this->church = \Eloquent\Church::find($this->tid);
         if (!$this->church) {
@@ -132,22 +132,30 @@ class EditOsm extends \Html\Html {
     }
 
     function modify() {
-			
-        if ($this->input['church']['id'] != $this->tid) {
+
+        // #391: a mezőcsoport a \Request::Fields()-en át jön (ellenőrzött másolat),
+        // a skalárok a \Request::get()-en. Hiányzó bemenetnél így nincs
+        // „Undefined array key" figyelmeztetés — a csalás-ellenőrzés ugyanúgy fut.
+        $churchFields = \Request::Fields('church');
+        if ($churchFields === false || !isset($churchFields['id']) || $churchFields['id'] != $this->tid) {
             throw new \Exception("Gond van a módosítandó templom azonosítójával.");
         }
-		
+
+        $osmType = \Request::get('osmtype');
+        $osmId   = \Request::get('osmid');
+
 		if ( 
-			$this->church['osmtype'] != $this->input['osmtype'] OR 
-			$this->church['osmid'] != $this->input['osmid'] OR 
-			$this->church['id'] != $this->input['church']['id']
+			$this->church['osmtype'] != $osmType OR 
+			$this->church['osmid'] != $osmId OR 
+			$this->church['id'] != $churchFields['id']
 			) {
 			addMessage('Valami csalás próbál történni és az osmtype és osmid nem megfelelő. Ezért inkább nem mentettünk semmit.','warning');
 			return;
 		}
 		
 		// Összeállítjuk az OSM tagokat amiket menteni szeretnénk
-		$this->osmtagsToSave = $this->prepareUpdatedOsmtags();
+		$osmFields = \Request::Fields('osm');
+		$this->osmtagsToSave = $this->prepareUpdatedOsmtags($osmFields === false ? [] : $osmFields);
 		if(!$this->osmtagsToSave) {
 			addMessage('Nem volt változtatás, így nem volt mint elmenteni.','info');
 			return;
@@ -167,7 +175,7 @@ class EditOsm extends \Html\Html {
 		$changeSetID = $osmapi->changesetCreate($tags);
 		
 		// Upload OSM entity XML		
-		$versionID = $osmapi->putEntity($changeSetID, $this->input['osmtype'], $this->osmEntity);
+		$versionID = $osmapi->putEntity($changeSetID, \Request::get('osmtype'), $this->osmEntity);
 	
 		// Close Changeset
 		$osmapi->changesetClose($changeSetID);
@@ -194,12 +202,16 @@ class EditOsm extends \Html\Html {
 				);
 			}			
 						
+			// #670: az OSM-tagok (pl. wheelchair) a templom keresési adatai közé kerülnek,
+			// és a mise-indexbe is beágyazódnak — frissítsük, hogy a kereső rögtön lássa.
+			$this->church->refreshMassSearchIndex();
+
 			addMessage ('Közvelenül OSM adatokat is módosítottunk. Nagyon izgalmas. <a href="'.$messageurl.'">changeset/'.$changesetID.'</a>','success');
 			
 		}
 		
 		// Hova is térjünk vissza
-        switch ($this->input['modosit']) {
+        switch (\Request::Text('modosit')) {
             case 'n':
                 $this->redirect("/church/catalogue");
                 break;
@@ -665,38 +677,48 @@ class EditOsm extends \Html\Html {
 
    
    
-	function prepareUpdatedOsmtags() {
+	/**
+	 * #391: a beküldött OSM-tageket PARAMÉTERKÉNT kapja, nem a $this->input-ból olvassa.
+	 * Így tiszta függvény: a hívó dönti el, honnan jön az adat (a kérésből), a tesztek
+	 * pedig közvetlenül adhatják át — nem kell szuperglobálist állítgatniuk.
+	 *
+	 * @param array $osmFields a beküldött `osm[...]` mezőcsoport
+	 */
+	function prepareUpdatedOsmtags(array $osmFields = []) {
 		$original = (array) $this->osmtags;
 		$updated = (array) $this->osmtags;
 		$isUpdated = false;
 		$changes = [];
 		// Csak a lehetséges kulcsokat végig nézzük, hogy van-e hozzá új vagy törölt adat
+		// A logika változatlan; korábban magán a $this->input-on írtuk át az értéket
+		// (`$this->input['osm'][$key] = preg_replace(...)`), most a paraméterből
+		// olvasunk egy lokális változóba.
 		foreach($this->validKeys as $key) {
 		
 			// Ha be van küldve az érvényes cucc
-			if( isset($this->input['osm'][$key]) ) {
+			if( isset($osmFields[$key]) ) {
 				// Ha a kulcs értékének kezdete  'Nincs információ', akkor azt tudju, hogy igazából '' akar lenni.
-				$this->input['osm'][$key] = preg_replace('/^Nincs információ.*$/i','',$this->input['osm'][$key]);
+				$value = preg_replace('/^Nincs információ.*$/i','',$osmFields[$key]);
 
 				// Ha ez a kulcs nincs az eredeti OSM-ben ÉS most sem kapott értéket
-				if ( trim($this->input['osm'][$key]) == '' AND !isset($this->osmtags->$key)) {
+				if ( trim($value) == '' AND !isset($this->osmtags->$key)) {
 					// semmit nem teszünk
 				}
 				// Ha ez a kulcs nincs az eredeti OSM-ben DE most kap értéket
-				if ( $this->input['osm'][$key] != '' AND !isset($this->osmtags->$key)) {
-					$updated[$key] = $this->input['osm'][$key];
+				if ( $value != '' AND !isset($this->osmtags->$key)) {
+					$updated[$key] = $value;
 					$changes[] = "Hozzáadva: ".$key."<br/>";
 					$isUpdated = true;
 				}								
 				// Ha kulcs ott az erdeti OSM-ben DE most üres értéket kap, vagyis törlendő
-				if ( $this->input['osm'][$key] == '' AND isset($this->osmtags->$key)) {
+				if ( $value == '' AND isset($this->osmtags->$key)) {
 					unset($updated[$key]);
 					$changes[] = "Törölve: ".$key."<br/>";
 					$isUpdated = true;
 				}
 				// Ha kulcs ott az eredeti OSM-ben ÉS most új értéket kap
-				if ( $this->input['osm'][$key] != '' AND isset($this->osmtags->$key) AND $this->input['osm'][$key] != $this->osmtags->$key) {
-					$updated[$key] = $this->input['osm'][$key];
+				if ( $value != '' AND isset($this->osmtags->$key) AND $value != $this->osmtags->$key) {
+					$updated[$key] = $value;
 					$changes[] = "Frissítve: ".$key."<br/>";
 					$isUpdated = true;
 				}
@@ -715,10 +737,10 @@ class EditOsm extends \Html\Html {
 		$this->osmEntity;
 		$this->osmtagsToSave;
 		
-		unset($this->osmEntity->{$this->input['osmtype']}->tag);
+		unset($this->osmEntity->{\Request::get('osmtype')}->tag);
 		
 		foreach ($this->osmtagsToSave as $k => $v) {
-			$newTag = $this->osmEntity->{$this->input['osmtype']}->addChild('tag');
+			$newTag = $this->osmEntity->{\Request::get('osmtype')}->addChild('tag');
 			$newTag->addAttribute('k', $k);
 			$newTag->addAttribute('v', $v);
 		}

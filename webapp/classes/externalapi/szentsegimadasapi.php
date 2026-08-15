@@ -34,33 +34,36 @@ class szentsegimadasApi extends \ExternalApi\ExternalApi {
         $this->error['multiple'] = [];  
 
         if (preg_match('/<ul class=\"talalatok\">(.*)<\/ul>/s', $this->rawData, $match)) {
-            
+
             $c=0;
             $html = $match[1];
             unset($this->rawData);
-            DB::table('szentsegimadasok')->truncate();
             set_time_limit(300); // 300 seconds
-            $this->elastic = new \ExternalApi\ElasticsearchApi();
+            // Előbb végigmegyünk mindenen, és CSAK a végén cseréljük le a táblát. Korábban
+            // a truncate itt, a feldolgozás ELŐTT futott: ha közben bármi elszállt (pl. az
+            // Elasticsearch nem válaszolt), a szentségimádások eltűntek az oldalról, és a
+            // következő sikeres futásig ott is maradtak.
+            $rows = [];
             while (preg_match('/<li>(.*?)<\/li>/s', $html, $match)) {
-                
-                
+
+
                 if(preg_match('/<b>(.*?)<\/b> \((.*)\)<br>(<a.*<\/a>|) ((\d{4}\.\d{2}\.\d{2}\.) (\d{2}:\d{2})) - (| )((\d{4}\.\d{2}\.\d{2}\. |)(\d{2}:\d{2}))( |)(<img.*?title="(.*?)".*? \/>| )((<div id="info.*?<b>Információk:<\/b><br \/>(.*?)<div.*becsuk<\/a><\/div>)| )/s',$match[1],$matchLi)) {
 
                     $eventDate = strtotime(rtrim(str_replace('.', '-', $matchLi[5]), '-'));
-                    if ($eventDate >= strtotime('today')) {                        
+                    if ($eventDate >= strtotime('today')) {
                         $data = [
                             'varos' => $matchLi[1],
-                            'templom' => $matchLi[2],                            
+                            'templom' => $matchLi[2],
                             'nap' => $matchLi[5],
                             'kezdes' => $matchLi[6],
                             'veg' => $matchLi[10],
                             'allapot' => $matchLi[13],
                             'info' => isset($matchLi[16]) ? $matchLi[16] : ''
-                        ]; 
+                        ];
                         $data['church_id'] = $this->findChurch($data);
-                        
-                        if ( $data['church_id'] > 0 ) {                            
-                            $this->saveData2Database($data);
+
+                        if ( $data['church_id'] > 0 ) {
+                            $rows[] = $this->toDatabaseRow($data);
                         }
                         $c++;
 
@@ -70,14 +73,14 @@ class szentsegimadasApi extends \ExternalApi\ExternalApi {
                     echo "jaj\n";
                     echo $match[1]."\n";
                 }
-                     
+
                 if($c > 20000) break;
                 $html = preg_replace('/<li>(.*?)<\/li>/s','', $html, 1);
             }
 
-         
+            $this->replaceAll($rows);
         }
-        
+
         if(count($this->error['null']) > 0) {
             echo "Vigyázat! Nincs találat: \n";
             sort($this->error['null']);
@@ -171,62 +174,110 @@ class szentsegimadasApi extends \ExternalApi\ExternalApi {
         }
 
         try {
-            $elastic = $this->elastic; 
-            // TODO: lehetne hogy csak azon templomok között keressünk amihez még nincs kiosztva szentségimádás
-            $response = $elastic->search($keyword,["from" => 0,"size" => 2, "sort" => ["_score" => "desc"]], ['type' => 'church']);    
-
-            // Ha pontosan egy találatunk van, akkor boldogok vagyunk.
-            // Bár, vigyázat, lehet hogy csak nagyon gyenge találatunk van és azt jól elfogadtunk.
-            if(count($response->hits) == 1) {
-                foreach($response->hits as $hit) {
-                    $this->foundChurches[$keyword] = $hit->_source->id;
-                    return $hit->_source->id;		
-                }	
-            }
+            // A #309 óta a templomkeresés a \Search osztályon át megy; az
+            // ElasticsearchApi::search() akkor tűnt el, ez a hívás viszont itt maradt,
+            // és azóta minden futás az első tételnél elhasalt
+            // ("Call to undefined method ExternalApi\ElasticsearchApi::search()").
+            $hits = $this->searchChurches($keyword);
 
             // Ha semmilyen találatunk nincs, az nem jó.
-            if(count($response->hits) == 0) {
-                $text = $data['templom']." ".$data['varos'];                
+            if(count($hits) == 0) {
+                $text = $data['templom']." ".$data['varos'];
                 $this->error['null'][] = $text;
                 $this->foundChurches[$keyword] = false;
                 return false;
-            } 
-            
+            }
+
+            // Ha pontosan egy találatunk van, akkor boldogok vagyunk.
+            // Bár, vigyázat, lehet hogy csak nagyon gyenge találatunk van és azt jól elfogadtunk.
+            if(count($hits) == 1) {
+                $this->foundChurches[$keyword] = $hits[0]->id;
+                return $hits[0]->id;
+            }
+
             // Ha több találatunk van, akkor tovább gondolkodunk.
-            elseif(count($response->hits) > 1) {
-                // Új logika: ha az első találat legalább 20%-kal jobb, mint a második, visszaadjuk az első ID-t
-                $score0 = isset($response->hits[0]->_score) ? $response->hits[0]->_score : 0;
-                $score1 = isset($response->hits[1]->_score) ? $response->hits[1]->_score : 0;
-                // Itt lehet 10%-ot beállítani, és akkor a kiírt maradékot megnézzük egyesével
-                if ($score1 > 0 && $score0 >= 1.001 * $score1) {
-                    $this->foundChurches[$keyword] = $response->hits[0]->_source->id;
-                    return $response->hits[0]->_source->id;
-                } else {                    
-                    $this->error['multiple'][] = $keyword;
-                    $this->foundChurches[$keyword] = false;
-                    return false;
-                }
-            }             
+            // Új logika: ha az első találat legalább 20%-kal jobb, mint a második, visszaadjuk az első ID-t
+            $score0 = $hits[0]->score ?? 0;
+            $score1 = $hits[1]->score ?? 0;
+            // Itt lehet 10%-ot beállítani, és akkor a kiírt maradékot megnézzük egyesével
+            if ($score1 > 0 && $score0 >= 1.001 * $score1) {
+                $this->foundChurches[$keyword] = $hits[0]->id;
+                return $hits[0]->id;
+            }
+
+            // Holtverseny. Ilyenkor a régi TODO ötlete segít: szűkítsük a mezőnyt azokra a
+            // templomokra, amikhez ebben a futásban még nem osztottunk szentségimádást.
+            // Csak MÁSODIK körben tesszük, mert hard filterként rontana: ha egy templom
+            // két, eltérően írt néven szerepel a forrásban, az elsőnél kiesne a mezőnyből,
+            // és a másodikat egy hasonló nevű, rossz templomra húznánk rá.
+            $narrowed = $this->searchChurches($keyword, array_values(array_filter($this->foundChurches)));
+            if (count($narrowed) === 1
+                || (count($narrowed) > 1 && ($narrowed[1]->score ?? 0) > 0
+                    && ($narrowed[0]->score ?? 0) >= 1.001 * ($narrowed[1]->score ?? 0))) {
+                $this->foundChurches[$keyword] = $narrowed[0]->id;
+                return $narrowed[0]->id;
+            }
+
+            $this->error['multiple'][] = $keyword;
+            $this->foundChurches[$keyword] = false;
+            return false;
 
         } catch (\Throwable $th) {
             throw new \Exception("Could not search churches!\n".$th->getMessage());
         }
-        
+
     }
 
-    function saveData2Database($data) {
+    /**
+     * @param int[] $excludeChurchIds Ezeket a templomokat hagyja ki a mezőnyből.
+     * @return object[] Legfeljebb 2 találat, `id` és `score` mezővel.
+     */
+    private function searchChurches(string $keyword, array $excludeChurchIds = []): array {
 
-        
-        DB::table('szentsegimadasok')->insert([
+        $search = new \Search('church');
+        $search->keyword($keyword);
+        if ($excludeChurchIds !== []) {
+            $search->addMustNot(['terms' => ['id' => array_map('intval', $excludeChurchIds)]]);
+        }
+        $hits = $search->getResults(0, 2);
+
+        // #575: az elérhetetlen kereső NEM "0 találat". Ha ezt elnyelnénk, minden
+        // templom "nincs találat"-ot kapna, és a nap szentségimádásai elvesznének.
+        if ($search->searchFailed) {
+            throw new \Exception('Az Elasticsearch nem adott érvényes találati listát.');
+        }
+
+        return $hits;
+
+    }
+
+    function toDatabaseRow($data) {
+
+        return [
             'church_id' => $data['church_id'],
             'date' => $data['nap'],
             'starttime' => $data['kezdes'],
             'endtime' => $data['veg'],
             'type' => $data['allapot'],
             'info' => $data['info']
-        ]);
-        
-        return true;
+        ];
+
+    }
+
+    /**
+     * A teljes napi állományt egyetlen tranzakcióban cseréli le. Amíg ez le nem fut,
+     * a régi adat marad az oldalon — így egy félbeszakadt scrape nem üríti ki a táblát.
+     */
+    function replaceAll(array $rows) {
+
+        DB::connection()->transaction(function () use ($rows) {
+            DB::table('szentsegimadasok')->delete();
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('szentsegimadasok')->insert($chunk);
+            }
+        });
+
+        return count($rows);
 
     }
 

@@ -68,7 +68,10 @@ class Signup extends Api {
         $validFields = array('username', 'email', 'password', 'nickname', 'name');
         $fieldsToSubmit = array();
         foreach ($validFields as $field) {
-            if ($this->input[$field] AND $this->input[$field] != '') {
+            // #391: a `nickname` és a `name` NEM kötelező (nincs `required` a sémában),
+            // tehát hiányozhat — az isset nélküli olvasás minden regisztrációnál
+            // „Undefined array key" figyelmeztetést hagyott a naplóban.
+            if (!empty($this->input[$field])) {
                 $fieldsToSubmit[$field] = $this->input[$field];
             }
         }

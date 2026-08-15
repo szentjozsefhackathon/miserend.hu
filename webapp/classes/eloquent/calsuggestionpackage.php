@@ -48,6 +48,25 @@ class CalSuggestionPackage extends CalModel
     }
 
     /**
+     * Ki kezelte (fogadta el / utasította el) a javaslatot.
+     *
+     * Eddig CSAK az állapot tárolódott, a kezelő nem — az adminfelületen ezért nem
+     * lehetett látni a nevét. Nem elveszett az adat, hanem sosem keletkezett.
+     */
+    protected $appends = ['handledByName'];
+
+    public function getHandledByNameAttribute(): ?string
+    {
+        if (empty($this->handled_by_user_id)) {
+            return null;
+        }
+
+        $kezelo = new \User($this->handled_by_user_id);
+
+        return \Html\Ajax\Calendar\Suggestions::displayName($kezelo);
+    }
+
+    /**
      * #307: email-értesítés a beérkező javaslat-csomagról.
      *
      * Ugyanazt a 3 címzett-csoportot értesíti, mint a \Eloquent\Remark::emails():

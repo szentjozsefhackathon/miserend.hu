@@ -3,6 +3,13 @@
 namespace Html\Church;
 
 class Church extends \Html\Html {
+
+    /**
+     * Hány óráig ne próbáljuk újra oldalletöltéskor a területi adat pótlását.
+     * Két cron-fordulónyi (a \OSM::checkBoundaries 3 óránként fut).
+     */
+    const BOUNDARY_RECHECK_HOURS = 6;
+
     // Database fields from templomok table
     public $id;
     public $nev;
@@ -92,10 +99,16 @@ class Church extends \Html\Html {
             throw new \Exception("Read access denied to church tid = '$tid'");
         }
 
-        if($church->ok == 'n') {
-            addMessage('Ez a templom le van tiltva! Csak adminisztrátorok számára látható ez az oldal.', 'warning');
-        } elseif($church->ok == 'f') {
-            addMessage('Ez a templom áttekintésre vár. Csak adminisztrátorok számára látható ez az oldal.', 'warning');
+        // #409: a gondnok eddig is szerkeszthette a nem-publikus templomát, de azt
+        // olvasta közben, hogy „Csak adminisztrátorok számára látható" — neki mást kell
+        // mondani, mint egy adminisztrátornak.
+        $notice = \Eloquent\Church::visibilityNotice(
+            (string) $church->ok,
+            (bool) $user->checkRole('miserend'),
+            (bool) $church->writeAccess
+        );
+        if ($notice !== null) {
+            addMessage($notice[0], $notice[1]);
         }
 
         $church->photos = $church->photos()->get();
@@ -112,16 +125,31 @@ class Church extends \Html\Html {
             ->get()
             ->toArray();
         		   		
-         /*
+        /*
+         * Ha a templomnak még nincs területi adata, megpróbáljuk itt helyben pótolni —
+         * de csak akkor, ha nem próbáltuk nemrég.
          *
+         * Enélkül minden egyes oldalletöltés kiment az Overpasshoz, és mivel a
+         * területi adat épp azoknál hiányzik, ahol a lekérés rendre nem jár sikerrel,
+         * ez ugyanazt a hiábavaló hívást ismételgette a látogató várakoztatásával. Az
+         * Overpass ráadásul mindössze 2 párhuzamos slotot ad, tehát a felesleges
+         * hívásokkal a saját cronunk elől vettük el a helyet.
+         *
+         * A rendszeres pótlás a cron dolga (\OSM::checkBoundaries, 3 óránként); ez itt
+         * csak az „épp most vitték fel" esetet gyorsítja.
          */
         try {
-            if( $church->lat != '' AND !isset($church->location->city)) {
+            $recentlyChecked = $church->boundaries_checked_at
+                && strtotime($church->boundaries_checked_at) > strtotime('-' . self::BOUNDARY_RECHECK_HOURS . ' hours');
+
+            if( $church->lat != '' AND !isset($church->location->city) AND !$recentlyChecked) {
                 (new \OSM())->checkBoundariesForOne($church);
             }
-        } catch (\Exception $e) {
-            addMessage('Az OSM területi adatok lekérése nem sikerült. <details><summary>Részletek</summary><pre>'
-                . htmlspecialchars($e->getMessage()) . '</pre></details>', 'warning');
+        } catch (\Throwable $e) {
+            // A látogatót nem érdekli, és nem is tud vele mit kezdeni: a területi adat
+            // hiánya nem akadályozza meg abban, hogy megnézze a miserendet.
+            error_log('Templomoldal: az OSM területi adatok lekérése nem sikerült (templom '
+                . $church->id . '): ' . $e->getMessage());
         }
 
         $church->MgetReligious_administration();

@@ -1,0 +1,31 @@
+# #709: a képkönyvtárból CSAK kép szolgálható ki.
+#
+# Valaki kép helyett .php fájlt töltött fel, és a közvetlen URL-jén az Apache
+# LEFUTTATTA — távoli kódfuttatás. A feltöltés oldala külön javítva, de ez a
+# réteg attól függetlenül is kell: a MÁR feltöltött fájlokat is hatástalanítja.
+#
+# Ugyanez szerepel a vhostban (docker/miserend/apache/apache.conf) is. Azért van
+# itt is, mert az éles Apache nem feltétlenül azt a vhostot tölti be — ez a fájl
+# viszont a kóddal együtt mindenhová kikerül. A kettő együtt nem árt.
+#
+# Fehérlista, nem feketelista: nem azt soroljuk fel, mi tiltott (abból mindig
+# kimarad valami — .phar, .phtml, .php8, .inc), hanem azt, mi engedett.
+# A bmp azért van bent, mert 106 régi kép ilyen kiterjesztésű.
+
+<FilesMatch ".">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "(?i)\.(jpe?g|png|gif|bmp|webp)$">
+    Require all granted
+</FilesMatch>
+
+# Öv és nadrágtartó: ha valamiért mégis kiszolgálódna, ne értelmezze futtathatóként.
+#
+# A php_admin_flag SZÁNDÉKOSAN nincs itt: azt az Apache csak szerver-konfigban
+# engedi, .htaccess-ben "php_admin_flag not allowed here"-rel 500-at ad az EGÉSZ
+# könyvtárra. (Belefutottam.) Az a sor a vhostban van, ott a helye.
+RemoveHandler .php .phtml .phar .php3 .php4 .php5 .php7 .php8 .inc
+RemoveType .php .phtml .phar .php3 .php4 .php5 .php7 .php8 .inc
+
+Options -ExecCGI -Indexes

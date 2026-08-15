@@ -6,13 +6,19 @@ use Illuminate\Database\Capsule\Manager as DB;
 use Carbon\Carbon;
 
 class Health extends Html {
+
+    /** Hányszor próbáljuk meg a külső végpontot, mielőtt kiesésnek minősítjük. */
+    const EXTERNAL_API_TEST_ATTEMPTS = 3;
     public $infos;
     public $cronjobs;
+    public $stuckCronjobs;
     public $elasticsearch;
     public $churchesWithNoElasticMasses;
     public $churchesWithNoElasticMassesCount;
+    public $churchesMissingLocation;
     public $externalapis;
     public $boundariesStats;
+    public $schemaCheck;
     public $emails;
     public $mailing;
     public $foremail;
@@ -21,7 +27,7 @@ class Health extends Html {
         parent::__construct();
 
         global $user;
-        if (!$user->checkRole('any')) {
+        if (!$user->checkRole('"any"')) {
             throw new \Exception('Nincs jogosultságod megtekinteni az egészség oldalt.');
         }
 
@@ -93,32 +99,30 @@ class Health extends Html {
 		$this->infos[] = ["sqlite files",implode("<br/>",$results)];
 		$results = [] ;
 
-		// Health of nearby log
-		try {
-			$loginfo = \Api\NearBy::getLogFileInfo();
-			if (!is_array($loginfo)) {
-				$this->infos[] = ['nearby.log', '<span class="text-warning">Nincs információ</span>'];
-			} else {
-				if (isset($loginfo['file_size'])) {
-					$sizeKb = round($loginfo['file_size'] / 1024, 2);
-					$this->infos[] = ['nearby.log mérete', $sizeKb . ' KB'];
-				} else {
-					$this->infos[] = ['nearby.log mérete', '<span class="text-warning">ismeretlen</span>'];
-				}
-
-				if (isset($loginfo['line_count'])) {
-					$this->infos[] = ['nearby.log hossza', $loginfo['line_count'] . ' sor'];
-				} else {
-					$this->infos[] = ['nearby.log hossza', '<span class="text-warning">ismeretlen</span>'];
-				}
-			}
-		} catch (\Exception $e) {
-			$this->infos[] = ['nearby.log', '<span class="text-danger">Hiba: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES) . '</span>'];
-		}
-		
+		// #724: a nearby.log méretét/hosszát mutató blokk megszűnt a naplóval együtt.
 
 		// Health of CronJobs
 		$this->cronjobs = \Eloquent\Cron::orderBy('deadline_at','DESC')->get()->toArray();
+
+		// Az elakadt munkákat külön is kiemeljük: az attempts oszlop egyetlen bukott
+		// futástól is piros, ezért abban elveszett, hogy volt cron, ami hónapok óta nem
+		// futott le sikeresen.
+		$this->stuckCronjobs = [];
+		foreach ($this->cronjobs as $i => $cron) {
+			$reason = \Eloquent\Cron::stuckReason(
+				$cron['lastsuccess_at'] ?? null,
+				(string) ($cron['frequency'] ?? '')
+			);
+			$this->cronjobs[$i]['stuck_reason'] = $reason;
+			if ($reason !== null) {
+				$this->stuckCronjobs[] = [
+					'id'       => $cron['id'],
+					'name'     => $cron['class'] . '::' . $cron['function'] . '()',
+					'reason'   => $reason,
+					'attempts' => $cron['attempts'] ?? 0,
+				];
+			}
+		}
 
 		// Health of ElasticSearch database
 		$elastic = new \ExternalApi\ElasticsearchApi();
@@ -126,6 +130,21 @@ class Health extends Html {
 		$elastic->run();		
 		if(isset($elastic->jsonData))
 			$this->elasticsearch = $elastic->jsonData;
+
+		/*
+		 * A távolság szerinti templomkeresés a `location` geo_pointra szűr. Ha az
+		 * indexben nincs kitöltve, a keresés NÉMÁN nem talál semmit — nem hiba, csak
+		 * nulla találat, amit „nincs ilyen templom"-nak olvas a felhasználó. Pontosan
+		 * ez történt: a mapping és a dokumentum-építés is rendben volt, de az index
+		 * nagy része a javítás előtti teljes újraindexelésből maradt.
+		 *
+		 * A szám SOHA ne vigye le a /health-et — a többi ellenőrzés fontosabb.
+		 */
+		try {
+			$this->churchesMissingLocation = $elastic->churchesMissingLocation();
+		} catch (\Throwable $e) {
+			$this->churchesMissingLocation = null;
+		}
 
 		$ids = $elastic->churchIdsWithMassesInPeriod(date('Y-01-01'), date('Y-12-31'));
 		$this->churchesWithNoElasticMasses = \Eloquent\Church::whereNotIn('id', $ids)->has('massrules')->get()->toArray();
@@ -149,17 +168,44 @@ class Health extends Html {
 				$this->externalapis[$apiToTest]['apiUrl'] = $externalapi->apiUrl ;
 				$this->externalapis[$apiToTest]['cache'] = $externalapi->cache ;
 				
-				if(!method_exists($externalapi,'test')) 
+				if(!method_exists($externalapi,'test'))
 					throw new \Exception('Hiányzik a tesztelő függvény!');
-				
-				
-				$testresult = $externalapi->test();
-				if($testresult !== true) 
+
+				// Amit szándékosan nem ellenőrzünk, az nem hiba. Külön jelöljük, hogy a
+				// piros tényleg csak a bajt jelentse.
+				if (method_exists($externalapi, 'isTestable') && !$externalapi->isTestable()) {
+					$this->externalapis[$apiToTest]['testable'] = false;
+					$this->externalapis[$apiToTest]['testresult'] = $externalapi->testSkipReason()
+						?? 'Nincs ellenőrző lekérdezés ehhez a végponthoz.';
+					continue;
+				}
+
+				/*
+				 * Újrapróbálkozás, mert egyetlen sikertelen kérés még nem jelent kiesést.
+				 *
+				 * Az Overpass például kimérhetően akadozik: egymás után ötször hívva
+				 * 200/504/200/200/429 jött vissza, és mindössze 2 párhuzamos slotot ad.
+				 * Havi ~29 000 hívásnál tehát rendszeresen belefutunk — miközben a
+				 * területi adatok frissülnek, azaz a szolgáltatás ÉL. Egy egy lövésű
+				 * ellenőrzés ilyenkor hazudik: pirosat mutat egy működő végpontra.
+				 *
+				 * Ha az első próbálkozás nem sikerül, de egy későbbi igen, azt is
+				 * megmutatjuk — az akadozás önmagában is információ.
+				 */
+				$attempts = 0;
+				$testresult = null;
+				while ($attempts < self::EXTERNAL_API_TEST_ATTEMPTS) {
+					$attempts++;
+					$testresult = $externalapi->test();
+					if ($testresult === true) break;
+					if ($attempts < self::EXTERNAL_API_TEST_ATTEMPTS) usleep(700000);
+				}
+
+				if($testresult !== true)
 					throw new \Exception($testresult);
-				
-				
-								
+
 				$this->externalapis[$apiToTest]['testresult'] = 'OK';
+				$this->externalapis[$apiToTest]['attempts'] = $attempts;
 			}
 			catch (\Exception $e) {
 				$this->externalapis[$apiToTest]['testresult'] = $e->getMessage();
@@ -202,10 +248,41 @@ class Health extends Html {
 			)
 			->first();
 		
+		/*
+		 * #570: „ellenőrizve" != „van boundaryja". A checkBoundariesForOne() akkor is
+		 * megjelöli a templomot ellenőrzöttként, ha az Overpass hibázott vagy nem adott
+		 * eredményt — a templom mégis boundary NÉLKÜL marad. A területi (települési,
+		 * egyházmegyei) keresés viszont KIZÁRÓLAG a lookup_boundary_church alapján szűr,
+		 * ezért pontosan ez a szám mondja meg, hány templom TALÁLHATÓ MEG így egyáltalán.
+		 *
+		 * Enélkül a fenti „soha nem ellenőrzött" sor félrevezető: lehet 0, miközben a
+		 * templomok fele mégsem kereshető területre.
+		 */
+		/*
+		 * #706: az adatbázis-struktúra összevetése azzal, amit az initdb.d leír.
+		 * Az élesen mindig kézzel ment végig minden migráció, ezért elcsúszhat:
+		 * maradhat rég kivezetett tábla, hiányozhat egy újabb oszlop vagy index.
+		 * A hiba SOHA ne vigye le a /health-et — a többi ellenőrzés fontosabb.
+		 */
+		try {
+			$this->schemaCheck = \SchemaCheck::check();
+		} catch (\Throwable $e) {
+			$this->schemaCheck = ['available' => false, 'reason' => 'Az ellenőrzés hibára futott: ' . $e->getMessage()];
+		}
+
+		$churchesWithBoundary = DB::table('lookup_boundary_church')
+			->join('templomok', 'templomok.id', '=', 'lookup_boundary_church.church_id')
+			->where('templomok.ok', 'i')
+			->whereNull('templomok.deleted_at')
+			->distinct()
+			->count('lookup_boundary_church.church_id');
+
 		$this->boundariesStats = [
 			'with_osm' => [
 				'count' => $churchBoundaryStats->count ?? 0,
 				'never_checked_count' => $churchBoundaryStats->never_checked_count ?? 0,
+				'with_boundary_count' => $churchesWithBoundary,
+				'without_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithBoundary),
 				'avg_days_old' => $churchBoundaryStats->avg_days_old ? round($churchBoundaryStats->avg_days_old, 2) : 0,
 				'newest' => $churchBoundaryStats->newest ?? null,
 				'oldest' => $churchBoundaryStats->oldest ?? null

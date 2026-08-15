@@ -15,7 +15,12 @@ class ChurchRelationship extends \Illuminate\Database\Eloquent\Model {
 
     protected $table = 'church_relationships';
 
-    protected $fillable = ['parent_church_id', 'child_church_id', 'type'];
+    /*
+     * #663: a `type` kivezetésre került. Minden kapcsolat alárendeltség — az
+     * "alárendelt plébánia" (oldallagosan ellátva) és az "alárendelt fília" között a
+     * megjelenítésben sincs különbség, tehát nincs mit tárolni róla.
+     */
+    protected $fillable = ['parent_church_id', 'child_church_id'];
 
     /**
      * A felsőbbrendű misézőhely (szülő).
@@ -29,13 +34,6 @@ class ChurchRelationship extends \Illuminate\Database\Eloquent\Model {
      */
     public function child() {
         return $this->belongsTo(Church::class, 'child_church_id');
-    }
-
-    /**
-     * Érvényes kapcsolat típus kulcsok (angol, DB enum értékek).
-     */
-    public static function validTypes(): array {
-        return ['subordinate', 'associated', 'territorially_independent'];
     }
 
     /**

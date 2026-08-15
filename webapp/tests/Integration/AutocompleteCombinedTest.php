@@ -5,15 +5,64 @@ use PHPUnit\Framework\TestCase;
 /**
  * Integration tests for the /ajax/AutocompleteCombined endpoint.
  *
- * Makes real HTTP calls against a running local server.
- * Requires PANTHER_EXTERNAL_BASE_URI (or defaults to http://127.0.0.1:8000).
+ * Makes real HTTP calls against a running server. A cím forrása sorrendben:
+ * PANTHER_EXTERNAL_BASE_URI, majd a két szokásos elhelyezkedés — 127.0.0.1:8000, ha a
+ * teszt magában az app-konténerben fut (így fut a CI), és miserend:8000, ha egyszer
+ * használatos konténerből, a compose-hálózaton keresztül. Ha egyik sem válaszol, a
+ * tesztek kihagyódnak: futó kiszolgáló nélkül ezek nem mérnek semmit.
  */
 class AutocompleteCombinedTest extends TestCase {
+
+    private const FALLBACK_BASE_URIS = ['http://127.0.0.1:8000', 'http://miserend:8000'];
+
+    private static ?string $resolvedBaseUrl = null;
+    private static bool $baseUrlProbed = false;
 
     private string $baseUrl;
 
     protected function setUp(): void {
-        $this->baseUrl = rtrim(getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000', '/');
+        $baseUrl = self::resolveBaseUrl();
+        if ($baseUrl === null) {
+            self::markTestSkipped(
+                'Nem érhető el webszerver. Indítsd el a stacket (docker compose up -d), '
+                . 'vagy add meg a címét: PANTHER_EXTERNAL_BASE_URI.'
+            );
+        }
+        $this->baseUrl = $baseUrl;
+    }
+
+    private static function resolveBaseUrl(): ?string {
+        if (self::$baseUrlProbed) {
+            return self::$resolvedBaseUrl;
+        }
+        self::$baseUrlProbed = true;
+
+        $configured = getenv('PANTHER_EXTERNAL_BASE_URI');
+        $candidates = $configured ? [$configured] : [];
+        $candidates = array_merge($candidates, self::FALLBACK_BASE_URIS);
+
+        foreach ($candidates as $candidate) {
+            $candidate = rtrim($candidate, '/');
+            if (self::isServerListening($candidate)) {
+                self::$resolvedBaseUrl = $candidate;
+                break;
+            }
+        }
+
+        return self::$resolvedBaseUrl;
+    }
+
+    /**
+     * Csak azt nézi, válaszol-e egyáltalán valaki: az ignore_errors miatt a hibás
+     * HTTP-státusz is "él"-nek számít. Így egy 500-as végpont nem kihagyáshoz vezet,
+     * hanem a tesztek lefutnak és megbuknak — ahogy kell.
+     */
+    private static function isServerListening(string $baseUrl): bool {
+        $context = stream_context_create([
+            'http' => ['timeout' => 5, 'ignore_errors' => true],
+        ]);
+
+        return @file_get_contents($baseUrl . '/ajax/AutocompleteCombined?text=', false, $context) !== false;
     }
 
     private function fetchJson(string $query): array {

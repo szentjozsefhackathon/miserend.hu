@@ -119,7 +119,120 @@
   background-color: #ffe6e6 !important;
 }
 
+/* #358: heti nézet tömörítés toggle gombja a fejlécben.
+ *
+ * Eredetileg keret nélküli, #888-as ikon volt: a mellette lévő Lista/Hét/Hónap
+ * gombcsoport mellett gyakorlatilag eltűnt — borazslo is „alig látható gomb/jel"-ként
+ * írta le, és a review során ugyanez jött vissza. Ezért a szomszédos gombcsoport
+ * kinézetéhez igazítjuk: valódi keret, azonos magasság, teljes méretű ikon.
+ * Bekapcsolva kitöltött háttér, hogy az állapota egy pillantásból látszódjon. */
+.right-controls {
+  display: inline-flex;
+  align-items: center;   /* egy vonalban a Lista/Hét/Hónap csoporttal */
+}
+.week-compression-toggle {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #5f6368;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  background: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+/* Bekapcsolva finom kék jelzés — nem teli gomb, hogy ne vonja el a figyelmet
+ * a nézetváltóról, de egy pillantásból látszódjon az állapota. */
+.week-compression-toggle.active {
+  color: #1976d2;
+  background: rgba(25, 118, 210, 0.08);
+  border-color: rgba(25, 118, 210, 0.4);
+}
+.week-compression-toggle:hover {
+  color: #1565c0;
+  background: rgba(25, 118, 210, 0.06);
+  border-color: rgba(25, 118, 210, 0.35);
+}
+.week-compression-toggle mat-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  margin: 0;
+}
 
+/* #358: a KÖZÉPSŐ üres slotok VALÓDI összehúzása (törött időtengely).
+ * A slotLaneClassNames a lane-td-re teszi az `fc-empty-slot` osztályt, de a :30-as
+ * axis-cellát semmilyen hook nem tudja tagelni (class-generator nélküli bare td),
+ * ezért az EGÉSZ <tr>-t húzzuk össze egy :has() sor-szelektorral, ami a
+ * megbízhatóan tagelt lane-ről kulcsol - így MINDKÉT cella (a lane és a :30 axis)
+ * 0 magasságú lesz. A FullCalendar a mért geometriából pozicionál (nem lineáris
+ * idő->px képletből), ezért az üres sorok zsugorítására magától felhúzza az esti
+ * sávot a reggeli alá. A foglalt slotok (pl. nagyszombat 15:00) nem kapják meg az
+ * osztályt, így köréjük törik a tengely, a helyükön maradnak. */
+::ng-deep .fc-timegrid-slots tr:has(> td.fc-timegrid-slot-lane.fc-empty-slot) > td {
+  height: 0 !important;
+  padding: 0 !important;
+  line-height: 0 !important;
+  overflow: hidden !important;
+  border-top: 1px dashed #c9c9c9 !important; /* a "törés" varrat */
+}
+/* A táblacella magasságát a TARTALMA feszíti (a "10:00" felirat frame-je), ezért
+ * a collapsed sor celláinak a tartalmát is el kell rejteni - különben a td csak
+ * ~minimumig zsugorodik. Így a sor tényleg ~0 magasságú lesz. */
+::ng-deep .fc-timegrid-slots tr:has(> td.fc-timegrid-slot-lane.fc-empty-slot) > td > * {
+  display: none !important;
+}
+/* A varrat EGYETLEN vonal legyen. Enélkül minden összehúzott sor kap egy szaggatott
+ * felső szegélyt, és mivel 0 magasságúak, 5-15 vonal torlódik egymásra: a képernyőn
+ * ez egy vastag, szürke csíkos sávként jelenik meg (borazslo képén is ez látszott).
+ * Csak az összevont sáv ELSŐ sora tartja meg a szegélyt: ha egy összehúzott sort
+ * másik összehúzott sor követ, annak már nincs. */
+::ng-deep .fc-timegrid-slots
+  tr:has(> td.fc-timegrid-slot-lane.fc-empty-slot)
+  + tr:has(> td.fc-timegrid-slot-lane.fc-empty-slot) > td {
+  border-top: 0 !important;
+}
+
+
+
+/* #358: a heti/napi rács esemény-blokkjai FIX magasságúak (a mise hossza szabja meg),
+ * a tartalom viszont eddig szabadon törhetett: idő / cím / IKONSOR külön sorokban.
+ * Egy 30-60 perces mise dobozába ez nem fért bele — a zászló és a típus-ikonok
+ * kilógtak a színes blokkból, a következő sorra csúszva. (Mérve: 63px tartalom
+ * 48px dobozban, tömörítéstől függetlenül.)
+ *
+ * Megoldás: az ikonok a CÍM sorában maradnak, kisebb méretben, és a blokk nem törhet
+ * sort. Ami nem fér el, azt a böngésző levágja — az információ nem vész el: minden
+ * ikonon ott a title tooltip, a blokkra kattintva pedig a részletek panel mindent mutat.
+ */
+::ng-deep .fc-timegrid-event .fc-event-main {
+  overflow: hidden;
+}
+/* Fejsor: idő + ikonok egy sorban; alatta a cím kap egy teljes sort. */
+::ng-deep .fc-timegrid-event .mcal-event-head {
+  display: block;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+::ng-deep .fc-timegrid-event .fc-event-title-wrap {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+::ng-deep .fc-timegrid-event .type-icon,
+::ng-deep .fc-timegrid-event .material-icons {
+  height: 14px !important;
+  font-size: 14px !important;
+  margin-left: 3px !important;
+  vertical-align: middle;
+}
 
 /* #592: külső naptárból importált liturgia jelölése a mise-listában.
    A szerkesztés/törlés gomb helyén áll, hogy a sor elrendezése ne ugráljon. */

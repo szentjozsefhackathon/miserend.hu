@@ -78,6 +78,13 @@ class User {
             $this->username = '*vendeg*';
             $this->nickname = '*vendég*';
             $this->responsible = false;
+            // #391: a vendégnek eddig `roles = null` maradt (a bejelentkezett ág állítja
+            // csak be). A regisztráció jogosultság-védelme `in_array($key, $user->roles)`-t
+            // hív, ami PHP 8-ban TypeError-t dob null-ra — vagyis egy kézzel beküldött
+            // `edituser[roles][...]` mezőtől FATAL lett a regisztráció, és épp az a
+            // védelem hasalt el, aminek a jogosultság-lopást kellene megakadályoznia.
+            // A roles mindig tömb.
+            $this->roles = [];
         } 
     }
 
@@ -353,7 +360,10 @@ class User {
         if ($this->uid == 0)
             return false;
 
-        \Eloquent\ChurchHolder::where('user_id',$this->uid)->delete();
+        // #110: a ChurchHolder soft-delete-es, tehát a sima delete() csak deleted_at-et
+        // ír — a sor a user_id-vel együtt ottmaradt egy olyan felhasználóra hivatkozva,
+        // aki már nincs. Fiók törlésekor tényleg tűnjön el.
+        \Eloquent\ChurchHolder::withTrashed()->where('user_id',$this->uid)->forceDelete();
         \Eloquent\Favorite::where('uid',$this->uid)->delete();
         
         \Eloquent\Remark::where('login', $this->username)->update([
@@ -500,6 +510,21 @@ class User {
         return $user;
     }
 
+    /**
+     * #110: jelszó-ellenőrzés mellékhatás nélkül. A login() ugyanezt csinálja, de közben
+     * tokent is cserél és lastlogin-t ír — a "biztosan te vagy az?" kérdéshez (saját
+     * fiók törlése) ezek nem kellenek.
+     */
+    function verifyPassword($password) {
+        if ($this->uid == 0 OR !is_string($password) OR $password === '') {
+            return false;
+        }
+        if (!isset($this->jelszo) OR !is_string($this->jelszo) OR $this->jelszo === '') {
+            return false;
+        }
+        return password_verify($password, $this->jelszo);
+    }
+
     static function login($name, $password) {
         \Token::delete();
         $name = sanitize($name);
@@ -560,12 +585,17 @@ class User {
 			$email = new \Eloquent\Email();
 			$email->to = $result->email;
 			$email->render('user_youhavebeendeleted',$result);			
-			// $email->addToQueue();
-			$email->send();
+			$email->addToQueue();
 			
 		}
-		$count = DB::table('user')->whereIN('uid',$ids2delete)->delete();
-									
+
+		// #239/#171: itt régen egy `whereIn('uid', $ids2delete)->delete()` állt, de a
+		// $ids2delete változó SEHOL nem kapott értéket — a törlést a fenti ciklus végzi
+		// egyesével. PHP 8 alatt a whereIn(null) TypeError-t dob, ami \Error, nem
+		// \Exception, ezért a cron-futtató catch-e sem fogta el: a job végzett a
+		// törléssel és kiküldte az értesítőket, aztán fatalra futott, így soha nem
+		// került success-be. Éles: 2026-03-27 óta nem futott le sikeresen.
+		return $countDeleted;
 	}
 	
 
@@ -584,7 +614,9 @@ class User {
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaseactivate')
 				->where('to',$user->email)
-				->whereIn('status',['queued','sent'])				
+				// A 'sending'/'error' is megpróbált értesítés: ha kimaradnának, a következő
+				// futás újra kiküldené ugyanazt a levelet ugyanannak. (l. Email::attemptedStatuses)
+				->whereIn('status', \Eloquent\Email::attemptedStatuses())
 				->orderBy('updated_at','desc')				
 				->first();
 					
@@ -603,8 +635,7 @@ class User {
 				$email = new \Eloquent\Email();
 				$email->to = $user->email;
 				$email->render('user_pleaseactivate',$user);			
-				// $email->addToQueue();
-				$email->send();
+				$email->addToQueue();
 			}
 		}
 		
@@ -626,7 +657,9 @@ class User {
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaselogin')
 				->where('to',$user->email)
-				->whereIn('status',['queued','sent'])				
+				// A 'sending'/'error' is megpróbált értesítés: ha kimaradnának, a következő
+				// futás újra kiküldené ugyanazt a levelet ugyanannak. (l. Email::attemptedStatuses)
+				->whereIn('status', \Eloquent\Email::attemptedStatuses())
 				->orderBy('updated_at','desc')				
 				->first();
 					
@@ -648,8 +681,7 @@ class User {
                 $email = new \Eloquent\Email();
                 $email->to = $user->email;
                 $email->render('user_youhavebeendeleted',$user);			
-                // $email->addToQueue();
-                $email->send();
+                $email->addToQueue();
                 if (!DB::table('user')->where('uid',$user->uid)->limit(1)->delete())  {
                             addMessage('Nem sikerül mindenkit törölni.', 'error');
                             echo "Nem sikerült mindenkit aki még nem lépett be törölni! ".print_r($user,1)." ";
@@ -663,8 +695,7 @@ class User {
 				$email = new \Eloquent\Email();
 				$email->to = $user->email;
 				$email->render('user_pleaselogin',$user);			
-				// $email->addToQueue();
-				$email->send();
+				$email->addToQueue();
 			}
 		}
 		
@@ -685,7 +716,7 @@ class User {
 					FROM emails
 					WHERE
 						`type` = 'user_pleaseupdate' AND 
-						`status` IN ('sent','queued') AND
+						`status` IN ('sent','queued','sending','error') AND
 						emails.to = user.email AND
 						updated_at > '".date('Y-m-d H:i:s',strtotime('-2 weeks'))."'
 						ORDER BY updated_at DESC
@@ -748,8 +779,7 @@ class User {
 			$email = new \Eloquent\Email();
 			$email->to = $user->email;
 			$email->render('user_pleaseupdate',$user);
-			// $email->addToQueue();
-			$email->send();
+			$email->addToQueue();
 					
 		}
 		
@@ -792,7 +822,7 @@ class User {
 			->select('user.*')
 			->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
 			->join('user', 'user.uid', '=', 'church_holders.user_id')
-			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
+			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
 				[$type, date('Y-m-d H:i:s', strtotime('-2 weeks'))])
 			->where('church_holders.status', 'allowed')
 			->whereNull('church_holders.deleted_at')

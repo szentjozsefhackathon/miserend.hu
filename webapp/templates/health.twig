@@ -42,6 +42,21 @@
 	<h3 id="cronjobs">Időzített feladatok</h3>
 	<p>Az időzített feladatok kézzel is futtathatóak egyesével vagy <a href="{{ base_url }}/index.php?q=cron" target="_blank">egyben itt</a>.</p>
 	<p>Most: {{ "now"|date('Y-m-d H:i:s') }}</p>
+	{% if stuckCronjobs is not empty %}
+		<div class="alert alert-danger">
+			<strong>{{ stuckCronjobs|length }} időzített feladat elakadt.</strong>
+			Ezek a gyakoriságuk háromszorosánál is régebben futottak le utoljára sikeresen —
+			vagy soha. A hibát az egyesével futtató linkre kattintva lehet megnézni.
+			<ul class="mb-0">
+				{% for cron in stuckCronjobs %}
+					<li>
+						<a href="{{ base_url }}/index.php?q=cron&cron_id={{ cron.id }}" target="_blank">{{ cron.name }}</a>
+						— {{ cron.reason }} ({{ cron.attempts }} próbálkozás)
+					</li>
+				{% endfor %}
+			</ul>
+		</div>
+	{% endif %}
 	<table class="table table-hover table-condensed table-striped">
 		<tr>
 			<th>id</th>
@@ -58,7 +73,10 @@
 				<td>{{ cron.frequency }} {% if cron.from %}({{ cron.from }} - {{ cron.until }}){% endif %}</td>
 				<td class="{% if cron.deadline_at < "now"|date("Y-m-d H:i:s") %}table-danger{% endif %}">{{ cron.deadline_at }}</td>
 				<td  style="text-align: center" class="{% if cron.attempts > 0 %}table-danger{% endif%}">{{ cron.attempts }}</td>
-				<td>{{ cron.lastsuccess_at }}</td>
+				<td class="{% if cron.stuck_reason %}table-danger{% endif %}" {% if cron.stuck_reason %}title="{{ cron.stuck_reason }}"{% endif %}>
+					{{ cron.lastsuccess_at }}
+					{% if cron.stuck_reason %}<br><small>{{ cron.stuck_reason }}</small>{% endif %}
+				</td>
 			</tr>
 		{% endfor %}
 	</table>
@@ -93,6 +111,30 @@
 		{% endfor %}
 	</table>
 	
+	{# A távolság szerinti templomkeresés kizárólag a `location` geo_pointra szűr.
+	   Ha az indexben nincs kitöltve, a keresés némán nem talál semmit — nem hiba,
+	   csak nulla találat. Egyedül teljes újraindexelés javítja. #}
+	<p style="margin-top: 15px;">
+		<h4>Indexelt templomok <code>location</code> nélkül (távolság-keresés):</h4>
+		{% if churchesMissingLocation is null %}
+			<span class="badge bg-secondary" style="font-size: 1.1em; padding: 0.5em 0.8em;">nem kérdezhető</span>
+		{% elseif churchesMissingLocation.missing == 0 %}
+			<span class="badge bg-success" style="font-size: 1.3em; padding: 0.6em 0.9em;">0</span>
+			<small class="text-muted">/ {{ churchesMissingLocation.indexed }} indexelt</small>
+		{% else %}
+			{% set arany = churchesMissingLocation.indexed > 0
+				? (churchesMissingLocation.missing * 100 / churchesMissingLocation.indexed)|round
+				: 0 %}
+			<span class="badge {{ arany > 10 ? 'bg-danger' : 'bg-warning' }}" style="font-size: 1.3em; padding: 0.6em 0.9em;">{{ churchesMissingLocation.missing }}</span>
+			<small class="text-muted">/ {{ churchesMissingLocation.indexed }} indexelt ({{ arany }}%)</small>
+			<div class="alert alert-warning" style="margin-top: 8px;">
+				Ezeket a templomokat a „X km-en belül" keresés <strong>nem találja meg</strong>.
+				Teljes újraindexelés kell: <code>/index.php?q=cron&amp;cron_id=38</code>
+				(vagy <code>\ExternalApi\ElasticsearchApi::updateChurches()</code> templom-azonosítók nélkül).
+			</div>
+		{% endif %}
+	</p>
+
 	<p style="margin-top: 15px;">
 		<h4>Misézőhelyek misékkel, de elastic-misék nélkül:</h4>
 		{% if churchesWithNoElasticMassesCount < 10 %}
@@ -163,9 +205,17 @@
 		</tr>
 		{% for externalapi in externalapis %}
 			<tr>
-				<td class="text-truncate {% if externalapi.testresult != 'OK' %}table-danger{% endif %}">
+				{# A „nem ellenőrizzük" nem hiba: az ne fesse pirosra a sort, mert az
+				   állandó piros egy idő után elveszi a kedvet az egész oldaltól. #}
+				<td class="text-truncate {% if externalapi.testresult != 'OK' and externalapi.testable is not same as(false) %}table-danger{% endif %}">
 					{% if externalapi.testresult == 'OK' %}
 						<span class="badge bg-success">OK</span>
+						{% if externalapi.attempts is defined and externalapi.attempts > 1 %}
+							<span class="badge bg-warning" title="Az első próbálkozás(ok) nem sikerültek – a végpont akadozik.">{{ externalapi.attempts }}. próbálkozásra</span>
+						{% endif %}
+					{% elseif externalapi.testable is same as(false) %}
+						<span class="badge bg-secondary">nincs ellenőrzés</span>
+						<span class="testresult-truncated kicsi" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Click to expand">{{ externalapi.testresult }}</span>
 					{% else %}
 						<span class="testresult-truncated" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Click to expand">{{ externalapi.testresult }}</span>
 					{% endif %}
@@ -181,6 +231,67 @@
 		{% endfor %}
 	</table>
 
+	{# #706: az éles adatbázison kézzel ment végig minden migráció, ezért elcsúszhat
+	   attól, amit az initdb.d leír. Itt látszik, hogy hol. #}
+	<h3 id="schema">Adatbázis-struktúra</h3>
+	{% if not schemaCheck.available %}
+		<p><span class="badge bg-warning">Nem ellenőrizhető</span> {{ schemaCheck.reason }}</p>
+	{% elseif schemaCheck.stale %}
+		<p><span class="badge bg-warning">A referencia elavult</span>
+		   A <code>docker/mysql/initdb.d</code> azóta változott, hogy a
+		   <code>schema-reference.json</code> készült{% if schemaCheck.generated_at %}
+		   ({{ schemaCheck.generated_at }}){% endif %} — ezért az összevetés eredménye
+		   <strong>nem megbízható</strong>, se a „rendben", se az eltérés-lista.</p>
+		{% if schemaCheck.stale_details %}
+			<p>Ami változott:</p>
+			<ul class="kicsi">
+				{% for line in schemaCheck.stale_details %}<li><code>{{ line }}</code></li>{% endfor %}
+			</ul>
+		{% else %}
+			<p><small class="text-muted">Fájlszintű összevetés nincs: a referencia még a
+			   fájlonkénti ujjlenyomat bevezetése előtt készült. Egy újragenerálás után
+			   itt fog látszani, pontosan mi tér el.</small></p>
+		{% endif %}
+		<p><small class="text-muted">Újragenerálás — <strong>frissen épített konténerben</strong>,
+		   különben az ujjlenyomat megint nem fog egyezni:
+		   <code>docker exec &lt;konténer&gt; php /miserend/webapp/tools/schema-reference.php</code></small></p>
+	{% elseif schemaCheck.findings is empty %}
+		<p><span class="badge bg-success">Rendben</span>
+		   A(z) <code>{{ schemaCheck.schema }}</code> adatbázis szerkezete pontosan megegyezik azzal, amit a
+		   <code>docker/mysql/initdb.d</code> leír.</p>
+	{% else %}
+		<p>A(z) <code>{{ schemaCheck.schema }}</code> adatbázis szerkezetének összevetése azzal, amit a
+		   <code>docker/mysql/initdb.d</code> leír:</p>
+		<p>
+			{% if schemaCheck.counts.danger > 0 %}
+				<span class="badge bg-danger">{{ schemaCheck.counts.danger }} hiba</span>
+			{% else %}
+				<span class="badge bg-success">0 hiba</span>
+			{% endif %}
+			<span class="badge bg-warning">{{ schemaCheck.counts.warning }} figyelmeztetés</span>
+			<span class="badge bg-secondary">{{ schemaCheck.counts.info }} megjegyzés</span>
+		</p>
+		<p><small class="text-muted">
+			<strong>Hiba</strong>: a kód el fog hasalni rajta (hiányzó tábla/oszlop, szigorúbb NOT NULL, hiányzó egyedi index).
+			<strong>Figyelmeztetés</strong>: működik, de eltér (elhagyott tábla/oszlop, hiányzó index, más típus).
+			<strong>Megjegyzés</strong>: jellemzően karakterkészlet és alapértelmezés.
+		</small></p>
+		<table class="table table-hover table-condensed table-striped">
+			<tr><th>Tábla</th><th>Eltérés</th></tr>
+			{% for finding in schemaCheck.findings %}
+				<tr>
+					<td>
+						{% if finding.severity == 'danger' %}<span class="badge bg-danger">hiba</span>
+						{% elseif finding.severity == 'warning' %}<span class="badge bg-warning">figy</span>
+						{% else %}<span class="badge bg-secondary">megj</span>{% endif %}
+						<code>{{ finding.table }}</code>
+					</td>
+					<td>{{ finding.message }}</td>
+				</tr>
+			{% endfor %}
+		</table>
+	{% endif %}
+
 	<h3 id="boundaries">Területi elhelyezkedési adatok (Boundaries) állapota</h3>
 	<p>Azt, hogy melyik megyében/egyházmegyében/városban/körzetben van egy templom, azt az OSM (OpenStreetMap) adatokból az overpassapi-val olvassuk ki.</p>
 
@@ -188,6 +299,29 @@
 		<tr>
 			<td><strong>Átlagosan frissítettség</strong> <small class="text-muted">(csak a már valaha ellenőrzötteknél)</small></td>
 			<td>{{ boundariesStats.with_osm.avg_days_old }} nap</td>
+		</tr>
+		<tr>
+			{# #570: ez a döntő szám — a területi keresés CSAK azokat találja meg,
+			   amiknek van boundary-kapcsolatuk. Az „ellenőrizve" nem elég: az Overpass
+			   hibája vagy üres válasza után is ellenőrzöttnek számít a templom. #}
+			<td><strong>Területre kereshető (van boundary-kapcsolata)</strong></td>
+			<td>
+				{% set covered = boundariesStats.with_osm.with_boundary_count %}
+				{% set total = boundariesStats.with_osm.count %}
+				{% set ratio = total > 0 ? (100 * covered / total)|round : 0 %}
+				{% if ratio >= 95 %}
+					<span class="badge bg-success">{{ covered }}</span>
+				{% elseif ratio >= 60 %}
+					<span class="badge bg-warning">{{ covered }}</span>
+				{% else %}
+					<span class="badge bg-danger">{{ covered }}</span>
+				{% endif %}
+				/ {{ total }} ({{ ratio }}%)
+				{% if boundariesStats.with_osm.without_boundary_count > 0 %}
+					<br/><small class="text-muted">{{ boundariesStats.with_osm.without_boundary_count }} misézőhely NEM jön ki
+					település/egyházmegye szerinti keresésre.</small>
+				{% endif %}
+			</td>
 		</tr>
 		<tr>
 			<td><strong>Misézőhelyek amiknek nem kerestük még soha</strong> </td>
