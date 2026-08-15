@@ -73,6 +73,11 @@ $twig->addFilter(new \Twig\TwigFilter('readable_rrule', 'twig_readable_rrule'));
 // DANGER: a twig declarálva van / meg van hívva a Class/Html/Html.php -ban is. Így ott is módosítani kellhet a filterket
 $twig->addGlobal('domain', DOMAIN); // Environment-specific domain for email templates
 $twig->addGlobal('mcal_version', mcalVersion()); // naptár-bundle cache-buster, l. mcalVersion()
+// #766: az Overpass-végpont a böngészőből induló lekérdezésekhez is. A PHP oldal
+// már a config['overpass']['apiUrl']-t használja (#376), a térkép-sablonok viszont
+// beégetve hívták az overpass-api.de-t — ráadásul http-n. Így a mirror-váltás
+// rájuk is érvényes.
+$twig->addGlobal('overpass_api_url', $config['overpass']['apiUrl'] ?? 'https://overpass-api.de/api/interpreter');
 
 //
 //  Useful CONSTANTS

@@ -8,6 +8,14 @@ class ExternalApi {
     public $cache = "1 week"; //false or any time in strtotime() format
     public $cacheDir = PATH . 'fajlok/tmp/';
     public $queryTimeout = 30;
+
+    /**
+     * #766: a kapcsolatfelvétel felső korlátja másodpercben.
+     *
+     * Szándékosan sokkal kisebb a teljes időkorlátnál: a kérés kiszolgálása tarthat
+     * sokáig (az Overpass például lassan számol), a KAPCSOLAT felépítése viszont nem.
+     */
+    public $connectTimeout = 5;
     public $query;
     public $name = 'external';
     public $format = 'json'; // enum('json','xml')
@@ -233,6 +241,16 @@ class ExternalApi {
 		//echo $this->apiUrl . $this->rawQuery."\n";
         
 		curl_setopt($ch, CURLOPT_TIMEOUT, $this->queryTimeout);
+
+		/*
+		 * #766: külön KAPCSOLAT-időkorlát. Eddig csak a teljes kérésre volt korlát (30 mp),
+		 * tehát egy elérhetetlen — de csomagot nem visszautasító — kiszolgáló a teljes 30
+		 * másodpercet elvitte, és addig a látogató oldala ült. Élesben pontosan ez történt
+		 * az Overpassnál: „Operation timed out after 30000 milliseconds with 0 bytes
+		 * received". A kapcsolatfelvétel normálisan ezredmásodpercek kérdése; ha nem megy,
+		 * korán derüljön ki.
+		 */
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $this->connectTimeout);
 
         if(isset($this->postfields)) {
             curl_setopt($ch, CURLOPT_POST, true);
