@@ -192,7 +192,7 @@ class Edit extends \Html\Html {
         
         $externalCalendar = $this->getExternalCalendar();
         $lastImport = $externalCalendar && $externalCalendar->last_import_at
-            ? $externalCalendar->last_import_at->format('Y.m.d. H:i')
+            ? $externalCalendar->last_import_at
             : 'még nem futott le sikeresen';
 
         $this->form['external_calendar_url'] = [
