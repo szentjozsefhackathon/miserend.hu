@@ -243,6 +243,52 @@ class Bucsu {
     }
 
     /**
+     * #568: az OSM `patron_day` tagjének értelmezése.
+     *
+     * borazslo vetette fel: „Sőt OSM ismeri az egyáltalán nem elterjed patron_day
+     * kulcsot." Ez STRUKTURÁLT forrás, szemben a `templomok.bucsu` szabad szöveggel —
+     * és nem kell hozzá se új oszlop, se új szerkesztő-mező: az OSM-szinkron minden
+     * taget elment az `attributes` táblába, tehát ha egy templomnál ki van töltve,
+     * az adat már nálunk van.
+     *
+     * A kulcs nem elterjedt, ezért nincs egyetlen bevett alakja. Több írásmódot
+     * elfogadunk, és amit nem értünk, azt inkább elengedjük — a szabad szöveges
+     * mező úgyis ott van tartaléknak:
+     *
+     *   --08-15     ISO 8601 ismétlődő dátum (év nélkül) — ez a legpontosabb alak
+     *   08-15       hónap-nap
+     *   2026-08-15  teljes dátum (az évet eldobjuk, a búcsú évente ismétlődik)
+     *   augusztus 15.  magyar szöveg — ilyenkor a szokásos elemzőre bízzuk
+     *
+     * @param string|null $ertek a tag nyers értéke
+     * @return array|null a szokásos alkalom-alak, vagy null
+     */
+    public static function parsePatronDay(?string $ertek): ?array {
+        $ertek = trim((string) $ertek);
+        if ($ertek === '') {
+            return null;
+        }
+
+        // --MM-DD, MM-DD, YYYY-MM-DD — az évet minden esetben eldobjuk.
+        if (preg_match('/^(?:--|\d{4}-)?(\d{1,2})-(\d{1,2})$/', $ertek, $m)) {
+            return self::napEllenorzes((int) $m[1], (int) $m[2]);
+        }
+
+        // Bármi más: hátha magyar szöveg, amit amúgy is tudunk olvasni.
+        return self::alkalomBoviteshez($ertek);
+    }
+
+    /**
+     * A belső alkalom-felismerés kívülről is elérhető alakja.
+     *
+     * A `parsePatronDay()` ezen keresztül dolgozza fel a nem szabványos, szöveges
+     * tag-értékeket, hogy ne kelljen a felismerést kétszer megírni.
+     */
+    private static function alkalomBoviteshez(string $resz): ?array {
+        return self::alkalom($resz);
+    }
+
+    /**
      * Feloldja az alkalmat konkrét dátumra egy adott évben.
      *
      * @param array|null $alkalom a parse() egyik alkalma

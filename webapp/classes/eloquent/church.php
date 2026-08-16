@@ -1362,7 +1362,38 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * @return array{bucsu: ?array, szentsegimadas: ?array, unparsed: string}
      */
     public function bucsuOccasions(): array {
-        return \Bucsu::parse($this->bucsu);
+        $eredmeny = \Bucsu::parse($this->bucsu);
+
+        /*
+         * #568: az OSM `patron_day` tagje ELSŐBBSÉGET élvez a szabad szöveggel szemben.
+         *
+         * borazslo vetette fel: „Sőt OSM ismeri az egyáltalán nem elterjed patron_day
+         * kulcsot." Ez strukturált adat, tehát megbízhatóbb, mint amit egy húsz éve
+         * gyűlő megjegyzés-mezőből ki tudunk olvasni — és nem kell hozzá se új oszlop,
+         * se új szerkesztő-mező: a szinkron minden OSM-taget elment az `attributes`
+         * táblába, tehát ha ki van töltve, az adat már nálunk van.
+         *
+         * A szabad szöveg marad tartaléknak: a kulcs saját bevallás szerint sem
+         * elterjedt, tehát a templomok túlnyomó részénél nem lesz kitöltve.
+         */
+        $patronDay = \Bucsu::parsePatronDay($this->patronDayTag());
+        if ($patronDay !== null) {
+            $eredmeny['bucsu'] = $patronDay;
+            $eredmeny['forras'] = 'patron_day';
+        } elseif ($eredmeny['bucsu'] !== null) {
+            $eredmeny['forras'] = 'bucsu_mezo';
+        } else {
+            $eredmeny['forras'] = null;
+        }
+
+        return $eredmeny;
+    }
+
+    /** Az OSM `patron_day` tag nyers értéke, ha a szinkron elmentette. */
+    private function patronDayTag(): ?string {
+        $attributum = $this->attributes()->where('key', 'patron_day')->first();
+
+        return $attributum->value ?? null;
     }
 
     /**
