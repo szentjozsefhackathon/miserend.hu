@@ -83,13 +83,13 @@ class Josm extends Html {
                     $query->whereNull('osmtype')
                         ->orWhereNull('osmid');
                 })
-                ->orderBy('orszag')->orderBy('megye')->orderBy('varos')->orderBy('nev')
+                ->orderByCity()->orderBy('nev')
                 ->get();
         
         $this->churchesWBadOsm = \Eloquent\Church::where('ok','i')
                 ->whereNotIn('id',$goodIDs)
                 ->whereNotNull('osmtype')->whereNotNull('osmid')
-                ->orderBy('orszag')->orderBy('megye')->orderBy('varos')->orderBy('nev')
+                ->orderByCity()->orderBy('nev')
                 ->get();
         
         $this->churchesWBad = \Eloquent\Church::where('ok','i')

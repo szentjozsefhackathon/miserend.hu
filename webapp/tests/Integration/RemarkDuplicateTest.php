@@ -22,7 +22,6 @@ class RemarkDuplicateTest extends TestCase
 
         $this->churchId = DB::table('templomok')->insertGetId([
             'nev'        => '755 Teszt templom',
-            'varos'      => 'Budapest',
             'frissites'  => '2020-01-01',
             'ok'         => 'i',
             'plebania'   => '',

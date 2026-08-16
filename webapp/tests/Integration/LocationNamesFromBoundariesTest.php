@@ -26,9 +26,6 @@ class LocationNamesFromBoundariesTest extends TestCase {
         $this->churchId = (int) DB::table('templomok')->max('id') + 1;
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Helynév Teszt';
-        $minta['varos'] = 'Régi Város';
-        $minta['megye'] = 0;
-        $minta['orszag'] = 0;
         $minta['ok'] = 'i';
         DB::table('templomok')->insert($minta);
     }
@@ -116,22 +113,27 @@ class LocationNamesFromBoundariesTest extends TestCase {
         self::assertSame('Magyarország', $this->templom()->locationCountryName());
     }
 
-    // ---- visszaesés ----------------------------------------------------------
+    // ---- határ nélkül --------------------------------------------------------
 
     /**
-     * A visszaesés szándékosan bent van: a szlovák állomány 23%-ának egyáltalán
-     * nincs boundary-ja, és 47 templomnak nincs koordinátája sem.
+     * A régi oszlopokra való visszaesés MEGSZŰNT: az oszlopok nincsenek többé.
+     *
+     * Ez tudatos veszteség, és pont ezért előzte meg három lépés: a 47 koordináta
+     * nélküli templom helyadata a megjegyzés mezőbe került (cron 496), a határ nélkül
+     * maradtak havonta újrapróbálkoznak (cron 497), és a /health kiírja, hányan
+     * vannak. Üres string az őszinte válasz — a régi oszlop csendes visszaszivárgása
+     * elrejtené, hogy a szinkron nem ért oda.
      */
-    public function testHatarNelkulARegiOszlopJon(): void {
-        self::assertSame('Régi Város', $this->templom()->locationCityName());
+    public function testHatarNelkulUresATelepules(): void {
+        self::assertSame('', $this->templom()->locationCityName());
     }
 
-    public function testCsakOrszaghatarralATelepulesMegARegiOszloprolJon(): void {
+    public function testCsakOrszaghatarralATelepulesUres(): void {
         $this->hatarlanc([[2, 'Magyarország']], 'HU');
 
         $templom = $this->templom();
         self::assertSame('Magyarország', $templom->locationCountryName());
-        self::assertSame('Régi Város', $templom->locationCityName());
+        self::assertSame('', $templom->locationCityName());
     }
 
     // ---- országhoz kötött logika --------------------------------------------

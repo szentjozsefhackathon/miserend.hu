@@ -39,7 +39,7 @@ class Home extends Html {
         $churchIds = \Request::IntegerArray('church_ids') ?: [];
         if (!empty($churchIds)) {
             $this->churchDataJson = json_encode(
-                \Eloquent\Church::select('id', 'nev', 'varos')
+                \Eloquent\Church::select('id', 'nev')
                     ->whereIn('id', $churchIds)
                     ->get()
                     // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.
