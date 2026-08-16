@@ -122,7 +122,7 @@ class Church extends Api {
 
             $churches = \Eloquent\Church::whereIn('id', $ids)->get()
                     ->keyBy('id')
-                    ->map->toAPIArray($responseLength);
+                    ->map->toAPIArray($responseLength, false, $this->version);
 
             /*
              * A kért sorrendben adjuk vissza, és a nem létező azonosítót KIHAGYJUK
@@ -148,7 +148,7 @@ class Church extends Api {
             return;
         }
 
-        $church = \Eloquent\Church::Where('id',$this->input['id'])->get()->map->toAPIArray($responseLength);
+        $church = \Eloquent\Church::Where('id',$this->input['id'])->get()->map->toAPIArray($responseLength, false, $this->version);
 
 
         if(count($church) < 1 ) {

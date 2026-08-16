@@ -50,6 +50,18 @@ if (!defined('DOMAIN')) {
 
 date_default_timezone_set('Europe/Budapest');
 
+/*
+ * A `t()` fordító-rövidítést a load.php definiálja, a tesztek viszont nem azt töltik be.
+ * Enélkül minden olyan út elszáll „Call to undefined function t()"-vel, ami felhasználónak
+ * szánt szöveget állít elő — például a templom API-tömbje (Church::toAPIArray).
+ */
+Translator::init('hu');
+if (!function_exists('t')) {
+    function t($text, $default = null) {
+        return Translator::translate($text, $default);
+    }
+}
+
 // A levélküldés Twig-sablonból áll elő (\Eloquent\Email::render()), így $twig nélkül
 // egyetlen email-út sem tesztelhető. Ugyanaz a környezet, mint amit a load.php épít.
 //

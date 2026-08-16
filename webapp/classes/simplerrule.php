@@ -367,6 +367,88 @@ class SimpleRRule
      *                          byweekno, count, dtstart
      * @return string emberi-olvasható magyar leírás, vagy '' ha nincs rrule
      */
+    /**
+     * #800: az ismétlődési szabály RFC 5545 szerinti RRULE-sztringje.
+     *
+     * Eddig ez a Html\Church\Ical privát metódusa volt. Az sqlite-exportnak (API v5)
+     * ugyanez kell — borazslo kifejezetten az iCal formátumát kérte referenciának —,
+     * ezért ide kerül, hogy egy helyen legyen és ne csússzon szét a kettő.
+     *
+     * Az `exdate` NEM része: az külön mező, mert a szabályhoz képest kivétel.
+     *
+     * @param array<string,mixed>|null $rrule
+     */
+    static function toRfcString($rrule): string {
+        if (!$rrule || !is_array($rrule)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($rrule as $kulcs => $ertek) {
+            if ($kulcs === 'exdate' || $kulcs === 'dtstart') {
+                continue;
+            }
+            if ($kulcs === 'byweekday') {
+                $kulcs = 'byday';
+            }
+            if ($kulcs === 'until') {
+                $parts[] = 'UNTIL=' . self::rfcDatum($ertek);
+                continue;
+            }
+            if (is_array($ertek)) {
+                $parts[] = strtoupper($kulcs) . '=' . implode(',', array_map(
+                    fn($x) => strtoupper((string) $x),
+                    $ertek
+                ));
+                continue;
+            }
+            $parts[] = strtoupper($kulcs) . '=' . strtoupper((string) $ertek);
+        }
+
+        return implode(';', $parts);
+    }
+
+    /**
+     * #800: a kizárt alkalmak KONKRÉT dátumai.
+     *
+     * borazslo pontosan ezt kérte: "az exdates azok konkrét dátumok". A táblázatos
+     * exportnak nem szabály kell, hanem lista — a fogyasztó így egyszerűen kiveszi
+     * az rrule-lal felszorzott sorozatból.
+     *
+     * @param array<string,mixed>|null $rrule
+     * @return array<int,string> Y-m-d dátumok, rendezve, duplikátum nélkül
+     */
+    static function exdates($rrule): array {
+        if (!$rrule || !is_array($rrule) || empty($rrule['exdate']) || !is_array($rrule['exdate'])) {
+            return [];
+        }
+
+        $datumok = [];
+        foreach ($rrule['exdate'] as $ertek) {
+            try {
+                $datumok[] = (new \DateTime((string) $ertek))->format('Y-m-d');
+            } catch (\Throwable $e) {
+                // Értelmezhetetlen dátumot inkább kihagyunk, mint hogy szemetet exportáljunk.
+            }
+        }
+
+        $datumok = array_values(array_unique($datumok));
+        sort($datumok);
+
+        return $datumok;
+    }
+
+    /** UTC-re normalizált, RFC 5545 alakú időbélyeg. */
+    private static function rfcDatum($ertek): string {
+        try {
+            return (new \DateTime((string) $ertek))
+                ->setTimezone(new \DateTimeZone('UTC'))
+                ->format('Ymd\\THis\\Z');
+        } catch (\Throwable $e) {
+            return (string) $ertek;
+        }
+    }
+
     static function humanText($rrule): string
     {
         if (empty($rrule) || !is_array($rrule)) {
