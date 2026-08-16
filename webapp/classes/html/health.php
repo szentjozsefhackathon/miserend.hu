@@ -46,6 +46,23 @@ class Health extends Html {
 			['mail/debug', $config['mail']['debug'] ]
 		];
 		
+		/*
+		 * #496: a határ-lefedettség hiánya eddig SEHOL nem látszott. A tünete az, hogy
+		 * egy település alatt nem jön ki a templom — a szerkesztő ilyenkor a saját
+		 * adatát hibáztatja, pedig a boundary-szinkron nem ért oda. Élesben a szlovák
+		 * minta 23%-ának egyáltalán nincs határa.
+		 */
+		$hatarNelkul = \Crons::churchesWithoutBoundaryCount();
+		if ($hatarNelkul === 0) {
+			$this->infos[] = ['Határ nélküli templomok', '<span class="text-success">✅ nincs ilyen</span>'];
+		} else {
+			$this->infos[] = ['Határ nélküli templomok',
+				'<span class="text-warning">⚠️ ' . $hatarNelkul . ' aktív, koordinátás templomnak nincs '
+				. 'administratív határa — a települési keresés nem találja meg őket. '
+				. 'A boundary-szinkron (cron 42) fokozatosan pótolja; a régen ellenőrzötteket '
+				. 'a cron 497 állítja vissza a sor elejére.</span>'];
+		}
+
 		// Check GD extension specifically
 		if (!extension_loaded('gd')) {
 			$this->infos[] = ['GD Extension', '<span class="text-danger">⚠️ HIÁNYZIK! A képfeltöltés nem fog működni.</span>'];
