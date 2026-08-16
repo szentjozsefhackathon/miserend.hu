@@ -185,7 +185,20 @@ class Stat extends Html {
 		$stat = DB::table('templomok')
 			->selectRaw("DATEDIFF(NOW(), frissites) DIV 365 as yearago")
 			->selectRAW("count(*) as count");		
-		$stat->where('orszag',12)->where('ok','i')->where('miseaktiv',1);
+		// #498: eddig `where('orszag', 12)` állt itt — pont az az oszlop, amit kivezetünk.
+		// A boundary-alapú megfelelője az országhatáron megy. Névre ÉS ISO-kódra is
+		// illesztünk: az ISO a helyes hosszú távon, de amíg a szinkron nem futott újra,
+		// a puszta ISO-szűrés üres statisztikát adna.
+		$stat->whereIn('templomok.id', function ($sub) {
+				$sub->select('lookup_boundary_church.church_id')
+					->from('lookup_boundary_church')
+					->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+					->where('boundaries.admin_level', 2)
+					->where(function ($w) {
+						$w->where('boundaries.iso3166_1', 'HU')
+						  ->orWhere('boundaries.name', 'Magyarország');
+					});
+			})->where('ok','i')->where('miseaktiv',1);
 		foreach(['%isézőhely%','%ápolna','%özösségi%', '%imaház%', '%imaterem%'] as $notlike)
 			$stat->where('nev','not like', $notlike);
 		$stat->orderBy('frissites','DESC');
