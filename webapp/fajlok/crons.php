@@ -21,7 +21,13 @@
 
 return [
     ['class' => '\Api\Sqlite',                    'function' => 'cron',                       'frequency' => '1 day'],
-    ['class' => '\ExternalApi\OverpassApi',       'function' => 'clearOldCache',              'frequency' => '1 day'],
+    /*
+     * #791: az EGY-API-s takarítás helyett MINDEN külső API cache-ét takarítjuk.
+     * borazslo: "a ExternalApi::clearAllOldCache() tényleg jó ötlet bekötni [...]
+     * És akkor nem is kell a másik clearOldCache". A régi Overpass-sort a
+     * Cron::pruneRemoved() takarítja ki, mert kikerült ebből a listából.
+     */
+    ['class' => '\ExternalApi\ExternalApi',       'function' => 'clearAllOldCache',           'frequency' => '1 day'],
     ['class' => '\Distance',                      'function' => 'updateSome',                 'frequency' => '15 min'],
     ['class' => '\OSM',                           'function' => 'syncUrlMiserendFromOSM',     'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
     ['class' => '\OSM',                           'function' => 'checkBoundaries',            'frequency' => '5 min'],
