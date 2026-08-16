@@ -101,13 +101,31 @@ class Ical extends \Html\Html {
         return ['rrule' => $rruleStr, 'exdate' => $exdateLine];
     }
 
+    /**
+     * Az iCal-esemény UID-jének hoszt-része.
+     *
+     * A UID az esemény GLOBÁLIS AZONOSSÁGA a feliratkozó naptáralkalmazásában. Eddig
+     * beégetve `miserend.hu` volt, tehát a staging és az éles ugyanazt az azonosítót adta
+     * ugyanarra a misére — aki mindkettőre feliratkozott (jellemzően épp a tesztelő), annak
+     * a naptára a kettőt EGY eseménynek látta, és az egyik felülírta a másikat.
+     *
+     * A beállított domainből vesszük a hosztot; ha az bármiért használhatatlan, marad a
+     * régi érték, mert a UID-nek mindenképpen stabilnak kell lennie.
+     */
+    private function uidHost(): string {
+        $domain = defined('DOMAIN') ? (string) DOMAIN : '';
+        $host = $domain !== '' ? parse_url($domain, PHP_URL_HOST) : null;
+
+        return is_string($host) && $host !== '' ? $host : 'miserend.hu';
+    }
+
     private function createCalendarEvent($mass) {
         $lines = [];
            //printr($mass);         
         if (empty($mass['start_date'])) return [];
         $start = date('Y-m-d\TH:i:s\Z',strtotime($mass['start_date']));
         $lines[] = 'BEGIN:VEVENT';
-        $uid = $mass['mass_id']."-".$mass['generated_period_id']."@miserend.hu"; //TODO: legyen az a domain szerinte akár uat vagy local, stb.
+        $uid = $mass['mass_id']."-".$mass['generated_period_id']."@".$this->uidHost();
         $lines[] = 'UID:' . $uid;
         $lines[] = 'DTSTAMP:' . gmdate('Ymd\\THis\\Z');         
         $lines[] = 'DTSTART;TZID=Europe/Budapest:' . $this->formatIcsDate($start);
@@ -119,9 +137,10 @@ class Ical extends \Html\Html {
         $lines[] = 'DTEND;TZID=Europe/Budapest:' . $this->formatIcsDate($dtend);
 
         $lines[] = 'SUMMARY:' . $this->escapeString($mass['title'] ?? '');
-        if(!empty($mass['comment'] )) $lines[] = 'DESCRIPTION:' . $this->escapeString($mass['comment'] ?? '');
-        //$lines[] = 'DESCRIPTION:'.$uid; // TODO: TYPES, COMMENT, ETC.
-         
+        // A megjegyzés a DESCRIPTION-be, a típusok a CATEGORIES-be mennek (lentebb) —
+        // a régi „TODO: TYPES, COMMENT, ETC." jegyzet mellől a kikommentezett, UID-et
+        // kiíró sor ezért kikerült: az sem nem leírás, sem nem típus.
+
         if (!empty($mass['types'])) {
             $lines[] = 'CATEGORIES:' . implode(',', $this->escapeString($mass['types']));
         }
