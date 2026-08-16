@@ -125,6 +125,35 @@ class PatronDayTest extends TestCase {
         self::assertSame('bucsu_mezo', $eredmeny['forras']);
     }
 
+    // ---- a /health számlálója ------------------------------------------------
+
+    /**
+     * borazslo kérése: „ha a /health megmutatja, hogy még mennyi régi módi búcsú
+     * adatot találtunk, és akkor ha az egyszer csak elfogy, akkor kiírhatja, hogy
+     * »Megszűnt ennek a búcsú szöveget feldolgozó scriptnek a létjogosultsága.«"
+     */
+    public function testAstatisztikaSzetvalasztjaAKetForrast(): void {
+        $elotte = \Bucsu::forrasStatisztika();
+
+        $this->patronDay('--08-15');
+        $utana = \Bucsu::forrasStatisztika();
+
+        self::assertSame($elotte['patron_day'] + 1, $utana['patron_day']);
+        self::assertSame($elotte['szoveges'] - 1, $utana['szoveges'],
+            'A templom átkerül a szövegesből a strukturáltba, nem duplikálódik.');
+    }
+
+    /** Az értelmezhetetlen mező külön kategória — az javítható adat, nem forrás. */
+    public function testAzErtelmezhetetlenMezoKulonSzamit(): void {
+        DB::table('templomok')->where('id', $this->churchId)
+            ->update(['bucsu' => 'Búcsú: Szent György vértanú ünnepéhez közelebbi vasárnap']);
+
+        $stat = \Bucsu::forrasStatisztika();
+
+        self::assertArrayHasKey('ertelmezhetetlen', $stat);
+        self::assertGreaterThan(0, $stat['ertelmezhetetlen']);
+    }
+
     /** A következő dátum számítása is a patron_day-ből megy. */
     public function testAKovetkezoDatumAPatronDaybolJon(): void {
         $this->patronDay('--08-15');

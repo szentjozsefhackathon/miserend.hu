@@ -320,6 +320,44 @@ class Bucsu {
     }
 
     /**
+     * #568: hány templomnál jön a búcsú a RÉGI, szabad szöveges mezőből.
+     *
+     * borazslo kérése: „ha a /health megmutatja, hogy még mennyi régi módi búcsú
+     * adatot találtunk, és akkor ha az egyszer csak elfogy, akkor kiírhatja, hogy
+     * »Megszűnt ennek a búcsú szöveget feldolgozó scriptnek a létjogosultsága.«"
+     *
+     * A számláló azt méri, hány templomnál NEM tudjuk strukturáltan (OSM
+     * `patron_day`) a búcsút, csak a megjegyzés-mezőből kiolvasva. Ha ez nullára
+     * fogy, az elemző kivezethető.
+     *
+     * @return array{szoveges: int, patron_day: int, ertelmezhetetlen: int}
+     */
+    public static function forrasStatisztika(): array {
+        $stat = ['szoveges' => 0, 'patron_day' => 0, 'ertelmezhetetlen' => 0];
+
+        $templomok = \Eloquent\Church::where('ok', 'i')
+            ->where(function ($q) {
+                $q->where('bucsu', '<>', '')
+                  ->orWhereHas('attributes', fn($a) => $a->where('key', 'patron_day'));
+            })
+            ->get();
+
+        foreach ($templomok as $templom) {
+            $eredmeny = $templom->bucsuOccasions();
+
+            if ($eredmeny['forras'] === 'patron_day') {
+                $stat['patron_day']++;
+            } elseif ($eredmeny['forras'] === 'bucsu_mezo') {
+                $stat['szoveges']++;
+            } elseif (trim((string) $templom->bucsu) !== '') {
+                $stat['ertelmezhetetlen']++;
+            }
+        }
+
+        return $stat;
+    }
+
+    /**
      * Húsvétvasárnap dátuma (gregorián, Meeus/Jones/Butcher).
      *
      * Szándékosan nem a PHP `easter_date()`-je: az az ext-calendar bővítményt

@@ -63,6 +63,33 @@ class Health extends Html {
 				. 'a cron 497 állítja vissza a sor elejére.</span>'];
 		}
 
+		/*
+		 * #568: meddig kell még a szabad szöveges búcsú-mező elemzője?
+		 *
+		 * borazslo kérése: „ha a /health megmutatja, hogy még mennyi régi módi búcsú
+		 * adatot találtunk, és akkor ha az egyszer csak elfogy, akkor kiírhatja, hogy
+		 * »Megszűnt ennek a búcsú szöveget feldolgozó scriptnek a létjogosultsága.
+		 * Vegyél fel rá egy issue-t és ki lehet vezetni.«"
+		 */
+		$bucsuForras = \Bucsu::forrasStatisztika();
+		if ($bucsuForras['szoveges'] === 0) {
+			$this->infos[] = ['Búcsú-adat forrása',
+				'<span class="text-success">✅ Megszűnt ennek a búcsú szöveget feldolgozó '
+				. 'scriptnek a létjogosultsága. Vegyél fel rá egy issue-t és ki lehet vezetni. '
+				. '(' . $bucsuForras['patron_day'] . ' templomnál OSM <code>patron_day</code>.)</span>'];
+		} else {
+			$this->infos[] = ['Búcsú-adat forrása',
+				'<span class="text-muted">' . $bucsuForras['szoveges'] . ' templomnál még a régi, '
+				. 'szabad szöveges mezőből olvassuk ki a búcsút; '
+				. $bucsuForras['patron_day'] . ' templomnál van OSM <code>patron_day</code>. '
+				. 'Amíg ez a szám nem nulla, az elemző kell.'
+				. ($bucsuForras['ertelmezhetetlen'] > 0
+					? ' (További ' . $bucsuForras['ertelmezhetetlen'] . ' templomnál van kitöltött mező, '
+					  . 'de nem tudjuk értelmezni — ezek javítható adatok.)'
+					: '')
+				. '</span>'];
+		}
+
 		// Check GD extension specifically
 		if (!extension_loaded('gd')) {
 			$this->infos[] = ['GD Extension', '<span class="text-danger">⚠️ HIÁNYZIK! A képfeltöltés nem fog működni.</span>'];
