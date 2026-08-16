@@ -8,6 +8,84 @@ use Illuminate\Database\Capsule\Manager as DB;
 class Crons {
 
 	/**
+	 * #496 / #497 / #498: a koordináta nélküli templomok helyadatának mentése.
+	 *
+	 * A három jegy a `templomok.orszag`, `.megye` és `.varos` kivezetéséről szól: a
+	 * helyet a koordináta és az OSM-határok adják. Ez mindenre igaz, KIVÉVE azt a
+	 * néhány misézőhelyet, aminek egyáltalán nincs koordinátája — azoknak sosem lesz
+	 * boundary-juk, tehát az oszlopok eldobásával az egyetlen helymegjelölésük veszne
+	 * el. Élesben 47 ilyen templom van (22 magyar, 25 határon túli).
+	 *
+	 * borazslo a #496-ban erre két lehetőséget adott: törlés, vagy a megjegyzés
+	 * mezőbe. Ez a nem-destruktív ág — a szöveget átmentjük, hogy a templom a
+	 * kivezetés után is beazonosítható maradjon.
+	 *
+	 * IDEMPOTENS: a jelölőt keresi, tehát többször lefuttatva sem duplikál.
+	 *
+	 * @return int hány templom megjegyzése egészült ki
+	 */
+	public const HELYADAT_JELOLO = '[Helyadat a koordináta nélküli időszakból]';
+
+	public static function archiveLocationOfChurchesWithoutCoordinates(): int {
+		$templomok = DB::table('templomok')
+			->where(function ($q) {
+				$q->whereNull('lat')->orWhere('lat', 0)->orWhere('lat', '');
+			})
+			->select('id', 'orszag', 'megye', 'varos', 'megjegyzes')
+			->get();
+
+		$erintett = 0;
+		foreach ($templomok as $templom) {
+			if (str_contains((string) $templom->megjegyzes, self::HELYADAT_JELOLO)) {
+				continue;
+			}
+
+			$reszek = self::helyadatSzovege($templom);
+			if ($reszek === '') {
+				continue;
+			}
+
+			$uj = trim((string) $templom->megjegyzes);
+			$uj = ($uj === '' ? '' : $uj . "\n\n") . self::HELYADAT_JELOLO . ' ' . $reszek;
+
+			DB::table('templomok')->where('id', $templom->id)->update(['megjegyzes' => $uj]);
+			$erintett++;
+		}
+
+		return $erintett;
+	}
+
+	/**
+	 * A régi oszlopokból olvasható helymegjelölés emberi szöveggé.
+	 *
+	 * Az azonosítókat NEVEKRE oldjuk fel — egy megjegyzésben a "orszag=25" semmit nem
+	 * mond annak, aki később elolvassa.
+	 */
+	private static function helyadatSzovege(object $templom): string {
+		$reszek = [];
+
+		$orszag = $templom->orszag
+			? DB::table('orszagok')->where('id', $templom->orszag)->value('nev')
+			: null;
+		if ($orszag) {
+			$reszek[] = $orszag;
+		}
+
+		$megye = $templom->megye
+			? DB::table('megye')->where('id', $templom->megye)->value('megyenev')
+			: null;
+		if ($megye) {
+			$reszek[] = $megye . ' megye';
+		}
+
+		if (trim((string) $templom->varos) !== '') {
+			$reszek[] = trim((string) $templom->varos);
+		}
+
+		return implode(', ', $reszek);
+	}
+
+	/**
 	 * #351: a stats_externalapi tábla nő a legnagyobbra. Elég az utolsó 30 nap
 	 * megőrzése, a régebbi statisztika-sorokat naponta töröljük. A `date` oszlopra
 	 * szűrünk (DATE típus). Cron-ként a crons.sql-ben 41-es id-vel regisztrálva.
