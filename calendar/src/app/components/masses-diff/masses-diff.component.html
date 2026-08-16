@@ -72,6 +72,14 @@
       <span> => </span>
       <span>{{newMass.comment}}</span>
     }
+    <!-- #431: a helyszín változása. „A templomban" a hiányzó érték olvasható alakja:
+         üres cella mellett nem derülne ki, hogy a mise VISSZAKERÜLT a templomba. -->
+    @if (origMass.ownLocation != newMass.ownLocation) {
+      <span>Helyszín:</span>
+      <span>{{ origMass.ownLocation || 'a templomban' }}</span>
+      <span> => </span>
+      <span>{{ newMass.ownLocation || 'a templomban' }}</span>
+    }
     @if (experiodChanged) {
       <span>Kizárt periódus(ok):</span>
       <span>{{origMass.experiod}}</span>

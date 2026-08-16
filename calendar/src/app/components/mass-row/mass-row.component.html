@@ -36,6 +36,10 @@
     @if (mass.comment && mass.comment.length > 0){
       <span class="event-row-comment"> megjegyzés: {{mass.comment}};</span>
     }
+    <!-- #431: az ÚJ és TÖRÖLT miséknél is látni kell, ha nem a templomban van. -->
+    @if (mass.ownLocation && mass.ownLocation.length > 0){
+      <span> helyszín: {{mass.ownLocation}};</span>
+    }
     <span>)</span>
   </div>
 }

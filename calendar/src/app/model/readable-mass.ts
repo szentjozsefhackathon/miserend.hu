@@ -16,4 +16,10 @@ export interface ReadableMass {
   lang: string;
   comment?: string;
   experiod?: string[];
+  /**
+   * #431: az alkalom saját helyszíne, olvasható alakban („Röszkei puszta" vagy a
+   * koordináta). Üresen hagyva a mise a templomban van — a javaslat-összefoglalóban
+   * ez a különbség épp olyan fontos, mint az időpont.
+   */
+  ownLocation?: string;
 }
