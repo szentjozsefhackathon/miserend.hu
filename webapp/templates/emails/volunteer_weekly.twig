@@ -7,7 +7,7 @@ A következő héten a következő {{ churches|length }} templom miserendjének 
 <ul>
 {% for c in churches %}
     <li>
-        <a href="https://miserend.hu/templom/{{ c.id }}">{{ c.nev }}</a>{% if c.ismertnev %} ({{ c.ismertnev }}){% endif %}
+        <a href="{{ domain }}/templom/{{ c.id }}">{{ c.nev }}</a>{% if c.ismertnev %} ({{ c.ismertnev }}){% endif %}
         — {{ c.varos }}
         <br/><small style="color:#666;">Utolsó frissítés: {{ c.frissites|replace({'-': '. '}) }}.</small>
     </li>
@@ -25,8 +25,8 @@ A következő héten a következő {{ churches|length }} templom miserendjének 
 </ul>
 
 <p><strong>Segítségedet nagyon köszönjük!</strong></p>
-<p>— a miserend.hu önkéntes csapata</p>
+<p>— a {{ domain }} önkéntes csapata</p>
 
-<br/><br/><small>Ezt a levelet azért kaptad, mert a <a href="https://miserend.hu">miserend.hu</a>-n önkéntes frissítőként regisztráltál (a „Vállalom heti hét templom frissítését" beállítás be van kapcsolva a profilodon).
-    Bármikor kikapcsolhatod ezt a <a href="https://miserend.hu/user/edit">személyes beállításaidnál</a>.
-    Ha nem tudsz belépni, akkor <a href="https://miserend.hu/user/lostpassword{% if addressee %}?data={{ addressee.email }}{% endif %}">kérhetsz új jelszót</a>.</small>
+<br/><br/><small>Ezt a levelet azért kaptad, mert a <a href="{{ domain }}">miserend.hu</a>-n önkéntes frissítőként regisztráltál (a „Vállalom heti hét templom frissítését" beállítás be van kapcsolva a profilodon).
+    Bármikor kikapcsolhatod ezt a <a href="{{ domain }}/user/edit">személyes beállításaidnál</a>.
+    Ha nem tudsz belépni, akkor <a href="{{ domain }}/user/lostpassword{% if addressee %}?data={{ addressee.email }}{% endif %}">kérhetsz új jelszót</a>.</small>

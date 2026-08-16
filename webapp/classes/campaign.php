@@ -11,11 +11,18 @@
  * Ez az újraírás:
  *   - DB-hozzáférés: Illuminate\Database\Capsule (Eloquent)
  *   - Email-küldés: \Eloquent\Email + Twig template
- *   - Cron-entry: webapp/cron/weekly-volunteers.php (CLI)
  *
  * Üzemmódok (statikus belépők):
  *   Campaign::assignUpdates()       — hetente egyszer: templom-csomag kiosztás + email
  *   Campaign::clearoutVolunteers()  — havonta egyszer: inaktív önkéntesek visszafogása
+ *
+ * Mindkettőt a rendes cron-futtató indítja (webapp/fajlok/crons.php registry), kézzel
+ * pedig a cron-oldalról futtatható:
+ *
+ *     docker compose exec miserend php index.php 'q=cron&cron_id=<id>'
+ *
+ * Volt hozzá külön CLI-fájl is (webapp/cron/weekly-volunteers.php), de az egyetlen
+ * többlete a statisztika kiírása volt — az azóta itt van, tehát mindkét úton látszik.
  */
 
 use Illuminate\Database\Capsule\Manager as DB;
@@ -65,6 +72,7 @@ class Campaign {
             ->get();
 
         if ($eligibleUsers->isEmpty()) {
+            self::report('assignUpdates', $stats);
             return $stats;
         }
 
@@ -97,13 +105,24 @@ class Campaign {
                   ->whereColumn('remarks.church_id', 't.id')
                   ->whereIn('remarks.allapot', ['u', 'f']);
             })
+            // Ugyanez a javaslatokra: egy függő (PENDING) csomag ugyanúgy folyamatban
+            // lévő munka, mint egy nyitott észrevétel — aki azt feldolgozza, annak ne
+            // dolgozzon rá az önkéntes. Az észrevételek mellett ez a másik beküldési
+            // csatorna, és remélhetőleg innen jön majd a több.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                  ->from('cal_suggestion_packages')
+                  ->whereColumn('cal_suggestion_packages.church_id', 't.id')
+                  ->where('cal_suggestion_packages.state', 'PENDING');
+            })
             ->orderBy('t.frissites')
             ->orderBy('t.id')
             ->limit($eligibleUsers->count() * self::WEEKLY_LIMIT)
             ->get();
 
         if ($assignableChurches->isEmpty()) {
-            $stats['errors'][] = 'Nincs kiosztható templom (mind friss vagy van észrevétel).';
+            $stats['errors'][] = 'Nincs kiosztható templom (mind friss, vagy van nyitott észrevétele/javaslata).';
+            self::report('assignUpdates', $stats);
             return $stats;
         }
 
@@ -133,14 +152,47 @@ class Campaign {
             }
         }
 
+        self::report('assignUpdates', $stats);
         return $stats;
     }
 
     /**
-     * #315: inaktív önkéntesek visszafogása. Aki az utóbbi hónapban semmilyen
-     * `updates` sort nem hozott be ÉS semmilyen `eszrevetelek`-et nem küldött,
-     * annak a `volunteer` flag-jét kivesszük (0-ra állítjuk). Email-figyelmeztetés
-     * is megy.
+     * A futás összegzése a kimenetre.
+     *
+     * A cron-futtató eldobja a visszatérési értéket, tehát enélkül sem a cron-oldalon,
+     * sem a `docker logs`-ban nem látszott, csinált-e egyáltalán valamit a munka.
+     */
+    private static function report(string $what, array $stats): void {
+        $parts = [];
+        foreach ($stats as $key => $value) {
+            if ($key === 'errors') {
+                continue;
+            }
+            $parts[] = $key . '=' . $value;
+        }
+        echo 'Campaign::' . $what . '(): ' . implode(', ', $parts)
+            . ', errors=' . count($stats['errors']) . "\n";
+
+        foreach ($stats['errors'] as $error) {
+            echo '  HIBA: ' . $error . "\n";
+        }
+    }
+
+    /**
+     * #315: inaktív önkéntesek visszafogása. Akitől az utóbbi hónapban SEMMI nem
+     * érkezett be, annak a `volunteer` flagjét kivesszük. Email-figyelmeztetés is megy.
+     *
+     * A feltétel korábban az `updates` táblát is nézte („aki nem hozott be updates
+     * sort"), és ez félreértés volt. Az `updates`-be egyedül az assignUpdates() ír,
+     * amikor KIOSZTJA a templomokat — tehát az a kiosztás naplója, nem a munkáé.
+     * Minden önkéntes hetente kap hét sort, így a feltétel gyakorlatilag soha nem
+     * teljesült: a takarítás sosem fogott meg senkit. Fordítva pedig igazságtalan
+     * volt: aki azért nem kapott kiosztást, mert épp nem akadt kiosztható templom,
+     * az inaktívnak látszott.
+     *
+     * Tevékenységnek ezért azt tekintjük, amit a felhasználó BEKÜLDÖTT: észrevétel
+     * vagy javaslat-csomag. Amíg a `updates` tábla nem jelzi a munka elvégzését,
+     * addig nem is használható erre.
      */
     public static function clearoutVolunteers(): array {
         $stats = ['cleared' => 0, 'errors' => []];
@@ -150,16 +202,18 @@ class Campaign {
             ->select('user.uid', 'user.login', 'user.email', 'user.nev', 'user.becenev')
             ->where('user.volunteer', 1)
             ->whereNotExists(function ($q) use ($monthAgo) {
-                $q->select(DB::raw(1))->from('updates')
-                  ->whereColumn('updates.uid', 'user.uid')
-                  ->where('timestamp', '>', $monthAgo);
-            })
-            ->whereNotExists(function ($q) use ($monthAgo) {
                 // #315: a tábla `eszrevetelek` -> `remarks`, a submission-dátum
                 // `datum` -> `created_at` (a `login` oszlop megmaradt).
                 $q->select(DB::raw(1))->from('remarks')
                   ->whereColumn('remarks.login', 'user.login')
                   ->where('remarks.created_at', '>', $monthAgo);
+            })
+            ->whereNotExists(function ($q) use ($monthAgo) {
+                // A javaslat-csomag ugyanúgy beküldött munka, mint az észrevétel —
+                // az állapota itt mindegy, a beküldés ténye számít.
+                $q->select(DB::raw(1))->from('cal_suggestion_packages')
+                  ->whereColumn('cal_suggestion_packages.sender_user_id', 'user.uid')
+                  ->where('cal_suggestion_packages.created_at', '>', $monthAgo);
             })
             ->get();
 
@@ -179,6 +233,7 @@ class Campaign {
             }
         }
 
+        self::report('clearoutVolunteers', $stats);
         return $stats;
     }
 
