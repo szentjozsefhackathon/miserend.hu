@@ -48,15 +48,35 @@ class OverpassEndpointConfigTest extends TestCase
         }
     }
 
-    /** A globálist mindkét Twig-környezetnek regisztrálnia kell (l. a DANGER-kommentet). */
-    public function testBothTwigEnvironmentsRegisterTheGlobal(): void
+    /**
+     * A globálisnak tényleg ott kell lennie a felépített környezetben.
+     *
+     * Ez eddig a két fájl FORRÁSSZÖVEGÉBEN kereste az `addGlobal` hívást, mert a
+     * Twig-környezet két teljes másolatban élt (load.php és Html::loadTwig), mindkettőn
+     * a DANGER-figyelmeztetéssel. Azóta egyetlen gyár építi mindkettőt, tehát a szöveges
+     * keresés a lényeget vesztette — a lényeg viszont maradt: a globális legyen ott.
+     */
+    public function testTheBuiltEnvironmentRegistersTheGlobal(): void
+    {
+        $globals = buildTwigEnvironment()->getGlobals();
+
+        self::assertArrayHasKey('overpass_api_url', $globals,
+            'hiányzik az overpass_api_url globális');
+        self::assertNotSame('', (string) $globals['overpass_api_url']);
+    }
+
+    /**
+     * És egyik hívó se építsen sajátot: pont a másolatok szétcsúszása volt a baj.
+     */
+    public function testNoCallSiteBuildsItsOwnEnvironment(): void
     {
         foreach ([__DIR__ . '/../../load.php', __DIR__ . '/../../classes/html/html.php'] as $utvonal) {
-            self::assertStringContainsString(
-                "addGlobal('overpass_api_url'",
-                file_get_contents($utvonal),
-                basename($utvonal) . ': hiányzik az overpass_api_url globális.'
-            );
+            $tartalom = file_get_contents($utvonal);
+
+            self::assertStringNotContainsString('new \\Twig\\Environment', $tartalom,
+                basename($utvonal) . ': saját Twig-környezetet épít — használd a buildTwigEnvironment()-et.');
+            self::assertStringContainsString('buildTwigEnvironment(', $tartalom,
+                basename($utvonal) . ': nem a közös gyárból veszi a Twig-környezetet.');
         }
     }
 

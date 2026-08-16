@@ -589,6 +589,8 @@ class User {
 			
 		}
 
+		$countDeleted += self::deleteUnreachableNonActivatedUsers($waitingBeforeDelete);
+
 		// #239/#171: itt régen egy `whereIn('uid', $ids2delete)->delete()` állt, de a
 		// $ids2delete változó SEHOL nem kapott értéket — a törlést a fenti ciklus végzi
 		// egyesével. PHP 8 alatt a whereIn(null) TypeError-t dob, ami \Error, nem
@@ -597,7 +599,78 @@ class User {
 		// került success-be. Éles: 2026-03-27 óta nem futott le sikeresen.
 		return $countDeleted;
 	}
-	
+
+	/**
+	 * Az elérhetetlen című, soha be nem lépett fiókok takarítása.
+	 *
+	 * A fenti törlés feltétele egy SIKERESEN kiküldött `user_pleaseactivate` — tehát
+	 * pont azok maradnak bent örökre, akiknek a levele sosem ment ki. Élesben ez a
+	 * robot-regisztrációk halmaza: hamis címmel jönnek, a levél elhasal, belépni sosem
+	 * lépnek be, a sor meg marad. Ezek adják a `user_pleaselogin`/`user_pleaseactivate`
+	 * hibás leveleinek a zömét, és közben szemetelik az adatbázist.
+	 *
+	 * Csak akkor törlünk, ha a fiók MINDHÁROM feltételt teljesíti:
+	 *   - soha nem lépett be,
+	 *   - régebbi a türelmi időnél,
+	 *   - és bizonyítottan elérhetetlen: vagy eleve használhatatlan a címe, vagy több
+	 *     kísérlet után sem sikerült kézbesíteni — és sosem ment ki neki levél sikeresen.
+	 *
+	 * A búcsúlevél itt szándékosan elmarad: oda küldenénk, ahova az előző néhány sem
+	 * jutott el, csak újabb hibás sorokat termelve.
+	 *
+	 * @param  string $waitingBeforeDelete strtotime-kompatibilis türelmi idő
+	 * @return int    a törölt fiókok száma
+	 */
+	static function deleteUnreachableNonActivatedUsers(string $waitingBeforeDelete = '2 weeks'): int {
+		$candidates = DB::table('user')
+			->where('lastlogin', '0000-00-00 00:00:00')
+			->where('regdatum', '<', date('Y-m-d H:i:s', strtotime('-' . $waitingBeforeDelete)))
+			->orderByRaw('RAND()')
+			// Ugyanaz az óvatosság, mint a fenti ágon: egy futás ne söpörjön túl sokat.
+			->limit(20)
+			->get();
+
+		$countDeleted = 0;
+		foreach ($candidates as $candidate) {
+			if (!self::isUnreachable('user_pleaseactivate', $candidate->email)) {
+				continue;
+			}
+
+			try {
+				(new User($candidate->uid))->delete();
+			} catch (\Throwable $e) {
+				logThrowable('deleteUnreachableNonActivatedUsers (uid: ' . $candidate->uid . ')', $e);
+				continue;
+			}
+
+			$countDeleted++;
+			error_log('[miserend] törlöm a(z) ' . $candidate->uid
+				. ' azonosítójú, soha be nem lépett felhasználót: az aktiváló levél nem kézbesíthető.');
+		}
+
+		return $countDeleted;
+	}
+
+	/**
+	 * Bizonyítottan elérhetetlen-e a cím ezen a levéltípuson?
+	 *
+	 * Az „egyetlen sikeres kiküldés sem volt" feltétel a lényeg: ha valaha kiment neki
+	 * levél, akkor a cím működött, tehát nem ez a takarítás dolga.
+	 */
+	static function isUnreachable(string $type, ?string $email): bool {
+		if (!self::isEmailUsable($email)) {
+			return true;
+		}
+
+		$everSent = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'sent')
+			->exists();
+
+		return !$everSent && self::isUndeliverable($type, $email);
+	}
+
 
 	static function sendActivationNotification() {
 		$lastEmailDiff = '-1 week';
