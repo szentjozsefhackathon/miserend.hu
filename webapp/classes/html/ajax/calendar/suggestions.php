@@ -333,6 +333,55 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
         return $validPackageIds->unique();
     }
 
+    /**
+     * #781: melyik templomhoz tartozik egy javaslat?
+     *
+     * A #506 óta a szerkesztő a plébánia és a fíliái miséit egy naptárban mutatja, tehát
+     * EGY beküldés több templomot is érinthet. A csomag viszont templomonként egy (a
+     * `cal_suggestion_packages` táblában `church_id` van, és a jóváhagyó felület is így
+     * gondolkodik) — a szerver ezért bontja szét.
+     *
+     * A meglévő mise templomát az ADATBÁZISBÓL nézzük meg, nem a kliens szavából: a
+     * javaslat egy konkrét misére vonatkozik, és hogy az melyik templomé, azt nem a
+     * beküldő dönti el. Új misénél nincs mihez nyúlni, ott a beküldött `churchId` számít,
+     * végső soron pedig az útvonalé.
+     */
+    private function churchIdOfSuggestion(array $suggestion, int $alapertelmezett): int
+    {
+        $massId = $suggestion['massId'] ?? null;
+        if ($massId) {
+            $mass = \Eloquent\CalMass::find($massId);
+            if ($mass) {
+                return (int) $mass->church_id;
+            }
+        }
+
+        $changes = $suggestion['changes'] ?? [];
+        foreach (['churchId', 'church_id'] as $kulcs) {
+            if (!empty($changes[$kulcs])) {
+                return (int) $changes[$kulcs];
+            }
+        }
+
+        return $alapertelmezett;
+    }
+
+    /**
+     * #781: a javaslatok templomonként csoportosítva, a beküldött sorrend megtartásával.
+     *
+     * @return array<int, array<int, array>> templom-azonosító => javaslatok
+     */
+    public static function groupSuggestionsByChurch(array $suggestions, int $alapertelmezett, ?callable $churchIdResolver = null): array
+    {
+        $resolver = $churchIdResolver ?? static fn(array $s, int $a): int => (int) ($s['churchId'] ?? $a);
+
+        $csoportok = [];
+        foreach ($suggestions as $suggestion) {
+            $csoportok[$resolver($suggestion, $alapertelmezett)][] = $suggestion;
+        }
+        return $csoportok;
+    }
+
     private function handleNewSuggestionPackage(): void {
         $input = json_decode(file_get_contents('php://input'), true);
 
@@ -358,21 +407,47 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
         global $user;
         $bejelentkezett = !empty($user->uid);
 
-        Capsule::connection()->transaction(function () use ($input, $user, $bejelentkezett) {
-            $package = CalSuggestionPackage::create([
-                'church_id' => $input['churchId'] ?? null,
-                'sender_name' => $bejelentkezett
-                    ? self::displayName($user)
-                    : self::cleanSenderName($input['senderName'] ?? null),
-                'sender_email' => $bejelentkezett ? ($user->email ?? null) : ($input['senderEmail'] ?? null),
-                'sender_user_id' => $bejelentkezett ? (int) $user->uid : null,
-                'sender_message' => $input['senderMessage'] ?? null,
-                'state' => $input['state'] ?? 'PENDING',
-                'created_at' => $input['created_at'] ?? null,
-            ]);
+        $alapertelmezettTemplom = (int) ($input['churchId'] ?? $this->tid);
+        $csoportok = self::groupSuggestionsByChurch(
+            is_array($input['suggestions'] ?? null) ? $input['suggestions'] : [],
+            $alapertelmezettTemplom,
+            fn(array $suggestion, int $alap): int => $this->churchIdOfSuggestion($suggestion, $alap)
+        );
 
-            if (!empty($input['suggestions']) && is_array($input['suggestions'])) {
-                foreach ($input['suggestions'] as $suggestion) {
+        if ($csoportok === []) {
+            // Üres beküldésnél is keletkezett eddig egy üres csomag; maradjon így, hogy
+            // a hívó szerződése ne változzon.
+            $csoportok = [$alapertelmezettTemplom => []];
+        }
+
+        /*
+         * #781: templomonként EGY csomag, de EGY tranzakcióban.
+         *
+         * A #506 óta egy beküldés több templomot is érinthet, a `cal_suggestion_packages`
+         * viszont templomonként egy sor — és a jóváhagyó felület is így gondolkodik.
+         * A szétbontás ezért a szerveren történik: a beküldő egyetlen műveletet él meg,
+         * a jóváhagyó pedig a saját templomának csomagját látja.
+         *
+         * Egy tranzakcióban, mert a részleges beküldés a legrosszabb kimenet: a
+         * felhasználó azt hinné, mindent elküldött, közben a fele elveszett.
+         */
+        Capsule::connection()->transaction(function () use ($input, $user, $bejelentkezett, $csoportok) {
+            $letrejott = [];
+
+            foreach ($csoportok as $churchId => $sajatJavaslatok) {
+                $package = CalSuggestionPackage::create([
+                    'church_id' => $churchId,
+                    'sender_name' => $bejelentkezett
+                        ? self::displayName($user)
+                        : self::cleanSenderName($input['senderName'] ?? null),
+                    'sender_email' => $bejelentkezett ? ($user->email ?? null) : ($input['senderEmail'] ?? null),
+                    'sender_user_id' => $bejelentkezett ? (int) $user->uid : null,
+                    'sender_message' => $input['senderMessage'] ?? null,
+                    'state' => $input['state'] ?? 'PENDING',
+                    'created_at' => $input['created_at'] ?? null,
+                ]);
+
+                foreach ($sajatJavaslatok as $suggestion) {
                     $package->suggestions()->create([
                         'period_id' => $suggestion['periodId'] ?? null,
                         'mass_id' => $suggestion['massId'] ?? null,
@@ -380,20 +455,33 @@ class Suggestions extends \Html\Ajax\Calendar\CalendarApi
                         'changes' => $suggestion['changes'] ?? null,
                     ]);
                 }
+
+                // #307: értesítjük az adminokat / egyházmegyei felelőst / templom-gazdákat.
+                // A küldés a tranzakción belül van, de a try/catch elnyeli az SMTP- vagy
+                // template-hibákat (csak error_log-ba kerül) — a tranzakció EZÉRT NEM
+                // görgetődik vissza. A javaslat akkor is legitim, ha az értesítő email
+                // valamiért nem ment ki; a felhasználói flow nem akadhat el SMTP-fennakadáson.
+                //
+                // #781: csomagonként külön értesítés megy, tehát a fília gondnoka a saját
+                // templomáról kap levelet, nem a plébánia egészéről.
+                try {
+                    $package->emails();
+                } catch (\Throwable $emailError) {
+                    error_log("CalSuggestionPackage #{$package->id} email error: " . $emailError->getMessage());
+                }
+
+                $letrejott[] = ['churchId' => (int) $churchId, 'id' => $package->id];
             }
 
-            // #307: értesítjük az adminokat / egyházmegyei felelőst / templom-gazdákat.
-            // A küldés a tranzakción belül van, de a try/catch elnyeli az SMTP- vagy
-            // template-hibákat (csak error_log-ba kerül) — a tranzakció EZÉRT NEM
-            // görgetődik vissza. A javaslat akkor is legitim, ha az értesítő email
-            // valamiért nem ment ki; a felhasználói flow nem akadhat el SMTP-fennakadáson.
-            try {
-                $package->emails();
-            } catch (\Throwable $emailError) {
-                error_log("CalSuggestionPackage #{$package->id} email error: " . $emailError->getMessage());
-            }
-
-            $this->content = json_encode(["success" => true, "id" => $package->id]);
+            /*
+             * A válasz `id` mezője a régi szerződés: az ELSŐ csomag azonosítója. A
+             * `packages` az új, teljes lista — így a meglévő kliens változatlanul működik.
+             */
+            $this->content = json_encode([
+                'success'  => true,
+                'id'       => $letrejott[0]['id'] ?? null,
+                'packages' => $letrejott,
+            ]);
         });
     }
 

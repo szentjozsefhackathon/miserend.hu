@@ -1193,13 +1193,25 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     }
 
     this.eventService.sendToApprove(this.currentChurch!.id, suggestionPackage).subscribe(
-      res => {
+      (res: any) => {
         this.changes.clear();
         this.deletedMasses = [];
         this.deletedDates.clear();
         this.reLoadCalendar();
+
+        /*
+         * #781: a szerver templomonként külön csomagot készít, mert a jóváhagyás is
+         * templomonként történik. Ha több lett, mondjuk meg — a beküldő egyetlen
+         * műveletet élt meg, de több gondnok fogja látni, és jó tudnia, hogy a fília
+         * javaslata is elment.
+         */
+        const csomagok: number = Array.isArray(res?.packages) ? res.packages.length : 1;
+        const uzenet: string = csomagok > 1
+          ? `Javaslatod sikeresen beküldve, ${csomagok} templomhoz. Amint jóváhagyják, megjelenik a naptárban.`
+          : 'Javaslatod sikeresen beküldve! Amint jóváhagyják, megjelenik a naptárban.';
+
         this.dialog.open(AddMessageDialogComponent, {
-          data: {message: "Javaslatod sikeresen beküldve! Amint jóváhagyják, megjelenik a naptárban.", decision: false}
+          data: {message: uzenet, decision: false}
         });
       },
       error => {
