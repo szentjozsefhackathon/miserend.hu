@@ -26,7 +26,6 @@ class ChurchRelationshipTest extends TestCase {
     private function createChurch(string $name = 'Teszt', float $lat = 47.5, float $lon = 19.0): int {
         return DB::table('templomok')->insertGetId([
             'nev'       => $name,
-            'varos'     => 'Budapest',
             'frissites' => '2020-01-01',
             'ok'        => 'i',
             'plebania'  => '',

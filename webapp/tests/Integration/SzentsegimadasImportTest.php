@@ -50,7 +50,7 @@ class SzentsegimadasImportTest extends TestCase {
         // A lényeg: ez a hívás egyáltalán lefut. Korábban "Call to undefined method"-dal állt meg.
         $found = $api->findChurch([
             'templom' => $church->nev,
-            'varos' => $church->varos,
+            'varos' => $church->locationCityName(),
         ]);
 
         if ($found === false) {

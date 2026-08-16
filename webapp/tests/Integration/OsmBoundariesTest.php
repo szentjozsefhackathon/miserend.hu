@@ -56,7 +56,6 @@ class OsmBoundariesTest extends TestCase {
             'ok'         => 'i',
             'lat'        => 47.0,
             'lon'        => 19.0,
-            'varos'      => 'Budapest',
             'cim'        => 'Test utca 1.',
             'plebania'   => '',
             'leiras'     => '',
