@@ -1012,6 +1012,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             // boundaries
             $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();
 
+            // #498: az országKÓD. borazslo a #496-ban ezt kérte kifejezetten
+            // ("Az orszag kell országkódilag"): a statisztika és az Angular naptár
+            // kódot vár, ami ma csak a régi orszagok.id-n keresztül létezik.
+            $return['orszagkod'] = (string) ($this->countryCode() ?? '');
+
             // #89: a `location` mező geo_point-ként SZEREPEL a mappingben
             // (fajlok/elasticsearch/mappings/church.json), de eddig SENKI nem töltötte
             // fel — nulla dokumentumban volt benne érték. Emiatt semmilyen távolság-alapú
