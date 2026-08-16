@@ -105,6 +105,74 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
         return CalMass::importedIdsAmong($ids);
     }
 
+    /**
+     * Írhatja-e a bejelentkezett felhasználó ENNEK a templomnak a miséit?
+     *
+     * A jogosultság-ellenőrzés eddig kizárólag az ÚTVONALBAN szereplő templomra futott,
+     * a mentés viszont a beküldött adat `church_id`-jét írta ki. Aki tehát egyetlen
+     * templomhoz kapott jogot, az a saját mentésébe más templom azonosítóját írva bárhova
+     * felvihetett misét. A törlés még ennyit sem nézett: `whereIn('id', ...)` alapján
+     * bármelyik mise törölhető volt, azonosító alapján.
+     *
+     * A szabály egyszerű és mindkét irányban véd: egy misét oda írhatsz és onnan
+     * törölhetsz, AHOL írásjogod van. Egy templomra ez pontosan a mai viselkedés; a
+     * plébánia gondnokának a fíliákra is jár, mert a `checkWriteAccess()` az örökölt
+     * gondnokságot is elfogadja.
+     */
+    private function ensureWritableChurch(int $churchId): void
+    {
+        static $ellenorzott = [];
+        if (isset($ellenorzott[$churchId])) {
+            return;
+        }
+
+        $church = \Eloquent\Church::find($churchId);
+        if (!$church) {
+            $this->sendJsonError('Nincs ilyen templom: ' . $churchId, 404);
+        }
+
+        $church->append(['writeAccess']);
+        if (!$church->writeAccess) {
+            $this->sendJsonError('Hiányzó jogosultság a(z) ' . $churchId . ' azonosítójú templomhoz!', 403);
+        }
+
+        $ellenorzott[$churchId] = true;
+    }
+
+    /**
+     * MELY templomokat érinti ez a kérés?
+     *
+     * Külön, tiszta függvény, mert az `ensureWritableChurch()` hibánál `exit`-tel zár —
+     * azt nem lehet tesztelni. Márpedig épp ez a lényegi állítás: egy kérés akkor is a
+     * B templomot érinti, ha az A templom útvonalára küldték be.
+     *
+     * A törlendő misék templomát az adatbázisból nézzük meg, nem a beküldött adatból: a
+     * kliens csak azonosítót küld, és a hovatartozást nem is bízhatjuk rá.
+     *
+     * @param  int[] $deletedMasses törlendő mise-azonosítók
+     * @param  array $masses        mentendő misék (tömb vagy objektum elemek)
+     * @param  int   $utvonalTemplom az URL-ben szereplő templom — ez a hiányzó church_id alapja
+     * @return int[] az érintett templom-azonosítók, ismétlés nélkül
+     */
+    public static function affectedChurchIds(array $masses, array $deletedMasses, int $utvonalTemplom): array
+    {
+        $erintett = [];
+
+        foreach ($masses as $mass) {
+            $adat = CalModel::arrayKeysToSnakeCase(is_array($mass) ? $mass : (array) $mass);
+            $erintett[] = (int) ($adat['church_id'] ?? $utvonalTemplom);
+        }
+
+        foreach ($deletedMasses as $torlendoId) {
+            $torlendo = CalMass::find($torlendoId);
+            if ($torlendo) {
+                $erintett[] = (int) $torlendo->church_id;
+            }
+        }
+
+        return array_values(array_unique($erintett));
+    }
+
     public function save(ChangeRequest $changeRequest): void
     {
         // A mentés eddig ELLENŐRZÉS NÉLKÜL írta ki, amit a frontend küldött. Így került az
@@ -116,6 +184,15 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
         //
         // Előbb MINDENT ellenőrzünk, és csak utána írunk: fél-mentett miserendet ne
         // hagyjunk magunk után.
+        /*
+         * Jogosultság MINDEN érintett templomra, még az első írás előtt. A kérés nem
+         * csak az útvonal templomát érintheti: a mentendő mise `church_id`-je bármi
+         * lehet, a törlendő mise pedig a saját templomához tartozik.
+         */
+        foreach (self::affectedChurchIds($changeRequest->masses, $changeRequest->deletedMasses, (int) $this->tid) as $erintett) {
+            $this->ensureWritableChurch($erintett);
+        }
+
         foreach ($changeRequest->masses as $mass) {
             $ellenorzendo = CalModel::arrayKeysToSnakeCase(is_array($mass) ? $mass : (array) $mass);
             $hiba = CalMass::invalidDateTimeReason($ellenorzendo);
@@ -130,9 +207,21 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
             }
         }
 
-        // Törlendő misék
-        if (!empty($changeRequest->deletedMasses)) {
-            CalMass::whereIn('id', $changeRequest->deletedMasses)->delete();
+        /*
+         * Törlendő misék. Csak azt töröljük, aminek a templomához van jogunk — és csak
+         * azt, ami létezik. A nem létező azonosítót szó nélkül átugorjuk: a szerkesztő
+         * küldhet olyat, amit közben más már törölt, attól még a mentés menjen végig.
+         */
+        $torolheto = [];
+        foreach ($changeRequest->deletedMasses as $torlendoId) {
+            $torlendo = CalMass::find($torlendoId);
+            if (!$torlendo) {
+                continue;
+            }
+            $torolheto[] = $torlendo->id;
+        }
+        if ($torolheto) {
+            CalMass::whereIn('id', $torolheto)->delete();
         }
 
         // Új vagy frissítendő misék
