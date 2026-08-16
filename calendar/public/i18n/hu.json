@@ -53,6 +53,8 @@
   "LATITUDE": "Szélesség",
   "LONGITUDE": "Hosszúság",
   "DIFFERENT_LOCATION_HINT": "A koordinátát a térképről vagy az OpenStreetMap-ből másolhatod. Mindkét mező kell, különben a mise a templomban marad.",
+  "DIFFERENT_LOCATION_BADGE": "Nem a templomban: {{place}}",
+  "DIFFERENT_LOCATION_SHOW_ON_MAP": "Megnyitás az OpenStreetMap-en",
   "RECURRENCE": "Ismétlődés",
   "PERIOD": "Időszak",
   "MANUAL_EXPERIOD": "Kézzel kivett időszakok",

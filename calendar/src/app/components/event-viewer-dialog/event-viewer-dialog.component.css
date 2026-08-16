@@ -63,3 +63,18 @@ button[mat-flat-button] {
   font-size: 0.9rem;
   padding: 0 8px;
 }
+
+/* #431: az alkalom saját helyszíne a felugró nézetben. */
+.own-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: #b8500a;
+}
+.own-location .mcal-location-icon {
+  font-size: 20px;
+  height: 20px;
+  width: 20px;
+}
+.own-location a { font-size: 0.9rem; }

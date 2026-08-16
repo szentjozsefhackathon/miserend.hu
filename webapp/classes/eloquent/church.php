@@ -919,9 +919,26 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                         $misek[$key]['megjegyzes'] = (string) ($mise->comment ?? '');
                         $misek[$key]['hossz_perc'] = (int) ($mise->duration_minutes ?? 0);
                     }
-                }	            
+                }
             }
-        } 
+
+            /*
+             * #431: az alkalom SAJÁT helyszíne, ha nem a templomban van.
+             *
+             * borazslo kérdése a #813-ra: „API-t nem érinti? (v5-ben talán és akkor
+             * ha eltér a templom alap adatától)". De: csak akkor megy ki, ha tényleg
+             * eltér — a templomi misére a `templom.koordinatak` a válasz, azt nem
+             * ismételjük meg misénként.
+             *
+             * A forrás az ADATBÁZIS, nem az Elasticsearch. Az ES-ben nincs benne, és
+             * odatenni teljes mise-újraindexelést jelentene (30+ perc, 500e esemény),
+             * ami után a mező addig NÉMÁN hiányozna. Egy `whereIn` a válaszban lévő
+             * legfeljebb 10 mise-azonosítóra olcsóbb és mindig friss.
+             */
+            if ($apiVersion !== null && $apiVersion >= 5 && $misek) {
+                $misek = $this->attachOwnLocations($misek);
+            }
+        }
 
         $adorations = [];
         $results = $this->adorations()
@@ -1732,6 +1749,51 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * A besorolás szint szerint megy, nem pozíció szerint: a location() a rendezett
      * lista 0./1./2. elemét címkézi, ami hiányos határláncnál elcsúszik.
      */
+    /**
+     * #431: a válaszban lévő misékhez hozzáfűzi a SAJÁT helyszínüket, ha van.
+     *
+     * Csak akkor kerül be a `helyszin` kulcs, ha az alkalomnak tényleg van külön
+     * koordinátája — a templomi misékre a `templom.koordinatak` a válasz. Így a
+     * kliens egyetlen kulcs meglétéből tudja, hogy „ez máshol lesz", és nem kell
+     * lebegőpontos számokat összehasonlítania.
+     *
+     * @param  array<int,array<string,mixed>> $misek
+     * @return array<int,array<string,mixed>>
+     */
+    private function attachOwnLocations(array $misek): array {
+        $ids = array_values(array_filter(array_map(
+            fn($mise) => (int) ($mise['mise_id'] ?? 0),
+            $misek
+        )));
+        if (!$ids) {
+            return $misek;
+        }
+
+        $helyszinek = DB::table('cal_masses')
+                ->whereIn('id', $ids)
+                ->whereNotNull('location_lat')
+                ->whereNotNull('location_lon')
+                ->get(['id', 'location_lat', 'location_lon', 'location_name'])
+                ->keyBy('id');
+
+        if ($helyszinek->isEmpty()) {
+            return $misek;
+        }
+
+        foreach ($misek as $key => $mise) {
+            $hely = $helyszinek->get((int) ($mise['mise_id'] ?? 0));
+            if (!$hely) {
+                continue;
+            }
+            $misek[$key]['helyszin'] = [
+                'koordinatak' => [(float) $hely->location_lat, (float) $hely->location_lon],
+                'nev' => (string) ($hely->location_name ?? ''),
+            ];
+        }
+
+        return $misek;
+    }
+
     private function adminBoundaryName(array $szintek): ?string {
         $talalat = $this->boundaries()
                 ->where('boundary', 'administrative')

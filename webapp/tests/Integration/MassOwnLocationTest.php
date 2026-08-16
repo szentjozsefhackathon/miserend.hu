@@ -148,4 +148,83 @@ class MassOwnLocationTest extends TestCase {
         self::assertCount(1, $rrule->getOccurrences(),
             'Egyszeri alkalomból nem lehet sorozat.');
     }
+
+    // ---- ami az API-ba kikerül -----------------------------------------------
+
+    /**
+     * A `toAPIArray` a miselistát az ELASTICSEARCH-BŐL szedi, egy frissen felvett
+     * teszttemplom pedig nincs indexelve — a teljes úton tehát üres lenne a lista, és
+     * a mérés semmit nem érne. Ezért a beillesztő lépést közvetlenül hívjuk.
+     *
+     * @param array<int,array<string,mixed>> $misek
+     * @return array<int,array<string,mixed>>
+     */
+    private function apiMisek(array $misek): array {
+        $templom = \Eloquent\Church::find($this->churchId);
+        $metodus = new \ReflectionMethod(\Eloquent\Church::class, 'attachOwnLocations');
+        $metodus->setAccessible(true);
+
+        return $metodus->invoke($templom, $misek);
+    }
+
+    /**
+     * borazslo kérdése a #813-ra: „API-t nem érinti? (v5-ben talán és akkor ha eltér
+     * a templom alap adatától)".
+     */
+    public function testAzApiKiadjaASajatHelyszint(): void {
+        $mise = $this->mise([
+            'location_lat' => 46.18, 'location_lon' => 20.03,
+            'location_name' => 'Röszkei puszta',
+        ]);
+
+        $valasz = $this->apiMisek([['mise_id' => (int) $mise->id]]);
+
+        self::assertArrayHasKey('helyszin', $valasz[0]);
+        self::assertSame([46.18, 20.03], $valasz[0]['helyszin']['koordinatak']);
+        self::assertSame('Röszkei puszta', $valasz[0]['helyszin']['nev']);
+    }
+
+    /**
+     * A templomi misére a `templom.koordinatak` a válasz — nem ismételjük meg
+     * misénként. A kulcs MEGLÉTE mondja meg a kliensnek, hogy „ez máshol lesz", így
+     * nem kell lebegőpontos számokat összehasonlítania.
+     */
+    public function testATemplomiMiseNemKapHelyszint(): void {
+        $mise = $this->mise();
+
+        $valasz = $this->apiMisek([['mise_id' => (int) $mise->id]]);
+
+        self::assertArrayNotHasKey('helyszin', $valasz[0]);
+    }
+
+    public function testFelKoordinatanalNincsHelyszinAzApibanSem(): void {
+        $mise = $this->mise(['location_lat' => 46.18]);
+
+        $valasz = $this->apiMisek([['mise_id' => (int) $mise->id]]);
+
+        self::assertArrayNotHasKey('helyszin', $valasz[0]);
+    }
+
+    public function testNevNelkulIsKimegyAKoordinata(): void {
+        $mise = $this->mise(['location_lat' => 46.18, 'location_lon' => 20.03]);
+
+        $valasz = $this->apiMisek([['mise_id' => (int) $mise->id]]);
+
+        self::assertSame([46.18, 20.03], $valasz[0]['helyszin']['koordinatak']);
+        self::assertSame('', $valasz[0]['helyszin']['nev']);
+    }
+
+    /** Vegyes listánál csak az érintett sor kapja meg a helyszínt. */
+    public function testCsakASajatHelyszinesMiseKapKulcsot(): void {
+        $szabadteri = $this->mise(['location_lat' => 46.18, 'location_lon' => 20.03]);
+        $templomi   = $this->mise();
+
+        $valasz = $this->apiMisek([
+            ['mise_id' => (int) $templomi->id],
+            ['mise_id' => (int) $szabadteri->id],
+        ]);
+
+        self::assertArrayNotHasKey('helyszin', $valasz[0]);
+        self::assertArrayHasKey('helyszin', $valasz[1]);
+    }
 }
