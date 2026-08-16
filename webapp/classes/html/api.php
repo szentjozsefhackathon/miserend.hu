@@ -11,8 +11,15 @@ class Api extends Html {
 
         $uri = $_SERVER['REQUEST_URI'];
 
-        // API version is obligatory in the URL
-        if (!preg_match('#^/api/(v[1-4])(/|$)#', $uri)) {
+        /*
+         * #56: az útvonal BÁRMILYEN verziószámot elfogad, a listát nem itt tartjuk.
+         *
+         * Korábban `v[1-4]` állt itt, három regexben — az v5 bevezetésekor mindhármat
+         * módosítani kellett volna, és ha egy kimarad, a hívó néma átirányítást kap az
+         * /apidocs-ra a "hibás verzió" üzenet helyett. Azt, hogy melyik verzió él, az
+         * \Api\Api::validateVersionMain() mondja meg — egy helyen.
+         */
+        if (!preg_match('#^/api/(v[0-9]+)(/|$)#', $uri)) {
             $this->error = "Invalid API endpoint: " . $uri;
             \Message::add($this->error, 'danger');
             $this->redirect('/apidocs');
@@ -27,7 +34,7 @@ class Api extends Html {
 
         // Determine the action from the URL if not provided in the query string
         $endpoints = \Api\Api::collectApiEndpoints();                        
-        if (preg_match('#^/api/(v[1-4])/?([^/?]*)#i', $uri, $matches)) {
+        if (preg_match('#^/api/(v[0-9]+)/?([^/?]*)#i', $uri, $matches)) {
             // #391: az API-osztályok a $_REQUEST['v']-ből olvassák a verziót, ezért azt
             // továbbra is beállítjuk — de amit MI használunk lentebb, azt lokális
             // változóból vesszük, ne a szuperglobális kerülőúton.

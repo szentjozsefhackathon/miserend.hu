@@ -113,7 +113,8 @@ class NearBy extends Api {
 				->limit($limit)
                 ->get()->map->toAPIArray(
 					isset($this->input['response_length']) ? $this->input['response_length'] : (  $this->fields['response_length']['default'] ? $this->fields['response_length']['default'] : false ), 
-					isset($this->input["whenMass"]) ? $this->input["whenMass"] : (  $this->fields['whenMass']['default'] ? $this->fields['whenMass']['default'] : false ));
+					isset($this->input["whenMass"]) ? $this->input["whenMass"] : (  $this->fields['whenMass']['default'] ? $this->fields['whenMass']['default'] : false ),
+					$this->version);
 				
         //$this->return['lat'] = $this->input['lat'];
 

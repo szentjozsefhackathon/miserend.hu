@@ -22,8 +22,19 @@ class Api {
         $this->date = \Request::DatewDefault('datum', $defaultDate);
     }
 
+    /**
+     * #56: a legmagasabb kiadott API-verzió.
+     *
+     * Az v5 ugyanaz a boríték és ugyanazok a végpontok, mint a v4 — csak a mise-adat
+     * lesz strukturált, és a képek rövid úton jönnek. A régebbi verziók válasza
+     * VÁLTOZATLAN, hogy a meglévő kliensek (KAPP) a saját ütemükben állhassanak át.
+     */
+    const LEGUJABB_VERZIO = 5;
+
     public function validateVersionMain() {
-        if (!in_array($this->version, array(1, 2, 3, 4))) {
+        // Laza összehasonlítás: a \Request::IntegerRequired() sztringet ad vissza, és a
+        // szigorú változat emiatt a meglévő verziókat is elutasítaná.
+        if (!in_array($this->version, range(1, self::LEGUJABB_VERZIO))) {
             throw new \Exception("Invalid API version.");
         }
 

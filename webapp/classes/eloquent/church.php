@@ -856,7 +856,12 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $f !== null ? date('Y-m-d H:i:s', strtotime($f)) : null;
     }
 
-    public function toAPIArray($length = "minimal", $whenMass = false)
+    /**
+     * @param string    $length     minimal | medium | full | elastic
+     * @param mixed     $whenMass   melyik napra kérjük a miséket
+     * @param int|null  $apiVersion #56: az API-verzió; 5-től strukturált a mise-adat
+     */
+    public function toAPIArray($length = "minimal", $whenMass = false, ?int $apiVersion = null)
     {
 
         if($length == 'elastic') {
@@ -897,6 +902,30 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                     }
                     if($mise->comment) $info .= ' (' . $mise->comment.')';
                     if($info != '') $misek[$key]['informacio'] = $info;
+
+                    /*
+                     * #56: v5-től a nyers adat is kimegy.
+                     *
+                     * Az `informacio` egy előre összerakott MAGYAR mondat (rítus + cím +
+                     * nyelvek + típusok + megjegyzés). A kliens ebből nem tud szűrni,
+                     * nem tud fordítani, és a hosszt sem tudja. Márpedig mindez
+                     * strukturáltan megvan a `cal_masses`-ben — csak eddig nem adtuk ki.
+                     * Ez borazslo kérése: „az egész átadott mise adatok kövessék a nagy
+                     * megújulás calendar típusú új állapotát."
+                     *
+                     * Az `informacio` a v5-ben is MEGMARAD: így a meglévő kliens
+                     * (KAPP) mezőnként állhat át, nem egyszerre kell mindent átírnia.
+                     */
+                    if ($apiVersion !== null && $apiVersion >= 5) {
+                        $misek[$key]['mise_id']    = (int) ($mise->mass_id ?? 0);
+                        $misek[$key]['ritus']      = (string) ($mise->rite ?? '');
+                        $misek[$key]['megnevezes'] = (string) ($mise->title ?? '');
+                        // #334: egy misének több nyelve is lehet — ezért mindig lista.
+                        $misek[$key]['nyelvek']    = array_values($miseLangs);
+                        $misek[$key]['tipusok']    = array_values((array) ($mise->types ?? []));
+                        $misek[$key]['megjegyzes'] = (string) ($mise->comment ?? '');
+                        $misek[$key]['hossz_perc'] = (int) ($mise->duration_minutes ?? 0);
+                    }
                 }	            
             }
         } 
@@ -976,8 +1005,16 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         ];
 
         if($length == 'full') {
-            $return = array_merge($return, [                
-                'photos' => $this->photos->pluck('url')->toArray()                
+            /*
+             * #56: v5-től rövid út a teljes URL helyett — `{templomid}/{fájlnév}`.
+             * A teljes cím minden képnél megismételte ugyanazt az előtagot; a bázis
+             * ismert és állandó: `{domain}/kepek/templomok/`. (borazslo másik ötlete,
+             * az egyedi kép-azonosító, szerveroldali munkát is igényelne — az marad.)
+             */
+            $return = array_merge($return, [
+                'photos' => ($apiVersion !== null && $apiVersion >= 5)
+                    ? $this->photos->map(fn($kep) => $kep->church_id . '/' . $kep->filename)->values()->toArray()
+                    : $this->photos->pluck('url')->toArray()
             ]);
 
         }

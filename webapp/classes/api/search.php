@@ -147,7 +147,8 @@ class Search extends Api {
 			->orderByRaw("FIELD(id, " . implode(',', $ids) . ")")
 			->get()->map->toAPIArray(
                 isset($this->input['response_length']) ? $this->input['response_length'] : (  $this->fields['response_length']['default'] ? $this->fields['response_length']['default'] : false ), 
-                isset($this->input["when"]) ? $this->input["when"] : (  $this->fields['when']['default'] ? $this->fields['when']['default'] : false ));
+                isset($this->input["when"]) ? $this->input["when"] : (  $this->fields['when']['default'] ? $this->fields['when']['default'] : false ),
+                $this->version);
         
         if(count($ids) == count($this->return['templomok'])) {
             $this->return['error'] = 0;
