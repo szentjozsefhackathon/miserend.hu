@@ -74,8 +74,14 @@ class Edit extends \Html\Html {
             return; // Nincs church form, nincs mit menteni
         }
 
-        $allowedFields = ['adminmegj', 'nev',
-            'orszag', 'megye', 'varos', 'cim',
+        /*
+         * #496 / #497 / #498: az `orszag`, `megye` és `varos` KIKERÜLT a menthető
+         * mezők közül. A helyet a koordináta és az OSM-határok adják; a szerkesztő
+         * kaszkádos ország/megye/város választója ezért megszűnt, és ha itt bent
+         * maradnának, egy beküldött űrlap felülírhatná a származtatott adatot azzal,
+         * ami a böngészőben ragadt.
+         */
+        $allowedFields = ['adminmegj', 'nev', 'cim',
             'egyhazmegye', 'espereskerulet', 'plebania', 'pleb_eml',
             'megjegyzes', 'miseaktiv', 'misemegj', 'leiras', 'ok', 'frissites',
             'lat','lon'];
@@ -273,85 +279,19 @@ class Edit extends \Html\Html {
     
     function addFormAdministrative() {
         $options = [0 => 'Válassz/Nem tudom'];
-        $countries = \Illuminate\Database\Capsule\Manager::table('orszagok')
-                        ->select('id', 'nev')
-                        ->orderBy('nev')->get();
-        foreach ($countries as $selectibleCountry) {
-            $options[$selectibleCountry->id] = $selectibleCountry->nev;
-        }
-        $this->form['country'] = array(
-            'type' => 'select',
-            'name' => 'church[orszag]',
-            'id' => 'selectOrszag',
-            'options' => $options,
-            'selected' => $this->church->orszag
-        );
+        /*
+         * #496 / #497 / #498: itt épült a kaszkádos ország -> megye -> város választó
+         * az `orszagok`, `megye` és `varosok` táblákból (75 sor, három egymásba ágyazott
+         * ciklussal, ami országonként és megyénként külön <select>-et gyártott, majd
+         * CSS-sel rejtette el a nem aktuálisakat).
+         *
+         * A hely mostantól a koordinátából és az OSM-határokból jön, tehát nincs mit
+         * választani: a `church/edit.twig` a származtatott elhelyezkedést írja ki.
+         * A választó amúgy is csak azoknál a templomoknál jelent meg, amiknek nem volt
+         * `varos` értékük (`{% if not church.varos %}`), tehát a szerkesztők többsége
+         * sosem találkozott vele.
+         */
 
-        foreach ($countries as $selectibleCountry) {
-            $options = [0 => 'Válassz/Nem tudom'];
-            $counties = \Illuminate\Database\Capsule\Manager::table('megye')
-                            ->select('id', 'megyenev', 'orszag')
-                            ->where('orszag', $selectibleCountry->id)
-                            ->orderBy('megyenev')->get();
-
-            foreach ($counties as $selectibleCounty) {
-                $options[$selectibleCounty->id] = $selectibleCounty->megyenev . " megye";
-                $allCounties[] = $selectibleCounty;
-            }
-
-            $this->form['counties'][$selectibleCountry->id] = array(
-                'type' => 'select',
-                'name' => 'church[megye]',
-                'id' => 'selectMegyeCountry' . $selectibleCountry->id,
-                'class' => 'selectMegyeCountry',
-                'data' => $selectibleCountry->id,
-                'options' => $options,
-                'selected' => $this->church->megye
-            );
-            if ($selectibleCountry->id == $this->church->orszag) {
-                $this->form['counties'][$selectibleCountry->id]['style'] = 'display: inline';
-            } else {
-                $this->form['counties'][$selectibleCountry->id]['style'] = 'display: none';
-                $this->form['counties'][$selectibleCountry->id]['disabled'] = 'disabled';
-            }
-
-            if (count($counties) < 1) {
-                $extra = new \stdClass();
-                $extra->id = 0;
-                $extra->megyenev = '(Nincs megadva)';
-                $extra->orszag = $selectibleCountry->id;
-                $allCounties[] = $extra;
-            }
-        }
-
-        foreach ($allCounties as $selectibleCounty) {
-            $options = [0 => 'Válassz/Nem tudom'];
-            $cities = \Illuminate\Database\Capsule\Manager::table('varosok')
-                            ->select('id', 'nev')
-                            ->where('orszag', $selectibleCounty->orszag)
-                            ->where('megye_id', $selectibleCounty->id)
-                            ->orderBy('nev')->get();
-            foreach ($cities as $selectibleCity) {
-                $options[$selectibleCity->nev] = $selectibleCity->nev;
-            }
-            $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id] = array(
-                'type' => 'select',
-                'name' => 'church[varos]',
-                'id' => 'selectVarosCounty' . $selectibleCounty->orszag . "-" . $selectibleCounty->id,
-                'class' => 'selectVarosCounty',
-                'options' => $options,
-                'selected' => $this->church->varos
-            );
-            if ($selectibleCounty->id == $this->church->megye AND $this->church->orszag == $selectibleCounty->orszag) {
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['style'] = 'display: inline';
-            } else {
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['style'] = 'display: none';
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['disabled'] = 'disabled';
-            }
-        }
-    }
-
-    function addFormReligiousAdministration() {
         $selected = ['diocese' => $this->church->egyhazmegye, 'deanery' => $this->church->espereskerulet];
         $selectReligiousAdministration = \Form::religiousAdministrationSelection($selected);
         $this->form['dioceses'] = $selectReligiousAdministration['dioceses'];
