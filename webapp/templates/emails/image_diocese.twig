@@ -4,9 +4,9 @@ Miserend - Új kép érkezett
 <br/>
 Az egyházmegyéhez tartozó egyik templomhoz új kép érkezett:<br/>
 <a href="{{ domain }}/templom/{{ tid }}">{{ church.fullName }}</a><br/>
-<img src="https://miserend.hu/{{ photo.url }}"><br/>
+<img src="{{ domain }}/{{ photo.url }}"><br/>
 {{ photo.title }}<br/><br/>
-https://miserend.hu{{ photo.url }}
+{{ domain }}{{ photo.url }}
 
 
 <br/><br/><small>Ezt a levelet azért kaptad, mert a <a href="{{ domain }}">Miserend</a> oldalon az egyházmegyei felelősök között szerepelsz és be van kapcsolva a személyes beállításoknál az email értesítések fogadása.

@@ -50,7 +50,16 @@ class Catalogue extends \Html\Html {
             $this->users[$result->uid] = new \User($result->uid);
         }
         $this->field = $field;
-        
+
+        /*
+         * #315: az önkéntesség szerinti rendezésnél külön oszlop és összesítés jár.
+         * A darabszám a lényeg — az egész heti hét templom kampányról addig nem
+         * lehetett megmondani, hányan élnek vele.
+         */
+        $this->showVolunteer = ($this->input['sort'] === 'volunteer desc');
+        if ($this->showVolunteer) {
+            $this->volunteerCount = DB::table('user')->where('volunteer', 1)->count();
+        }
     }
 
     function buildForm() {
@@ -63,7 +72,9 @@ class Catalogue extends \Html\Html {
             'lastactive desc' => 'utolsó aktivitás',
             'regdatum desc' => 'regisztracio',
             'templomok desc' => 'ellátott templomok',
-			'favorites desc' => 'kedvenc templomok'
+			'favorites desc' => 'kedvenc templomok',
+			// #315: enélkül sehol nem látszott, hányan vállalják a heti hét templomot.
+			'volunteer desc' => 'önkéntesség'
         ];
 
         $this->form = array(
