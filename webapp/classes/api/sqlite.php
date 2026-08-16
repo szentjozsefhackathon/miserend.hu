@@ -129,20 +129,6 @@ class Sqlite extends Api {
         }
     }
 
-    function getDatabaseToArray() {
-        if (!isset($this->sqlite)) {
-            throw new \Exception('There is no Sqlite connection to make it an array.');
-        }
-        $array = [];
-        $tables = $this->sqlite->table('sqlite_master')->select('name')->get();
-        foreach ($tables as $table) {
-            $rows = $this->sqlite->table($table->name)->get();
-            foreach ($rows as $row) {
-                $array[$table->name][] = (array) $row;
-            }
-        }
-        return $array;
-    }
 
     function generateSqlite() {
         echo "Sqlite is beginning right now...";

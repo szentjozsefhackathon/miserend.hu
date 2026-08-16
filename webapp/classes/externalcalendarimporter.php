@@ -1,61 +1,6 @@
 <?php
 
-/**
- * Detect and convert content to UTF-8
- * Handles charset from headers and validates UTF-8
- *
- * @param string $content Raw content from download
- * @param string $contentType HTTP Content-Type header (optional)
- * @return string UTF-8 encoded content
- * @throws \Exception
- */
-function ensureUtf8($content, $contentType = '') {
-    // 1. Extract charset from Content-Type header if provided
-    $charset = 'UTF-8';
-    if (!empty($contentType) && preg_match('/charset\s*=\s*([^\s;]+)/i', $contentType, $matches)) {
-        $charset = strtoupper(trim($matches[1], '"\''));
-    }
-    
-    // 2. Remove UTF-8 BOM if present
-    if (substr($content, 0, 3) === "\xEF\xBB\xBF") {
-        $content = substr($content, 3);
-    }
-    
-    // 3. Convert to UTF-8 if not already
-    if ($charset !== 'UTF-8' && $charset !== 'UTF8') {
-        $content = iconv($charset, 'UTF-8//IGNORE', $content);
-        if ($content === false) {
-            throw new \Exception("Failed to convert charset from $charset to UTF-8");
-        }
-    }
-    
-    // 4. Validate and sanitize UTF-8
-    if (!mb_check_encoding($content, 'UTF-8')) {
-        // Remove invalid UTF-8 sequences
-        $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
-    }
-    
-    return $content;
-}
 
-/**
- * Sanitize string for database storage
- * Ensures valid UTF-8 encoding without null bytes or control characters
- *
- * @param string $text
- * @return string
- */
-function sanitizeUtf8($text) {
-    // Remove null bytes
-    $text = str_replace("\0", '', $text);
-    
-    // Validate/fix UTF-8
-    if (!mb_check_encoding($text, 'UTF-8')) {
-        $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
-    }
-    
-    return trim($text);
-}
 
 /**
  * External Calendar Importer

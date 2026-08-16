@@ -1676,12 +1676,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $access;
     }
 
-    function MgetDioceseId() {
-        if($this->religious_administratin)
-            return $this->religious_administration->diocese->id;
-        else 
-            return false;
-    }
 	
     public function boundaries()
     {

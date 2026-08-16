@@ -206,19 +206,6 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		return $this->responseCode == 200;
 	}
 
-	function deleteIndex($name) {
-
-		$this->curl_setopt(CURLOPT_CUSTOMREQUEST ,"DELETE");
-		$this->buildQuery($name);
-		$this->run();
-
-		if($this->responseCode != 200)
-			return false;
-		if(!isset($this->jsonData->acknowledged) OR $this->jsonData->acknowledged != 1)
-			return false;
-		
-		return true;
-	}
 	
 	/**
 	 * #374: Az ES _bulk NDJSON-payload összeállítása. Tömb-elemeket json_encode-ol,

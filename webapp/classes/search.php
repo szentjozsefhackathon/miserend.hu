@@ -490,9 +490,6 @@ class Search {
         $this->timeRange($whenDate."T00:00", $whenDate."T23:59");
     }
 
-    function addSortBy($field, $order = 'asc') {
-        $this->sort[] = [ $field => [ "order" => $order ] ];
-    }
 
     /**
      * Execute the search and return results.
