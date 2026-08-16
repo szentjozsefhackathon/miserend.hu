@@ -182,16 +182,36 @@ class Distance {
             return $counter;
     }
 
-    // #172: a szomszédság-számítás ne dőljön el a Mapquesten. Ha a road-distance
-    // elérhető (van kulcs, nincs rate-limit), azt adjuk vissza; egyébként a
-    // légvonalbeli (haversine) rawDistance-re esünk vissza. Így a feature mindig
-    // frissül, a Mapquest csak opcionális felminősítés.
-    // #526: visszaadja a távolságot ÉS a minőségét ('road' => true, ha Mapquest
+    // #172: a szomszédság-számítás ne dőljön el az útvonaltervezőn. Ha a
+    // road-distance elérhető, azt adjuk vissza; egyébként a légvonalbeli
+    // (haversine) rawDistance-re esünk vissza. Így a feature mindig frissül, az
+    // útvonal-távolság csak opcionális felminősítés.
+    // #526: visszaadja a távolságot ÉS a minőségét ('road' => true, ha
     // útvonal-távolság; false, ha csak légvonal). A hívó ez alapján állítja a
     // distances.toupdate flaget (1 = később útvonalra frissítendő).
+    //
+    // #673: a SAJÁT OSRM-et kérdezzük először. Az OSRM kifejezetten azért került a
+    // compose-ba, hogy ne függjünk idegen szolgáltatótól, kulcstól és kvótától — a
+    // bekötése viszont elmaradt, és az OsrmApi::routeDistance() docblockja azóta is
+    // azt állította, hogy ez a metódus a hívója. Nem ez volt: ide egyedül a Mapquest
+    // jutott el. Mostantól a sorrend OSRM -> Mapquest -> légvonal.
+    //
+    // Az OSRM opcionális (`docker compose --profile osrm up -d`), és ha nincs
+    // beállítva, a routeDistance() null-t ad — ilyenkor a viselkedés bitre azonos
+    // marad a korábbival.
     function resolveDistance($pointFrom, $pointTo, $rawDistance) {
         try {
-            $mapquest = new \ExternalApi\MapquestApi();
+            $osrm = $this->osrmApi();
+            $osrmDistance = $osrm->routeDistance($pointFrom, $pointTo);
+            if ($osrmDistance !== null && $osrmDistance > 0) {
+                return ['distance' => $osrmDistance, 'road' => true];
+            }
+        } catch (\Throwable $e) {
+            // nincs OSRM vagy bármilyen hiba -> jöhet a Mapquest
+        }
+
+        try {
+            $mapquest = $this->mapquestApi();
             $mapquestDistance = $mapquest->distance($pointFrom, $pointTo);
             if ($mapquestDistance > 0) {
                 return ['distance' => $mapquestDistance, 'road' => true];
@@ -200,6 +220,19 @@ class Distance {
             // nincs Mapquest-kulcs vagy bármilyen hiba -> marad a légvonal
         }
         return ['distance' => $rawDistance, 'road' => false];
+    }
+
+    /**
+     * A két útvonaltervező példányosítása külön metódusban, hogy a teszt le tudja
+     * cserélni őket. Enélkül a sorrend (OSRM -> Mapquest -> légvonal) csak éles
+     * szolgáltatásokkal lenne mérhető, és pont az nem derülne ki, hogy melyik nyer.
+     */
+    protected function osrmApi(): \ExternalApi\OsrmApi {
+        return new \ExternalApi\OsrmApi();
+    }
+
+    protected function mapquestApi(): \ExternalApi\MapquestApi {
+        return new \ExternalApi\MapquestApi();
     }
 
     function getRawDistance($pointFrom, $pointTo) {
