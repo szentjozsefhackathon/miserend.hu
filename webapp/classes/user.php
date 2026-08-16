@@ -576,9 +576,12 @@ class User {
                 $user2delete = new User($result->uid);
                 $user2delete->delete();
                 $countDeleted++;
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
+                // \Throwable, nem \Exception: PHP 8-ban a TypeError és társai \Error-ok,
+                // amiket a szűkebb catch nem fog el — ez a job pont ilyentől állt hónapokig
+                // (#239). A hibát naplózzuk is, különben a cron-oldalon kívül nyoma sem marad.
+                logThrowable('deleteNonActivatedUsers (uid: '.$result->uid.')', $e);
                 addMessage('Nem sikerül törölni a felhasználót: '.$result->uid, 'error');
-                echo "Nem sikerült törölni a felhasználót: ".$result->uid." ".$result->email." ".$result->nev." ".$result->regdatum." ".$result->lastlogin." ".$result->jogok." ".print_r($result,1)." ";                
                 continue;
             }
             
