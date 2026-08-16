@@ -7,8 +7,13 @@
 {% block extraHead %}
     <script src="/js/unified-autocomplete.js"></script>
     {% if nearbyOrigin %}
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+        {# A Leaflet HELYBEN van (package.json: "leaflet": "1.9.*", telepítve 1.9.4) — pont
+           ugyanaz a verzió, amit eddig az unpkg-ról húztunk. A külső <link>/<script>
+           viszont BLOKKOLJA az oldal betöltését: amíg meg nem jön, a lap nem készül el.
+           A böngészős tesztek pont ilyen beakadásokon vesztek el, és élesben ugyanez a
+           kockázat — a keresőoldal egy idegen CDN elérhetőségén múlott. #}
+        <link rel="stylesheet" href="/node_modules/leaflet/dist/leaflet.css"/>
+        <script src="/node_modules/leaflet/dist/leaflet.js"></script>
     {% endif %}
     <script>
         window.boundaryDataFromUrl = {{ boundaryDataJson|raw|default('[]') }};
