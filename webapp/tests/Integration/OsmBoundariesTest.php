@@ -15,6 +15,9 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class OsmBoundariesTest extends TestCase {
 
+    /** @var array<int,int> a setUp előtt aktív templomok azonosítói */
+    private array $eredetilegAktiv = [];
+
     /** @var int ID of the primary test church inserted in setUp */
     private int $testChurchId;
 
@@ -32,6 +35,16 @@ class OsmBoundariesTest extends TestCase {
         // őket. Ezért ok='n'-re állítjuk: a checkBoundaries ELSŐ szűrője where('ok','i'),
         // így a seed teljesen kiesik. Csak a lentebb beszúrt (ok='i') fixture-ök maradnak.
         // A tranzakció a tearDown-ban visszagördül, a seed érintetlen marad.
+        //
+        // …ELVILEG. MySQL/MariaDB alatt a DDL IMPLICIT COMMITOT okoz: ha a futás során
+        // bárhol lefut egy ALTER/CREATE, a nyitott tranzakció csendben lezárul, és a
+        // tearDown rollBack()-je már nem csinál semmit. Ilyenkor ez a WHERE nélküli
+        // tömeges UPDATE a teljes seedet letiltva hagyja — 5050 templom tűnik el a
+        // fejlesztői adatbázisból, hiba és jelzés nélkül. Pontosan ez történt velem.
+        //
+        // Ezért feljegyezzük, kik voltak aktívak, és a tearDown vissza is állítja őket,
+        // ha a visszagördülés elmaradt.
+        $this->eredetilegAktiv = DB::table('templomok')->where('ok', 'i')->pluck('id')->all();
         DB::table('templomok')->update(['ok' => 'n']);
 
         $this->testChurchId = $this->insertChurch([
@@ -45,6 +58,22 @@ class OsmBoundariesTest extends TestCase {
 
     protected function tearDown(): void {
         DB::rollBack();
+
+        /*
+         * Biztonsági háló a fenti WHERE nélküli UPDATE alá. Ha a rollBack() megtette a
+         * dolgát, ez a lekérdezés nem talál semmit, és nem is ír. Ha viszont a
+         * tranzakció egy implicit commit miatt már lezárult, itt állítjuk helyre a
+         * seedet — a fejlesztő ne azzal szembesüljön, hogy üres lett a kereső.
+         */
+        $hianyzo = array_values(array_diff(
+            $this->eredetilegAktiv,
+            DB::table('templomok')->where('ok', 'i')->pluck('id')->all()
+        ));
+
+        if ($hianyzo !== []) {
+            DB::table('templomok')->whereIn('id', $hianyzo)->update(['ok' => 'i']);
+        }
+
         parent::tearDown();
     }
 
