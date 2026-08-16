@@ -1993,6 +1993,13 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         if (mass && mass.comment) comment = mass.comment;
       }
 
+      /*
+       * #431: az alkalom saját helyszíne. borazslo kérése, hogy a listás, heti és havi
+       * nézetben is LÁTSZÓDJON, ha a mise nem a templomban van — enélkül a szabadtéri
+       * alkalom ugyanúgy néz ki, mint a templomi, és a hívő rossz helyre megy.
+       */
+      const ownLocation = MassUtil.hasOwnLocation(mass) ? MassUtil.locationLabel(mass) : null;
+
       const flagMap: Record<string, string> = { hu: '🇭🇺', en: '🇬🇧', de: '🇩🇪', sk: '🇸🇰', ro: '🇷🇴' };
 
       let flagHtml = '';
@@ -2025,12 +2032,20 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         commentHtml = `<span class="material-icons" title="${escaped}" style="height:22px; font-size:22px; vertical-align:middle;">info</span>`;
       }
 
+      // #431: helyszín-jel. Ugyanaz a ligatúra-technika, mint a megjegyzésnél: nyers
+      // HTML-ben az Angular direktívák (matTooltip) nem futnak le, marad a `title`.
+      let locationHtml = '';
+      if (ownLocation) {
+        const cimke = this.translateService.instant('DIFFERENT_LOCATION_BADGE', {place: ownLocation});
+        locationHtml = `<span class="material-icons mcal-location-icon" title="${escapeAttr(cimke)}" style="height:18px; font-size:18px; vertical-align:top;">place</span>`;
+      }
+
       // For list views build a list-style row (with optional flag)
       if (isListView) {
         // Render the Angular template into DOM nodes and serialize to HTML so translation pipes
         // and other Angular bindings work.
         if (this.eventListTemplateRef && this.eventListTemplateContainer) {
-          const ctx = { timeText: info.timeText || '', title: info.event.title || '', lang: lang, types: types, comment: comment };
+          const ctx = { timeText: info.timeText || '', title: info.event.title || '', lang: lang, types: types, comment: comment, ownLocation: ownLocation };
           const view: EmbeddedViewRef<any> = this.eventListTemplateContainer.createEmbeddedView(this.eventListTemplateRef, ctx);
           view.detectChanges();
           // serialize root nodes
@@ -2080,7 +2095,15 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           (lang && this.languagesOf(lang).some(l => this.shouldShowFlag(l))) ||
           (Array.isArray(types) && types.length > 0) ||
           !!comment;
-        return { html: shouldShowDetails ? `${monthHtml} ${detailsHtml}` : monthHtml };
+        /*
+         * #431: a helyszín-jel a havi nézetben is KIÜL, nem az `info` mögé bújik.
+         *
+         * A többi ikon (zászló, típus, megjegyzés) itt szándékosan összecsuklik egy
+         * „további információ" jelbe, mert a havi rács szűk. A helyszín viszont nem
+         * árnyalat: aki nem veszi észre, rossz helyre megy. Ezért kap saját jelet.
+         */
+        const monthTail = `${locationHtml}${shouldShowDetails ? ' ' + detailsHtml : ''}`;
+        return { html: monthTail !== '' ? `${monthHtml} ${monthTail}` : monthHtml };
       }
 
       // #358: az ikonok az IDŐ sorába kerülnek, nem a cím mellé.
@@ -2091,7 +2114,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       // levágtuk őket, egyszerűen eltűntek. Az idő („18:00") viszont rövid — ott
       // elférnek mellette, és a cím kap egy saját, teljes sort.
       const combinedHtml =
-        `<span class="mcal-event-head">${timeHtml}${flagHtml}${typesHtml}${commentHtml}</span>`
+        `<span class="mcal-event-head">${timeHtml}${flagHtml}${typesHtml}${commentHtml}${locationHtml}</span>`
         + `<span class="fc-event-title-wrap">${titleHtml}</span>`;
       return { html: combinedHtml };
     } catch (e) {
@@ -2365,6 +2388,10 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         flag: flag,
         types: m.types ? m.types : [],
         comment: m.comment,
+        // #431: az alkalom saját helyszíne — a mise-listában is látszania kell, hogy
+        // a szerkesztő egy pillantásból lássa, melyik alkalom nincs a templomban.
+        ownLocation: MassUtil.hasOwnLocation(m) ? MassUtil.locationLabel(m) : null,
+        ownLocationUrl: MassUtil.hasOwnLocation(m) ? MassUtil.locationOsmUrl(m) : null,
         // #592: külső naptárból importált liturgia — a listában jelöljük, és nem szerkeszthető.
         imported: !!m.imported,
         // #428: a mise-listában az auto + kézi kizárt időszakok UNIÓJA jelenjen meg

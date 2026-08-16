@@ -18,6 +18,7 @@ import {PeriodService} from '../../services/period.service';
 import {AsyncPipe, TitleCasePipe, CommonModule} from '@angular/common';
 import {map, Observable, of, startWith} from 'rxjs';
 import {MatSelectModule} from '@angular/material/select';
+import {MatCheckboxModule} from '@angular/material/checkbox';
 import {recurrences, Renum} from '../../enum/recurrence';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
 import {Rite, RiteMassTypes} from '../../enum/rites';
@@ -57,6 +58,7 @@ import {ChristmasDay} from "../../enum/christmas-day";
     AsyncPipe,
     ReactiveFormsModule,
     MatSelectModule,
+    MatCheckboxModule,
     TranslatePipe,
     TitleCasePipe,
     MatExpansionModule,
@@ -79,6 +81,29 @@ export class AddFullEventDialogComponent {
   // értéke periodId-kből álló tömb, ami a Mass.manualExperiod-be megy mentéskor
   // (KÜLÖN az automatikusan számolt experiod-tól, hogy az automatikák ne töröljék).
   experiodCtr = new FormControl<number[]>(this.data.event.manualExperiod ?? []);
+
+  /**
+   * #431: eltérő helyszín kapcsoló.
+   *
+   * Nyitáskor abból derül ki, hogy be van-e kapcsolva, hogy van-e már koordináta —
+   * így a meglévő alkalmak szerkesztésekor magától kinyílik a blokk.
+   */
+  elteroHelyszin = this.data.event.locationLat != null && this.data.event.locationLon != null;
+
+  /**
+   * Kikapcsoláskor TÖRÖLJÜK a mezőket.
+   *
+   * Enélkül a kikapcsolt jelölő mellett is elmenne a koordináta, és a mise némán egy
+   * régi, elfelejtett helyszínen maradna — pont az a fajta hiba, amit senki nem néz
+   * meg, mert a felületen már nem is látszik.
+   */
+  onElteroHelyszinValtozott(): void {
+    if (!this.elteroHelyszin) {
+      this.data.event.locationLat = null;
+      this.data.event.locationLon = null;
+      this.data.event.locationName = null;
+    }
+  }
 
   // #454: Új dátum hozzáadásához használt ideiglenes változó
   public newExceptionDate: Date | null = null;

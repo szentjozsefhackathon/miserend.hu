@@ -31,4 +31,12 @@ export interface DialogEvent {
   experiod?: number[] | null;
   // #428: a felhasználó által kézzel beállított kivétel-időszakok
   manualExperiod?: number[] | null;
+
+  /**
+   * #431: az alkalom saját helyszíne, ha nem a templomban van.
+   * Üresen hagyva a mise a templomban marad.
+   */
+  locationLat?: number | null;
+  locationLon?: number | null;
+  locationName?: string | null;
 }

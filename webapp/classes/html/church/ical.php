@@ -150,6 +150,28 @@ class Ical extends \Html\Html {
             $lines[] = 'COLOR:' . $this->escapeString($mass['color']);
         }
 
+        /*
+         * #431: az alkalom SAJÁT helyszíne, ha nem a templomban van.
+         *
+         * A használati eset: „Röszke plébánia biciklitúrát szervez időnként, és van
+         * mise valami random pusztai helyen." Ilyenkor a naptárba felvett esemény
+         * helye NEM a templom — épp ez a lényeg, hiszen a látogatónak oda kell mennie.
+         *
+         * A GEO az iCal szabvány szerint `szélesség;hosszúság`, tizedesponttal. A
+         * LOCATION a megnevezés, ha van; enélkül a naptáralkalmazások a koordinátát
+         * mutatják, ami használható, csak csúnya.
+         */
+        if (!empty($mass['location_lat']) && !empty($mass['location_lon'])) {
+            $lines[] = sprintf('GEO:%s;%s',
+                rtrim(rtrim(number_format((float) $mass['location_lat'], 6, '.', ''), '0'), '.'),
+                rtrim(rtrim(number_format((float) $mass['location_lon'], 6, '.', ''), '0'), '.')
+            );
+
+            if (!empty($mass['location_name'])) {
+                $lines[] = 'LOCATION:' . $this->escapeString($mass['location_name']);
+            }
+        }
+
         // RRULE and EXDATE
         if (!empty($mass['rrule'])) {
             $rrInput = $mass['rrule'];

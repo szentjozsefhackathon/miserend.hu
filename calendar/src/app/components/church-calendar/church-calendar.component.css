@@ -244,3 +244,34 @@
   vertical-align: middle;
   cursor: help;
 }
+
+/* #431: az alkalom saját helyszíne — jel a naptárban és a mise-listában.
+   A színt szándékosan nem a szöveghez igazítom: pont az a lényeg, hogy KIÜSSÖN. */
+/* ::ng-deep, mert a heti/havi nézetbe a FullCalendar NYERS HTML-ként teszi be az
+   ikont — azon nincs `_ngcontent` bélyeg, tehát a scoped szabály nem fogná meg.
+   Ugyanez a technika, mint a fenti `.fc-timegrid-event .type-icon`-nál. */
+::ng-deep .mcal-location-icon {
+  color: #b8500a;
+  font-size: 18px;
+  height: 18px;
+  width: 18px;
+  vertical-align: middle;
+}
+.mcal-location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  color: #b8500a;
+  text-decoration: none;
+  cursor: pointer;
+}
+.mcal-location-badge:hover { text-decoration: underline; }
+/* A listás nézetben a NÉV is kifér; a szűk rácsokban csak az ikon marad. */
+.mcal-location-name {
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14em;
+}

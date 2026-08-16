@@ -69,7 +69,15 @@ export class MassUtil {
       // Az auto `experiod`-ot ezután az exclude*PeriodMasses* helper-ek építik fel.
       ...(dialogEvent.manualExperiod && dialogEvent.manualExperiod.length > 0 && {manualExperiod: [...dialogEvent.manualExperiod]}),
       lang: MassUtil.languageCodesToLang(dialogEvent.language),
-      comment: dialogEvent.comment
+      comment: dialogEvent.comment,
+      // #431: az alkalom saját helyszíne. Csak akkor küldjük, ha MINDKÉT koordináta
+      // megvan — fél koordinátával nem lehet térképre tenni, és a féligkész adat
+      // rosszabb, mint a hiányzó.
+      ...(dialogEvent.locationLat != null && dialogEvent.locationLon != null && {
+        locationLat: dialogEvent.locationLat,
+        locationLon: dialogEvent.locationLon,
+        locationName: dialogEvent.locationName ?? null,
+      })
     };
   }
 
@@ -319,7 +327,11 @@ export class MassUtil {
       exdate: mass.exdate,
       experiod: mass.experiod,
       // #428: a kézi kivétel-időszakok visszatöltése a dialógus multiselectjébe
-      manualExperiod: mass.manualExperiod
+      manualExperiod: mass.manualExperiod,
+      // #431: a saját helyszín visszatöltése a szerkesztőbe
+      locationLat: mass.locationLat ?? null,
+      locationLon: mass.locationLon ?? null,
+      locationName: mass.locationName ?? null
     };
   }
 
@@ -456,6 +468,40 @@ export class MassUtil {
   public static languageCodesToLang(codes: LanguageCode[] | null | undefined): string {
     const unique = Array.from(new Set(codes ?? []));
     return unique.length > 0 ? unique.join(',') : LanguageCode.HU;
+  }
+
+  /**
+   * #431: van-e az alkalomnak SAJÁT helyszíne, a templomtól eltérő koordinátával?
+   *
+   * Fél koordináta nem helyszín: térképre sem lehet tenni, és a féligkész adatból
+   * félrevezető jelzés lenne. A szerver ugyanezt a szabályt alkalmazza mentéskor.
+   */
+  public static hasOwnLocation(mass: Mass | null | undefined): boolean {
+    return mass?.locationLat != null && mass?.locationLon != null;
+  }
+
+  /**
+   * #431: mit írjunk a helyszín-jelre — a megadott nevet, ha van, egyébként a
+   * koordinátát. Név nélkül is meg kell tudni különböztetni két szabadtéri alkalmat.
+   */
+  public static locationLabel(mass: Mass): string {
+    const nev = (mass.locationName ?? '').trim();
+    if (nev !== '') {
+      return nev;
+    }
+    return `${Number(mass.locationLat).toFixed(5)}, ${Number(mass.locationLon).toFixed(5)}`;
+  }
+
+  /**
+   * #431: OpenStreetMap-hivatkozás a helyszín koordinátáira (borazslo kérése).
+   *
+   * Az `mlat`/`mlon` teszi ki a jelölőt, a `#map=` pedig odazoomol — jelölő nélkül a
+   * link csak egy térképkivágás lenne, ami pont a lényeget, a PONTOT hagyja el.
+   */
+  public static locationOsmUrl(mass: Mass): string {
+    const lat = Number(mass.locationLat).toFixed(6);
+    const lon = Number(mass.locationLon).toFixed(6);
+    return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
   }
 
   public static getRenumByMass(mass: Mass): Renum {

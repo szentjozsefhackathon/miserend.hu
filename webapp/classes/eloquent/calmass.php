@@ -29,6 +29,26 @@ class CalMass extends CalModel
         'exdate',
         'lang',
         'comment',
+        /*
+         * #431: az alkalom SAJÁT helyszíne, ha nem a templomban van.
+         *
+         * vlacko0930 kérése: „Jó lenne, ha templomtól távoleső szabadtéri alkalmakat
+         * lehetne templom nélkül is felvenni pl koordinátákkal." A használati eset:
+         * „Röszke plébánia biciklitúrát szervez időnként, és van mise valami random
+         * pusztai helyen."
+         *
+         * A helyet ezért az ALKALOMHOZ kötjük, nem új misézőhelyhez. Így a mise a
+         * szervező plébániáé marad (van gazdája, van gondnoka, oda tartozik), és nem
+         * keletkezik minden szabadtéri alkalomból egy örökre ottmaradó, mise nélküli
+         * pont a térképen. borazslo kérdéseire is ez válaszol:
+         * „ki hozhat létre" -> a plébánia gondnoka, a saját miséjéhez;
+         * „mi legyen az elmúlt eseményekkel" -> ugyanaz, mint bármely elmúlt misével.
+         *
+         * Mindhárom mező opcionális: ha nincs kitöltve, a mise a templomban van.
+         */
+        'location_lat',
+        'location_lon',
+        'location_name',
     ];
 
     protected $casts = [
@@ -45,7 +65,47 @@ class CalMass extends CalModel
         'exdate' => 'array',     // JSON
         'lang' => 'string',
         'comment' => 'string',
+        // #431: az alkalom saját helyszíne; null = a templomban van
+        'location_lat' => 'float',
+        'location_lon' => 'float',
+        'location_name' => 'string',
     ];
+
+    /**
+     * #431: van-e az alkalomnak SAJÁT helyszíne, a templomtól eltérő?
+     *
+     * Csak akkor, ha mindkét koordináta megvan — fél koordinátával nem lehet
+     * térképre tenni, és a féligkész adat rosszabb, mint a hiányzó.
+     */
+    public function hasOwnLocation(): bool {
+        return $this->location_lat !== null && $this->location_lon !== null
+            && (float) $this->location_lat !== 0.0 && (float) $this->location_lon !== 0.0;
+    }
+
+    /**
+     * #431: az alkalom tényleges helyszíne — a sajátja, ha van, egyébként a templomé.
+     *
+     * @return array{lat: ?float, lon: ?float, name: ?string, sajat: bool}
+     */
+    public function effectiveLocation(): array {
+        if ($this->hasOwnLocation()) {
+            return [
+                'lat' => (float) $this->location_lat,
+                'lon' => (float) $this->location_lon,
+                'name' => $this->location_name !== '' ? $this->location_name : null,
+                'sajat' => true,
+            ];
+        }
+
+        $templom = $this->church_id ? \Eloquent\Church::find($this->church_id) : null;
+
+        return [
+            'lat' => $templom && $templom->lat ? (float) $templom->lat : null,
+            'lon' => $templom && $templom->lon ? (float) $templom->lon : null,
+            'name' => $templom->nev ?? null,
+            'sajat' => false,
+        ];
+    }
 
     protected $primaryKey = 'id';
     protected $keyType = 'int';
@@ -217,6 +277,12 @@ class CalMass extends CalModel
                             'types' => $mass->types,
                             'rite' => $mass->rite,
                             'duration_minutes' => $durationMinutes,
+                            // #431: az alkalom saját helyszíne, ha nem a templomban van.
+                            // A generált példány viszi tovább, hogy az iCal, az API és a
+                            // kereső is a valódi helyszínt tudja mutatni.
+                            'location_lat' => $mass->location_lat,
+                            'location_lon' => $mass->location_lon,
+                            'location_name' => $mass->location_name,
                             'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                             'comment' => $mass->comment,
                         ];
@@ -332,6 +398,9 @@ class CalMass extends CalModel
                             'types' => $mass->types,
                             'rite' => $mass->rite,
                             'duration_minutes' => $durationMinutes,
+                            'location_lat' => $mass->location_lat,
+                            'location_lon' => $mass->location_lon,
+                            'location_name' => $mass->location_name,
                             'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                             'comment' => $mass->comment,
                         ];
@@ -615,6 +684,9 @@ class CalMass extends CalModel
                         'types' => $mass->types,
                         'title' => $mass->title,
                         'duration_minutes' => $durationMinutes,
+                        'location_lat' => $mass->location_lat,
+                        'location_lon' => $mass->location_lon,
+                        'location_name' => $mass->location_name,
                         'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                         'comment' => $mass->comment,
                         'rrule' => $rrule,
@@ -678,6 +750,9 @@ class CalMass extends CalModel
                     'types' => $mass->types,
                     'title' => $mass->title,
                     'duration_minutes' => self::durationInMinutes($mass->duration),
+                    'location_lat' => $mass->location_lat,
+                    'location_lon' => $mass->location_lon,
+                    'location_name' => $mass->location_name,
                     'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                     'comment' => "extra ".$mass->comment,
                     'rrule' => $mass->rrule, 

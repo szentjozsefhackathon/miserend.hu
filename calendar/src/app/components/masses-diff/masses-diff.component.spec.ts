@@ -91,4 +91,43 @@ describe('MassesDiffComponent', () => {
 
     expect(component.experiodChanged).toBeTrue();
   });
+
+  // ---- #431: helyszín-változás ------------------------------------------------
+
+  /**
+   * borazslo kérése: a „Javasolt változások" összefoglalóban a módosított miséknél
+   * jelenjen meg a helyszín is. Az üres érték olvasható alakja „a templomban" —
+   * üres cella mellett nem derülne ki, hogy a mise VISSZAKERÜLT a templomba.
+   */
+  function helyszinSor(): string {
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  it('a helyszín felvételét megmutatja', () => {
+    component.origMass = mise();
+    component.newMass = {...mise(), ownLocation: 'Röszkei puszta'};
+
+    fixture.detectChanges();
+
+    expect(helyszinSor()).toContain('Helyszín:');
+    expect(helyszinSor()).toContain('Röszkei puszta');
+  });
+
+  it('a templomba visszakerülést is megmutatja', () => {
+    component.origMass = {...mise(), ownLocation: 'Röszkei puszta'};
+    component.newMass = mise();
+
+    fixture.detectChanges();
+
+    expect(helyszinSor()).toContain('a templomban');
+  });
+
+  it('változatlan helyszínnél nem ír ki semmit', () => {
+    component.origMass = {...mise(), ownLocation: 'Röszkei puszta'};
+    component.newMass = {...mise(), ownLocation: 'Röszkei puszta'};
+
+    fixture.detectChanges();
+
+    expect(helyszinSor()).not.toContain('Helyszín:');
+  });
 });
