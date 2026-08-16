@@ -41,6 +41,8 @@ class Path {
             // hogy a kliens-oldali kód ne törjön a refactor után.
             ["^calendar\/(.+)$", "ajax/calendar/$1"],
             ["^templom\/([0-9]{1,5})\/widget$", "church/widget/$1"],
+            // #36: nyomtatható miserend a templom ajtajára / plébániai sokszorosításra.
+            ["^templom\/([0-9]{1,5})\/nyomtat$", "church/nyomtat/$1"],
             ["^templom\/([0-9]{1,5})\/javaslatok$", "church/suggestionpackages/$1"],
             ["^templom\/([0-9]{1,5})\/eszrevetelek$", "remark/list/$1"],
             ["^templom\/([0-9]{1,5})\/ujeszrevetel$", "remark/addform/$1"],

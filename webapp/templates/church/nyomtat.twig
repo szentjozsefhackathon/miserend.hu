@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ church.nev }} — miserend</title>
+<style>
+/*
+ * #36: nyomtatásra tervezve, idős szemnek.
+ *
+ * A lap a templom ajtajára kerül vagy kézbe. Ezért: nagy betű, tiszta fekete-fehér
+ * (szürke szöveg fénymásolat után olvashatatlan), semmi ikon, semmi kép, semmi
+ * színkód — amit nem lehet felolvasni, az papíron nem információ.
+ *
+ * A4 álló, 15 mm margóval: ez fér be a plébániák nyomtatóiba, és A3-ra is felnagyítható
+ * torzulás nélkül. Ha a tartalom hosszabb, a második oldalra folyik — jobb, mint
+ * kicsire zsugorítani.
+ */
+:root { --alap: 12.5pt; }
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: var(--alap);
+    line-height: 1.5;
+    color: #000;
+    background: #fff;
+    margin: 0;
+    padding: 15mm;
+    max-width: 210mm;
+}
+
+h1 {
+    font-size: 22pt;
+    line-height: 1.2;
+    margin: 0 0 2mm;
+}
+
+.patrocinium { font-size: 14pt; margin: 0 0 3mm; }
+.hely { font-size: 12.5pt; margin: 0 0 6mm; }
+
+.ervenyesseg {
+    border: 1.5pt solid #000;
+    padding: 3mm 4mm;
+    margin: 0 0 7mm;
+    font-size: 12.5pt;
+}
+.ervenyesseg strong { font-size: 13.5pt; }
+
+h2 {
+    font-size: 15pt;
+    margin: 7mm 0 3mm;
+    padding-bottom: 1mm;
+    border-bottom: 1pt solid #000;
+}
+
+table { border-collapse: collapse; width: 100%; }
+td { padding: 2mm 3mm 2mm 0; vertical-align: baseline; }
+
+/* A nap neve kapja a hangsúlyt: a szem ezt keresi először. */
+.nap {
+    font-weight: bold;
+    font-size: 14pt;
+    white-space: nowrap;
+    width: 32mm;
+}
+/* Az időpont a második legfontosabb — ezért nagyobb, mint a cím. */
+.ido {
+    font-weight: bold;
+    font-size: 14pt;
+    white-space: nowrap;
+    width: 20mm;
+}
+.cim { font-size: 12.5pt; }
+.datum { white-space: nowrap; width: 46mm; font-weight: bold; }
+
+tr + tr .nap, tr + tr .datum { border-top: 0.5pt solid #999; }
+tbody tr td { border-top: 0.5pt solid #ccc; }
+tbody tr:first-child td { border-top: 0; }
+
+.megjegyzes { margin: 5mm 0 0; }
+
+footer {
+    margin-top: 9mm;
+    padding-top: 3mm;
+    border-top: 1pt solid #000;
+    font-size: 10.5pt;
+}
+
+.nincs { font-style: italic; }
+
+/* Képernyőn: egy gomb, ami papíron nem jelenik meg. */
+.nyomtatas-gomb {
+    display: inline-block;
+    margin-bottom: 6mm;
+    padding: 2mm 5mm;
+    font: inherit;
+    font-size: 12pt;
+    border: 1.5pt solid #000;
+    background: #fff;
+    cursor: pointer;
+}
+
+@media print {
+    body { padding: 0; }
+    .nyomtatas-gomb { display: none; }
+    /* A napok sorai ne törjenek ketté oldalhatáron. */
+    tr { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+}
+
+@page { size: A4 portrait; margin: 15mm; }
+</style>
+</head>
+<body>
+
+<button class="nyomtatas-gomb" onclick="window.print()">Nyomtatás</button>
+
+<h1>{{ church.nev }}</h1>
+{% if church.ismertnev %}<p class="patrocinium">{{ church.ismertnev }}</p>{% endif %}
+<p class="hely">
+    {{ church.varos }}{% if church.cim %}, {{ church.cim }}{% endif %}
+    {% if plebaniaSzoveg %}<br>{{ plebaniaSzoveg|nl2br }}{% endif %}
+</p>
+
+<div class="ervenyesseg">
+    {% if ervenyesigSzoveg %}
+        <strong>Ez a rend {{ ervenyesigSzoveg }} érvényes.</strong><br>
+        Utána a miserend változik, kérjük, nyomtasson újat.
+    {% else %}
+        <strong>Ez a rend a nyomtatás napján érvényes.</strong><br>
+        A belátható időn belül nincs bejegyzett változás.
+    {% endif %}
+</div>
+
+<h2>Rendszeres miserend</h2>
+{% if hetiRend %}
+    <table>
+        <tbody>
+        {% for nap in hetiRend %}
+            {% for alkalom in nap.alkalmak %}
+                <tr>
+                    <td class="nap">{% if loop.first %}{{ nap.nap }}{% endif %}</td>
+                    <td class="ido">{{ alkalom.ido }}</td>
+                    <td class="cim">{{ alkalom.cim }}</td>
+                </tr>
+            {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p class="nincs">Erre a templomra nincs rendszeres miserend rögzítve.</p>
+{% endif %}
+
+{% if alkalmak %}
+    <h2>Ünnepek, alkalmi szentmisék</h2>
+    <table>
+        <tbody>
+        {% for nap in alkalmak %}
+            {% for alkalom in nap.alkalmak %}
+                <tr>
+                    <td class="datum">{% if loop.first %}{{ nap.datumSzoveg }}{% endif %}</td>
+                    <td class="ido">{{ alkalom.ido }}</td>
+                    <td class="cim">{{ alkalom.cim }}</td>
+                </tr>
+            {% endfor %}
+        {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+
+{% if megjegyzesSzoveg or bucsuSzoveg %}
+    <h2>Megjegyzés</h2>
+    {% if bucsuSzoveg %}<p class="megjegyzes"><strong>Búcsú:</strong> {{ bucsuSzoveg|nl2br }}</p>{% endif %}
+    {% if megjegyzesSzoveg %}<p class="megjegyzes">{{ megjegyzesSzoveg|nl2br }}</p>{% endif %}
+{% endif %}
+
+<footer>
+    Forrás: {{ domain }}/templom/{{ church.id }}<br>
+    Nyomtatva: {{ nyomtatasSzoveg }}
+    {% if ellenorzesSzoveg %}Az adatok utolsó ellenőrzése: {{ ellenorzesSzoveg }}{% endif %}
+</footer>
+
+</body>
+</html>
