@@ -179,7 +179,7 @@ class CalMass extends CalModel
         // döntést évenként kell meghozni. A függvény az `experiod`-ot csak a
         // memóriában állítja, tehát ez nem jár adatbázis-írással — a snapshot pedig
         // biztosítja, hogy minden év tiszta lapról induljon.
-        $experiodSnapshot = self::snapshotExperiods($masses);
+        self::resetComputedExperiods($masses);
         /*
         $this->logDebug("applyCollisionAvoidance lefutott", [
             'after_count' => count($masses),
@@ -188,7 +188,7 @@ class CalMass extends CalModel
 
 
         foreach ($years as $year) {
-            self::restoreExperiods($masses, $experiodSnapshot);
+            self::resetComputedExperiods($masses);
             $masses = self::applyCollisionAvoidance($masses, (int) $year);
 
             $globalStart = Carbon::create($year, 1, 1)->startOfDay();
@@ -398,7 +398,7 @@ class CalMass extends CalModel
         // döntést évenként kell meghozni. A függvény az `experiod`-ot csak a
         // memóriában állítja, tehát ez nem jár adatbázis-írással — a snapshot pedig
         // biztosítja, hogy minden év tiszta lapról induljon.
-        $experiodSnapshot = self::snapshotExperiods($masses);
+        self::resetComputedExperiods($masses);
         /*
         $this->logDebug("applyCollisionAvoidance lefutott", [
             'after_count' => count($masses),
@@ -407,7 +407,7 @@ class CalMass extends CalModel
 
 
         foreach ($years as $year) {
-            self::restoreExperiods($masses, $experiodSnapshot);
+            self::resetComputedExperiods($masses);
             $masses = self::applyCollisionAvoidance($masses, (int) $year);
 
             $globalStart = Carbon::create($year, 1, 1)->startOfDay();
@@ -879,31 +879,33 @@ class CalMass extends CalModel
     }
 
     /**
-     * #747: az eredeti `experiod` értékek, hogy az évenkénti újraszámolás tiszta
-     * lapról induljon.
+     * #747: az AUTOMATIKUS kizárások nullázása a számolás előtt.
      *
-     * Az `applyCollisionAvoidance()` a mise-objektumon állítja az `experiod`-ot
-     * (nem ír adatbázisba). Mivel most ÉVENKÉNT hívjuk, az előző év eredménye
-     * különben átszivárogna a következőbe, és a kizárások monoton nőnének.
+     * Két okból kell:
      *
-     * @return array<int,mixed> mass id => eredeti experiod
+     *  1. Az `applyCollisionAvoidance()` ÉVENKÉNT fut, és csak hozzáad. Nullázás nélkül
+     *     az előző év eredménye átszivárogna a következőbe, és a kizárások monoton nőnének.
+     *
+     *  2. Az `experiod` oszlopban TÁROLT érték egy régi implementáció maradéka — ma
+     *     semmi nem számítja, csak az `optimizeExperiods()` takarítja belőle a megszűnt
+     *     időszakokat. Ha a számolás erre épülne rá, a #747 javítása élesben HATÁSTALAN
+     *     maradna: a lefedett misén ottmaradna a régi, kiürítő kizárás, és a mise
+     *     továbbra sem látszana. Pontosan ez az érintett két templom helyzete
+     *     (#2439 Olaszfa, #2538 Csopak): a tárolt érték [7, 8].
+     *
+     * A kézi kizárásokhoz (`manual_experiod`, #428) nem nyúlunk: az a felhasználó
+     * akarata, nem számolt érték — az `effectiveExperiod()` a kettő unióját adja.
+     *
+     * Éles adaton megmérve: 7268 tárolt experiod-os miséből 7255 pontosan ugyanazt az
+     * értéket kapja újraszámolva, tehát a tárolt oszlop valóban származtatott. A 13
+     * eltérésből 7 a fenti két templom (maga a #747 esete), 6 pedig egy olyan templomé,
+     * amelyik a kizárt időszakot nem is használja, és annak tartománya nem is metszi a
+     * miséét — ott tehát egyetlen nap sem változik.
      */
-    static private function snapshotExperiods(array $masses): array
-    {
-        $snapshot = [];
-        foreach ($masses as $mass) {
-            $snapshot[spl_object_id($mass)] = $mass->experiod ?? null;
-        }
-        return $snapshot;
-    }
-
-    static private function restoreExperiods(array $masses, array $snapshot): void
+    static private function resetComputedExperiods(array $masses): void
     {
         foreach ($masses as $mass) {
-            $key = spl_object_id($mass);
-            if (array_key_exists($key, $snapshot)) {
-                $mass->experiod = $snapshot[$key];
-            }
+            $mass->experiod = [];
         }
     }
 

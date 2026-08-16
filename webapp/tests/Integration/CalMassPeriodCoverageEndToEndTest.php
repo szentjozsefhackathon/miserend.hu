@@ -119,6 +119,26 @@ class CalMassPeriodCoverageEndToEndTest extends TestCase
     }
 
     /**
+     * A TÁROLT `experiod` nem élheti túl az újraszámolást.
+     *
+     * Az oszlopban lévő érték egy régi implementáció maradéka: ma semmi nem számítja,
+     * csak takarítja. Ha a számolás erre épülne rá (és csak hozzáadna), a javítás
+     * élesben hatástalan maradna — a lefedett misén ottmaradna a régi, kiürítő kizárás.
+     * Pontosan ez volt a helyzet a két érintett templomnál: a tárolt érték [7, 8].
+     */
+    public function testATaroltKizarasNemEliTulAzUjraszamolast(): void
+    {
+        $lefedett = $this->mise(9001, self::SZUNET, '08');
+        // Ahogy élesben állt: a lefedő időszak kizárva, tehát a mise sehol nem látszik.
+        $lefedett->experiod = [7, self::IDOSZAMITAS];
+
+        $sorok = $this->generalt([$lefedett, $this->mise(9002, self::IDOSZAMITAS, '10')]);
+
+        self::assertSame(0, $this->kizartNapok($sorok[9001]),
+            'a tárolt kizárás átjött az újraszámoláson — élesben a mise továbbra sem látszana');
+    }
+
+    /**
      * Egyedül maradva sincs kizárása — a pár jelenléte tehát semmit nem vesz el tőle.
      * Ez zárja ki, hogy a fenti nulla csak azért jöjjön ki, mert a kizárás egyáltalán
      * nem működik ezen az ágon.
