@@ -270,7 +270,8 @@ class Campaign {
                     'id' => $c->id,
                     'nev' => $c->nev,
                     'ismertnev' => $c->ismertnev,
-                    'varos' => $c->varos,
+                    // #497: a levélben a település a boundary-ból, mint mindenhol máshol.
+                    'varos' => $c->locationCityName(),
                     'frissites' => $c->frissites,
                 ];
             }, $churches),
