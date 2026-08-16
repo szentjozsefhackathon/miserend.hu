@@ -1,0 +1,26 @@
+Közeleg a búcsú — nézd át az ünnepi miserendet
+
+Kedves {% if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif %}!<br/>
+<br/>
+{#
+    #568: a szöveget borazslo írta meg a jegyben, itt csak formázzuk. A dátum a
+    szabad szöveges „bucsu" mezőből származik, tehát lehet benne pár nap
+    pontatlanság — ezért fogalmazunk úgy, hogy „a megadott adatok szerint".
+#}
+A hozzád tartozó alábbi templom{% if responsible.church|length > 1 %}ok{% endif %}nak a megadott adatok szerint közeleg a búcsúja{% if bucsuDatum %} ({{ bucsuDatum }}){% endif %}.<br/>
+<br/>
+Kérlek nézd meg és állítsd át az egyedi ünnepi miserendet, hogy minél többekhez eljuthasson a hír.<br/>
+<br/>
+{% if responsible.church|length > 0 %}
+<ul class="list-group">
+	{% for key, church in responsible.church %}
+		<li class="list-group-item" style="margin-bottom:12px;">
+			<strong><a href="{{ domain }}/templom/{{ church.id }}">{{ church.fullName }}</a></strong><br/>
+			{% if church.bucsu %}<small>{{ church.bucsu }}</small><br/>{% endif %}
+			<a href="{{ domain }}/templom/{{ church.id }}/editschedule" style="display:inline-block;margin-top:6px;padding:6px 12px;background:#0069d9;color:#fff;text-decoration:none;border-radius:4px;font-size:0.9em;">Beállítom az ünnepi miserendet</a>
+		</li>
+	{% endfor %}
+</ul>
+{% endif %}
+<br/>
+Köszönjük segítségedet, sok erőt a felkészüléshez, és kegyelmekben gazdag búcsút kívánunk!<br/>

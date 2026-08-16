@@ -16,6 +16,14 @@ class User {
     public $becenev;
     public $nev;
     public $volunteer;
+
+    /**
+     * #568: a közelgő búcsú dátuma a levélsablonnak.
+     *
+     * Deklarálva, nem dinamikusan: a PHP 8.2 óta a dinamikus property deprecated,
+     * és a napi cron minden futásnál kiírná a naplóba.
+     */
+    public $bucsuDatum;
     
     // Derived/computed properties
     public $username;
@@ -1058,6 +1066,88 @@ class User {
 			// #290: queue-ba tesszük (nem azonnali); az Email::sendQueued cron küldi ki.
 			$email->addToQueue();
 		}
+	}
+
+	/**
+	 * #568: Búcsú-emlékeztető a templomgondnokoknak, 21 nappal a búcsú előtt.
+	 *
+	 * borazslo spec-je:
+	 *
+	 *   „A várható dátum előtt mondjuk 21 nappal küldjük ki az emailt a
+	 *    templomgondnokoknak (nem kell egyházmegye felelős, se általános admin), hogy
+	 *    »A hozzád tartozó ilyen és ilyen templomnak a megadott adatok szerint közeleg
+	 *    a búcsúja...«"
+	 *
+	 * A dátum a szabad szöveges `bucsu` mezőből jön (\Bucsu::parse), tehát lehet benne
+	 * pontatlanság — borazslo kifejezetten megengedte: „Egyébként nem baj, ha +/- pár
+	 * nap (utána vasárnap, meg ilyenek) hiszen az értesítés nem kell pontosan menjen."
+	 *
+	 * Csak a kitöltött `bucsu` mezőjű templomokat nézzük: élesben 218 ilyen van az
+	 * 5051-ből, tehát a napi cron nem futtatja végig az egész állományt.
+	 */
+	static function sendBucsuReminder(int $napokElotte = 21) {
+		$type = 'holder_bucsu_reminder';
+		$celDatum = date('Y-m-d', strtotime("+$napokElotte days"));
+
+		$erintettek = [];
+		$templomok = \Eloquent\Church::where('ok', 'i')
+			->whereNotNull('bucsu')->where('bucsu', '<>', '')
+			->get();
+
+		foreach ($templomok as $templom) {
+			if ($templom->nextBucsuDate() === $celDatum) {
+				$erintettek[$templom->id] = $templom;
+			}
+		}
+
+		if ($erintettek === []) {
+			return 0;
+		}
+
+		// Gondnok-kiválasztás: a #290 ünnep-emlékeztető mintája, csak az érintett
+		// templomokra szűkítve. Egyházmegye-felelős és admin NEM kap — borazslo kérése.
+		$users2notify = DB::table('templomok')
+			->select('user.*')
+			->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
+			->join('user', 'user.uid', '=', 'church_holders.user_id')
+			->whereIn('templomok.id', array_keys($erintettek))
+			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+				[$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
+			->where('church_holders.status', 'allowed')
+			->whereNull('church_holders.deleted_at')
+			->where('user.notifications', 1)
+			->whereNotNull('user.email')->where('user.email', '<>', '')
+			->groupBy('user.email')
+			->get();
+
+		$kuldott = 0;
+		foreach ($users2notify as $user2notify) {
+			$user = new User($user2notify->uid);
+			$user->getResponsabilities();
+
+			$sajatTemplomok = [];
+			foreach ($user->responsible['church'] as $churchID) {
+				if (isset($erintettek[$churchID])) {
+					$templom = $erintettek[$churchID];
+					$templom->bucsuDatum = $celDatum;
+					$sajatTemplomok[$churchID] = $templom;
+				}
+			}
+			if ($sajatTemplomok === []) {
+				continue;
+			}
+
+			$user->responsible['church'] = $sajatTemplomok;
+			$user->bucsuDatum = $celDatum;
+
+			$email = new \Eloquent\Email();
+			$email->to = $user->email;
+			$email->render($type, $user);
+			$email->addToQueue();
+			$kuldott++;
+		}
+
+		return $kuldott;
 	}
 
 	/**
