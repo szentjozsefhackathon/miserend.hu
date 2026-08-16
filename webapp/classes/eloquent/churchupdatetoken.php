@@ -42,7 +42,13 @@ class ChurchUpdateToken extends Model {
             Church::whereIn('id', $churchIds)->update(['frissites' => $today]);
             self::where('email_batch_id', $record->email_batch_id)->update(['used_at' => $now]);
 
-            $churches = Church::whereIn('id', $churchIds)->get(['id', 'nev', 'ismertnev', 'varos'])->toArray();
+            // #497: a település a boundary-ból jön, nem oszlopból — ezért utólag tesszük rá.
+            $churches = Church::whereIn('id', $churchIds)->get(['id', 'nev', 'ismertnev'])
+                ->map(function ($templom) {
+                    $tomb = $templom->toArray();
+                    $tomb['varos'] = $templom->locationCityName();
+                    return $tomb;
+                })->toArray();
 
             return ['success' => true, 'church_id' => $churchIds->first(), 'churches' => $churches];
         } else {

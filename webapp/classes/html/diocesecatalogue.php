@@ -48,7 +48,7 @@ class DioceseCatalogue extends Html {
           
             $this->churchesGroupByEspker = \Eloquent\Church::where('ok','i')
                     ->where('egyhazmegye',$ehm)
-                    ->orderBy('varos')->orderBy('nev')
+                    ->orderByCity()->orderBy('nev')
                     ->get()->groupBy('espereskerulet');
             }
             

@@ -18,7 +18,6 @@ class NaprakeszTest extends TestCase {
     private function createChurch(): int {
         return DB::table('templomok')->insertGetId([
             'nev'       => 'Teszt Templom',
-            'varos'     => 'Budapest',
             'frissites' => '2020-01-01',
             'ok'        => 'i',
             'plebania'  => '',

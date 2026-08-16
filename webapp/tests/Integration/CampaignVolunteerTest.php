@@ -72,17 +72,37 @@ class CampaignVolunteerTest extends TestCase {
      * kerül, és nem a fixture négyezer templomán múlik, bekerül-e a mintába.
      */
     private function makeStaleChurch(): int {
-        $minta = (array) DB::table('templomok')->where('ok', 'i')->where('orszag', 12)->first();
+        // #496: a `where('orszag', 12)` szűrő megszűnt az oszloppal együtt.
+        $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
         $id = (int) DB::table('templomok')->max('id') + 1;
 
         $minta['id'] = $id;
         $minta['nev'] = 'Teszt templom ' . $id;
-        $minta['varos'] = 'Tesztváros';
         $minta['ok'] = 'i';
-        $minta['orszag'] = 12;
         $minta['frissites'] = '1900-01-01';
 
         DB::table('templomok')->insert($minta);
+
+        /*
+         * #498: a kiosztás magyarországi templomokra szűkít. Ez eddig az `orszag = 12`
+         * oszlopon ment, most az országHATÁRON — a fixtúrának tehát kapnia kell egyet,
+         * különben kiesik a mintából.
+         */
+        $orszagId = DB::table('boundaries')
+            ->where('boundary', 'administrative')->where('admin_level', 2)
+            ->where(function ($q) {
+                $q->where('iso3166_1', 'HU')->orWhere('name', 'Magyarország');
+            })->value('id');
+
+        if ($orszagId === null) {
+            $orszagId = DB::table('boundaries')->insertGetId([
+                'boundary' => 'administrative', 'admin_level' => 2,
+                'name' => 'Magyarország', 'iso3166_1' => 'HU',
+                'osmtype' => 'relation', 'osmid' => 21335,
+            ]);
+        }
+        DB::table('lookup_boundary_church')->insert(['boundary_id' => $orszagId, 'church_id' => $id]);
+
         return $id;
     }
 

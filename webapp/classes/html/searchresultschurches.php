@@ -115,7 +115,7 @@ class SearchResultsChurches extends Html {
         if (!empty($params['church_ids'])) {
             $search->churchIds($params['church_ids']);
             $this->churchDataJson = json_encode(
-                \Eloquent\Church::select('id', 'nev', 'varos')
+                \Eloquent\Church::select('id', 'nev')
                     ->whereIn('id', $params['church_ids'])
                     ->get()
                     // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.

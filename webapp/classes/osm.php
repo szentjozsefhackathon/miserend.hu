@@ -31,8 +31,6 @@ class OSM {
         $referenceData = [
             'egyhazmegyek'     => collect(DB::table('egyhazmegye')->get())->keyBy('id'),
             'espereskeruletek' => collect(DB::table('espereskerulet')->get())->keyBy('id'),
-            'orszagok'         => collect(DB::table('orszagok')->get())->keyBy('id'),
-            'megyek'           => collect(DB::table('megye')->select('*', 'megyenev as nev')->get())->keyBy('id'),
         ];
 
         foreach ($churches as $church) {

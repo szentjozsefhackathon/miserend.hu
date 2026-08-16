@@ -80,9 +80,20 @@ class Campaign {
         //    régen frissített (>2 év), nincs aktuális update / észrevétel.
         $staleDate = (new DateTime())->modify('-' . self::STALE_MONTHS . ' months')->format('Y-m-d');
         $assignableChurches = DB::table('templomok AS t')
-            ->select('t.id', 't.nev', 't.ismertnev', 't.varos', 't.frissites')
+            ->select('t.id', 't.nev', 't.ismertnev', 't.frissites')
             ->where('t.ok', 'i')
-            ->where('t.orszag', 12)
+            // #498: a `t.orszag = 12` helyett országhatár. Névre és ISO-kódra is
+            // illesztünk, mert az ISO ma még alig van kitöltve.
+            ->whereIn('t.id', function ($sub) {
+                $sub->select('lookup_boundary_church.church_id')
+                    ->from('lookup_boundary_church')
+                    ->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+                    ->where('boundaries.admin_level', 2)
+                    ->where(function ($w) {
+                        $w->where('boundaries.iso3166_1', 'HU')
+                          ->orWhere('boundaries.name', 'Magyarország');
+                    });
+            })
             ->where(function ($q) {
                 $q->where('t.nev', 'LIKE', '%templom%')
                   ->orWhere('t.nev', 'LIKE', '%bazilika%')

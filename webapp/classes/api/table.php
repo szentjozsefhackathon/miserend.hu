@@ -108,10 +108,32 @@ class Table extends Api {
         switch ($this->tableName) {
             case 'templomok':
                 
+                /*
+                 * #496 / #497 / #498: az `orszag`, `megye` és `varos` mezők a publikus
+                 * API szerződésének részei — a nevük és a jelentésük NEM változhat.
+                 * A forrásuk viszont igen: eddig az `orszagok`/`megye` táblákhoz
+                 * kapcsolt join adta őket, mostantól az OSM-határok.
+                 *
+                 * Korrelált alkérdéssel, nem join-nal: egy templomhoz több határ
+                 * tartozik, a join megsokszorozná a sorokat.
+                 */
+                $orszag = self::boundaryNameSql([2]);
+                $megye = self::boundaryNameSql([6, 4]);
+                $telepules = self::boundaryNameSql([8]);
+                $kerulet = self::boundaryNameSql([9]);
+                $tartalek = self::boundaryNameSql([6, 9, 10]);
+
                 $this->table = DB::table("templomok as t")
-                        ->SELECT("t.*","orszagok.nev as orszag","megye.megyenev as megye")
-                        ->leftJoin('orszagok', 'orszagok.id','=','t.orszag')
-                        ->leftJoin('megye', 'megye.id',"=","megye")
+                        ->select("t.*")
+                        ->selectRaw("$orszag AS orszag")
+                        ->selectRaw("$megye AS megye")
+                        // Ugyanaz a szabály, mint a Church::locationCityName()-ben: a
+                        // kerület csak 8-as szintű település mellé fűzhető (Köln
+                        // kreisfreie Stadt, tehát nincs 8-asa — ott a 6-os a település).
+                        ->selectRaw(
+                            "TRIM(CONCAT_WS(' ', COALESCE($telepules, $tartalek),"
+                            . " CASE WHEN $telepules IS NOT NULL THEN $kerulet END)) AS varos"
+                        )
                         ->where('t.ok',"=","i")
                         ->limit(10000)
                         ->get();
@@ -133,6 +155,22 @@ class Table extends Api {
     }
     
   
+    /**
+     * #496 / #497 / #498: egy administratív határ nevének korrelált alkérdése.
+     *
+     * @param array<int,int> $szintek admin_level-ek, PREFERENCIA sorrendben
+     * @return string beilleszthető SQL-részlet (a külső lekérdezésben `t` a templom)
+     */
+    private static function boundaryNameSql(array $szintek): string {
+        $lista = implode(', ', array_map('intval', $szintek));
+
+        return "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = t.id AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN ($lista)"
+            . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
+    }
+
     function mapTemplomok() {
         $output = array();
 

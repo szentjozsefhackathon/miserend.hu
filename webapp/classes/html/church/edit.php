@@ -380,8 +380,8 @@ class Edit extends \Html\Html {
         // Így JS nélkül is elérhető minden templom (a combobox csak a gépelést adja rá).
         $allActive = \Eloquent\Church::where('ok', 'i')
             ->where('id', '!=', $this->tid)
-            ->orderBy('varos')->orderBy('nev')
-            ->get(['id', 'varos', 'nev']);
+            ->orderByCity()->orderBy('nev')
+            ->get(['id', 'nev']);
         foreach ($allActive as $c) {
             if (!isset($options[$c->id])) {
                 $options[$c->id] = $c->locationCityName() . ' – ' . $c->nev;

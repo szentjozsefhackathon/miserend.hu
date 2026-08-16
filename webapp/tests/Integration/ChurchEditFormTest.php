@@ -36,7 +36,6 @@ class ChurchEditFormTest extends TestCase {
     private function createChurch(): int {
         return DB::table('templomok')->insertGetId([
             'nev'        => 'Szerkesztés teszt',
-            'varos'      => 'Budapest',
             'cim'        => 'Régi cím 1.',
             'frissites'  => '2020-01-01',
             'ok'         => 'i',
@@ -113,28 +112,11 @@ class ChurchEditFormTest extends TestCase {
         $this->assertSame('Teszt megjegyzés', $row->megjegyzes);
     }
 
-    /**
-     * #496 / #497 / #498: a hely a koordinátából és az OSM-határokból jön, a
-     * szerkesztő kaszkádos ország/megye/város választója megszűnt.
-     *
-     * Ez nem kozmetika: ha a mező bent maradna a menthetők között, egy beküldött
-     * űrlap felülírhatná a származtatott adatot azzal, ami a böngészőben ragadt —
-     * és a régi érték csendben visszaszivárogna oda, ahonnan épp kivezetjük.
+    /*
+     * #496 / #497 / #498: a #798-ban itt egy teszt állt arról, hogy az űrlapról
+     * beküldött `varos`/`megye`/`orszag` NEM írja felül a mentett adatot. Az
+     * oszlopok azóta megszűntek, tehát nincs mit felülírni — a teszt tárgytalan.
      */
-    public function testATelepulesMarNemMenthetoAzUrlaprol(): void {
-        $eredeti = $this->churchRow()->varos;
-
-        $this->post('/templom/' . $this->churchId . '/edit', $this->editFields([
-            'church[varos]'  => 'Debrecen',
-            'church[megye]'  => '9999',
-            'church[orszag]' => '9999',
-        ]));
-
-        $row = $this->churchRow();
-        $this->assertSame($eredeti, $row->varos, 'A település nem írható felül az űrlapról.');
-        $this->assertNotSame('9999', (string) $row->megye);
-        $this->assertNotSame('9999', (string) $row->orszag);
-    }
 
     /**
      * A LÉNYEG: idegen azonosítóval nem lehet más templomot átírni.

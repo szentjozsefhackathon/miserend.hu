@@ -1496,22 +1496,16 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $this->adminBoundaryName([6])
             ?? $this->adminBoundaryName([9])
             ?? $this->adminBoundaryName([10])
-            ?? (string) $this->varos;
+            ?? '';
     }
 
     /** Megye. Romániában nincs 6-os szint, ott a 4-es (judet) hordozza. */
     public function locationCountyName(): string {
-        $boundary = $this->adminBoundaryName([6]) ?? $this->adminBoundaryName([4]);
-        if ($boundary !== null) {
-            return $boundary;
-        }
-
-        return (string) (DB::table('megye')->where('id', $this->megye)->value('megyenev') ?: '');
+        return $this->adminBoundaryName([6]) ?? $this->adminBoundaryName([4]) ?? '';
     }
 
     public function locationCountryName(): string {
-        return $this->adminBoundaryName([2])
-            ?? (string) (DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: '');
+        return $this->adminBoundaryName([2]) ?? '';
     }
 
     /**
@@ -1521,16 +1515,26 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * Elsődlegesen az ISO-kód, mert a `templomok.orszag = 12` a kivezetéssel eltűnik.
      */
     public function isInHungary(): bool {
-        $kod = $this->countryCode();
-        if ($kod !== null) {
-            return $kod === 'HU';
-        }
-
-        return (int) $this->orszag === self::MAGYARORSZAG_ID;
+        return $this->countryCode() === 'HU';
     }
 
-    /** A régi `orszagok` tábla magyar sorának azonosítója. */
-    public const MAGYARORSZAG_ID = 12;
+    /**
+     * #497: rendezés a település szerint, boundary-alapon.
+     *
+     * A katalógusok eddig `orderBy('varos')`-t használtak. Az oszlop megszűnt, a
+     * település viszont továbbra is rendezési szempont — korrelált alkérdéssel
+     * kérjük le. Nem olcsó, de ezek admin/katalógus oldalak, nem forgalmas útvonalak,
+     * és a lista használhatatlan lenne település szerinti csoportosítás nélkül.
+     */
+    public function scopeOrderByCity($query, string $irany = 'asc') {
+        return $query->orderByRaw(
+            "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = templomok.id AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN (8, 6, 9, 10)"
+            . " ORDER BY FIELD(b.admin_level, 8, 6, 9, 10) LIMIT 1) " . ($irany === 'desc' ? 'DESC' : 'ASC')
+        );
+    }
 
     /**
      * #498: lekérdezés-szintű szűrés a magyarországi templomokra.
@@ -1854,9 +1858,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         // Ha nincs átadva (pl. egyedi hívásból), akkor töltjük be helyben.
         $_egyhazmegyek     = $referenceData['egyhazmegyek']     ?? collect(DB::table('egyhazmegye')->get())->keyBy('id')->sortBy('sorrend');
         $_espereskeruletek = $referenceData['espereskeruletek'] ?? collect(DB::table('espereskerulet')->get())->keyBy('id');
-        $_orszagok         = $referenceData['orszagok']         ?? collect(DB::table('orszagok')->get())->keyBy('id');
-        $_megyek           = $referenceData['megyek']           ?? collect(DB::table('megye')->select('*','megyenev as nev')->get())->keyBy('id');
-        $_varosok          = isset($referenceData['varosok']) ? $referenceData['varosok'] : collect([]);
         
         /* egyházmegye */
         $tmp = $this->boundaries()
@@ -1886,44 +1887,19 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             }
         }
         
-        /* ország */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',2)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(isset($_orszagok[$this->orszag]) && $_orszagok[$this->orszag]->nev) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 2, 'name' => $_orszagok[$this->orszag]->nev]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
-        
-        /* megye */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',6)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(isset($_megyek[$this->megye]) && $_megyek[$this->megye]->nev) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 6, 'name' => $_megyek[$this->megye]->nev." megye"]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
-
-        /* város */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',8)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(!empty($this->varos)) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 8, 'name' => $this->varos]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
+        /*
+         * #496 / #497 / #498: itt épült ország-, megye- és város-boundary a régi
+         * `templomok.orszag`, `.megye` és `.varos` oszlopokból, ha az OSM nem adott
+         * ilyet. Az oszlopok megszűntek, tehát nincs miből.
+         *
+         * A már legyártott boundary-sorok a helyükön maradnak — csak új nem készül
+         * belőlük. A földrajzi határok innentől kizárólag az OSM-ből jönnek
+         * (OSM::checkBoundaries), a hiányzó lefedettséget pedig a /health mutatja és
+         * a cron 497 próbálja újra.
+         *
+         * Az egyházmegye és az esperesi kerület MARAD: azok nem OSM-adatok, és nem is
+         * ez a három jegy tárgya.
+         */
 
     }
 
