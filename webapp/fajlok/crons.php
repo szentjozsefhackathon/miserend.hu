@@ -39,11 +39,11 @@ return [
      */
     ['class' => '\Crons',                         'function' => 'requeueChurchesWithoutBoundary', 'frequency' => '1 month'],
     /*
-     * #496: a koordináta nélküli templomok helyadatának átmentése a megjegyzés
-     * mezőbe. EGYSZERI feladat a kivezetés előtt; idempotens, tehát ártalmatlan,
-     * ha a napi futás többször is meghívja.
+     * #496 / #497 / #498: itt állt az archiveLocationOfChurchesWithoutCoordinates
+     * cron. Kikerült, mert a metódus megszűnt: az archiválás átkerült magába a
+     * migrációs SQL-be, közvetlenül a DROP elé — így a két lépés atomi.
+     * A meglévő DB-sort a Cron::pruneRemoved() takarítja ki.
      */
-    ['class' => '\Crons',                         'function' => 'archiveLocationOfChurchesWithoutCoordinates', 'frequency' => '1 day'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateChurches',             'frequency' => '6 hours'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateMasses',               'frequency' => '6 hours'],
     // A teljes indexépítés akkor is hagyhat lyukat, ha közben elhasal valami; ez varrja
