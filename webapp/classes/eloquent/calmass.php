@@ -815,15 +815,34 @@ class CalMass extends CalModel
      * Márciust (2025-ben márc. 1-4, 2027-ben márc. 25-31 kimarad). Ezért a kérdést
      * évre kell feltenni — a hívó az adott év generálásakor kérdez.
      *
-     * Igaz, ha az inner ADOTT ÉVI tartományait mind tartalmazza egy cover-tartomány.
-     * Ha bármelyik oldalnak nincs abban az évben tartománya, vagy a két időszak
-     * ugyanaz, false — marad a súly szerinti viselkedés.
+     * Igaz, ha az inner ADOTT ÉVI tartományait mind tartalmazza egy cover-tartomány,
+     * ÉS a viszony nem kölcsönös. Ha bármelyik oldalnak nincs abban az évben
+     * tartománya, vagy a két időszak ugyanaz, false — marad a súly szerinti viselkedés.
+     *
+     * A kölcsönösség kizárása az AZONOS tartományok miatt kell. A tartalmazás nem
+     * szigorú (`<=` / `>=`), tehát két egyforma tartomány kölcsönösen lefedi egymást —
+     * ott viszont egyik sem „a szűkebb", tehát nincs mit specifikusabbnak tekinteni.
+     * Enélkül a nagyobb súlyú időszak veszítene a vele azonos tartományú kisebbel
+     * szemben, ami pont a súlyozás értelmét fordítaná meg.
      */
     static private function periodCoversInYear($calGeneratedPeriods, $coverId, $innerId, int $year): bool
     {
         if (empty($coverId) || empty($innerId) || $coverId == $innerId) {
             return false;
         }
+
+        return self::rangesContainInYear($calGeneratedPeriods, $coverId, $innerId, $year)
+            && !self::rangesContainInYear($calGeneratedPeriods, $innerId, $coverId, $year);
+    }
+
+    /**
+     * #747: tisztán tartalmazás-vizsgálat, a kölcsönösség kérdése nélkül.
+     *
+     * Ez a `periodCoversInYear()` építőköve; külön azért, mert az a szigorúbb
+     * viszonyhoz mindkét irányban megkérdezi.
+     */
+    static private function rangesContainInYear($calGeneratedPeriods, $coverId, $innerId, int $year): bool
+    {
 
         $inYear = static function ($ranges) use ($year) {
             $out = [];

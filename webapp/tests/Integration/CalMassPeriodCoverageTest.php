@@ -206,6 +206,150 @@ class CalMassPeriodCoverageTest extends TestCase
         self::assertFalse(self::covers(self::lentAndMarch(), 26, 35, 2030));
     }
 
+    /* ---------- edge case-ek (borazslo kérése a #753-ban) ---------- */
+
+    /**
+     * AZONOS tartomány nem lefedés.
+     *
+     * A tartalmazás nem szigorú (`<=` / `>=`), tehát két egyforma tartomány
+     * kölcsönösen „lefedi" egymást. Ott viszont egyik sem a szűkebb: nincs mit
+     * specifikusabbnak tekinteni, tehát a súlynak kell döntenie. Enélkül a nagyobb
+     * súlyú időszak veszítene a vele azonos tartományú kisebbel szemben — pont a
+     * súlyozás értelme fordulna meg.
+     *
+     * Élő eset: két időszakot azonosra állítanak (borazslo második use case-e: „van
+     * nyári és téli időszak, de kiderül, hogy ezek nem is különböznek").
+     */
+    public function testIdenticalRangesAreNotCoverage(): void
+    {
+        $p = [
+            8  => [self::gen('2026-06-01', '2026-08-31')],
+            13 => [self::gen('2026-06-01', '2026-08-31')],
+        ];
+
+        self::assertFalse(self::covers($p, 8, 13, 2026), 'azonos tartománynál nincs szűkebb');
+        self::assertFalse(self::covers($p, 13, 8, 2026), 'és fordítva sem');
+    }
+
+    /** Egyetlen nap különbség már lefedés — de csak a bővebb irányában. */
+    public function testOneDayWiderIsAlreadyCoverage(): void
+    {
+        $p = [
+            8  => [self::gen('2026-06-01', '2026-09-01')],
+            13 => [self::gen('2026-06-01', '2026-08-31')],
+        ];
+
+        self::assertTrue(self::covers($p, 8, 13, 2026));
+        self::assertFalse(self::covers($p, 13, 8, 2026));
+    }
+
+    /**
+     * borazslo első use case-e: egyetlen „egész évben" időszakból csinálnak egy
+     * télit és egy nyárit. A szűkebbek nem fedik le az egész évet, tehát marad a
+     * súly szerinti sorrend — a látogató nyáron a nyárit látja, egyébként az
+     * egész évest. Ez a kívánt viselkedés, a #747 javítása nem írja felül.
+     */
+    public function testTheWholeYearPeriodIsNotSwallowedByItsParts(): void
+    {
+        $p = [
+            10 => [self::gen('2026-01-01', '2026-12-31')], // Egész évben, súly 1
+            13 => [self::gen('2026-06-30', '2026-08-31')], // Nyári szünet, súly 3
+            7  => [self::gen('2026-10-25', '2026-03-28')], // Téli időszámítás
+        ];
+
+        self::assertFalse(self::covers($p, 13, 10, 2026),
+            'a szűkebb nyári időszak nem fedi le az egész évet');
+        self::assertTrue(self::covers($p, 10, 13, 2026),
+            'az egész éves viszont igen — ő a bővebb');
+    }
+
+    /**
+     * Háromszintű beágyazás. A viszonyoknak páronként konzisztensnek kell lenniük,
+     * különben körbeérne a kizárás.
+     */
+    public function testThreeLevelNestingStaysConsistent(): void
+    {
+        $p = [
+            10 => [self::gen('2026-01-01', '2026-12-31')], // egész év
+            8  => [self::gen('2026-03-29', '2026-10-25')], // nyári időszámítás
+            13 => [self::gen('2026-06-30', '2026-08-31')], // nyári szünet
+        ];
+
+        self::assertTrue(self::covers($p, 10, 8, 2026));
+        self::assertTrue(self::covers($p, 10, 13, 2026));
+        self::assertTrue(self::covers($p, 8, 13, 2026));
+
+        self::assertFalse(self::covers($p, 8, 10, 2026));
+        self::assertFalse(self::covers($p, 13, 10, 2026));
+        self::assertFalse(self::covers($p, 13, 8, 2026));
+    }
+
+    /**
+     * Egy időszaknak több tartománya is lehet egy évben (pl. tanítási idő: ősz + tavasz).
+     * Lefedés csak akkor van, ha MINDEGYIKET tartalmazza valamelyik cover-tartomány.
+     */
+    public function testEveryInnerRangeMustBeCovered(): void
+    {
+        $p = [
+            10 => [self::gen('2026-01-01', '2026-12-31')],
+            27 => [ // két tartomány egy évben
+                self::gen('2026-01-07', '2026-06-15'),
+                self::gen('2026-09-01', '2026-12-20'),
+            ],
+        ];
+        self::assertTrue(self::covers($p, 10, 27, 2026), 'mindkét tartomány belefér');
+
+        // Ha a cover csak az egyiket fogja át, nincs lefedés.
+        $p[10] = [self::gen('2026-01-01', '2026-06-30')];
+        self::assertFalse(self::covers($p, 10, 27, 2026), 'az őszi tartomány kilóg');
+    }
+
+    /** Több cover-tartomány együtt sem „ragasztható össze": egynek kell átfognia. */
+    public function testCoverRangesAreNotUnioned(): void
+    {
+        $p = [
+            10 => [
+                self::gen('2026-01-01', '2026-06-15'),
+                self::gen('2026-06-16', '2026-12-31'),
+            ],
+            13 => [self::gen('2026-06-01', '2026-08-31')],
+        ];
+
+        self::assertFalse(self::covers($p, 10, 13, 2026),
+            'a két darab együtt lefedné, de a szünet egyiken sem fér el egészben — '
+            . 'a naptárban is két külön időszak, nem egy');
+    }
+
+    /**
+     * Az évhatáron átnyúló időszak a KEZDETE szerinti évhez tartozik (a generálás is
+     * így sorolja be). A rákövetkező év januári tartományát tehát nem fedi le —
+     * abban az évben nem is szerepel.
+     */
+    public function testYearBoundaryPeriodBelongsToItsStartYear(): void
+    {
+        $p = [
+            15 => [self::gen('2025-11-30', '2026-01-06')], // Advent → Vízkereszt
+            33 => [self::gen('2026-01-01', '2026-01-31')], // Január
+        ];
+
+        self::assertFalse(self::covers($p, 15, 33, 2026),
+            'a 2025-ös kezdetű tartomány a 2026-os évben nincs jelen');
+        self::assertFalse(self::covers($p, 15, 33, 2025),
+            'a Januárnak viszont nincs 2025-ös tartománya');
+    }
+
+    /** Az egynapos tartomány (pl. Szilveszter) is lefedhető. */
+    public function testASingleDayRangeCanBeCovered(): void
+    {
+        $p = [
+            29 => [self::gen('2026-12-01', '2026-12-31')], // December
+            2  => [self::gen('2026-12-31', '2026-12-31')], // Szilveszter
+        ];
+
+        self::assertTrue(self::covers($p, 29, 2, 2026));
+        self::assertFalse(self::covers($p, 2, 29, 2026));
+    }
+
     /** A nyári páros minden generált évben teljes. */
     public function testSummerCoverageHoldsInEveryGeneratedYear(): void
     {
