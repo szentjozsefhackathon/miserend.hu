@@ -14,6 +14,36 @@ namespace Tests\Functional;
  */
 final class UnifiedAutocompleteTest extends FunctionalTestCase
 {
+
+    /**
+     * A találati sor típusát a BADGE osztálya árulja el (l. unified-autocomplete.js):
+     * a misézőhely külön `unified-dropdown-church-badge`-et kap, a területi találat
+     * csak a sima `unified-dropdown-badge`-et.
+     *
+     * A tesztek eddig `unified-dropdown-church-icon`-ra illesztettek — az az osztálynév
+     * viszont KIZÁRÓLAG a stíluslapban létezik, a felület sosem teszi ki. Így a
+     * feltétel akkor sem teljesülhetett volna, ha a HTML-olvasás működik.
+     */
+    private const TEMPLOM_JELOLO = '.unified-dropdown-church-badge';
+    private const HATAR_JELOLO = '.unified-dropdown-badge:not(.unified-dropdown-church-badge)';
+
+    /**
+     * Tartalmazza-e a találati sor a keresett elemet?
+     *
+     * Eddig `$item->getAttribute('innerHTML')`-lel néztük, sztring-illesztéssel. Csakhogy
+     * az `innerHTML` nem ATTRIBÚTUM, hanem property: a W3C WebDriver
+     * `getElementAttribute` hívása NULL-t ad rá. A `strpos(null, ...)` PHP 8.1 óta
+     * elavult figyelmeztetést ír — a valódi kár viszont az, hogy a feltétel SOSEM
+     * teljesült, tehát a tesztek fele „nincs megfelelő találat" indokkal kihagyásra ment.
+     * Ebben az osztályban 13 tesztből 7 futott így, üresben, évek óta.
+     *
+     * A böngészőtől nem a nyers HTML-t kérjük, hanem magát az elemet: ez az, amit a
+     * WebDriver támogat, és egyben pontosabb is, mint osztálynevekre illeszteni.
+     */
+    private static function tartalmaz(\Facebook\WebDriver\WebDriverElement $item, string $selector): bool
+    {
+        return $item->findElements(\Facebook\WebDriver\WebDriverBy::cssSelector($selector)) !== [];
+    }
     private static $client;
 
     public static function setUpBeforeClass(): void
@@ -123,7 +153,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         // Find first church item
         $churchItem = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
                 break;
             }
@@ -153,7 +183,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $churchItem = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
                 break;
             }
@@ -180,7 +210,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $churchItem = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
                 break;
             }
@@ -210,7 +240,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $churchItem = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
                 break;
             }
@@ -244,7 +274,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $churchItem = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
                 break;
             }
@@ -284,7 +314,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $first = null;
         foreach ($items as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $first = $item;
                 break;
             }
@@ -303,7 +333,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items2 = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $second = null;
         foreach ($items2 as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $second = $item;
                 break;
             }
@@ -338,11 +368,10 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $churchItem   = null;
 
         foreach ($items as $item) {
-            $html = $item->getAttribute('innerHTML');
-            if ($boundaryItem === null && strpos($html, 'unified-dropdown-badge') !== false) {
+            if ($boundaryItem === null && self::tartalmaz($item, self::HATAR_JELOLO)) {
                 $boundaryItem = $item;
             }
-            if ($churchItem === null && strpos($html, 'unified-dropdown-church-icon') !== false) {
+            if ($churchItem === null && self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem = $item;
             }
         }
@@ -362,7 +391,7 @@ final class UnifiedAutocompleteTest extends FunctionalTestCase
         $items2 = self::$client->getCrawler()->filter('.unified-dropdown.visible .unified-dropdown-item');
         $churchItem2 = null;
         foreach ($items2 as $item) {
-            if (strpos($item->getAttribute('innerHTML'), 'unified-dropdown-church-icon') !== false) {
+            if (self::tartalmaz($item, self::TEMPLOM_JELOLO)) {
                 $churchItem2 = $item;
                 break;
             }
