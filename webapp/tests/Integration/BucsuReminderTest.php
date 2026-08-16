@@ -39,7 +39,9 @@ class BucsuReminderTest extends TestCase {
         $id = (int) DB::table('templomok')->max('id') + 1 + $this->sorszam++;
 
         DB::table('templomok')->insert(array_merge($minta, [
-            'id' => $id, 'nev' => 'Búcsú Teszt ' . $id, 'ok' => 'i', 'bucsu' => $bucsu,
+            // #809: a búcsú a MEGJEGYZÉS mezőből jön, nem a bucsu oszlopból.
+            'id' => $id, 'nev' => 'Búcsú Teszt ' . $id, 'ok' => 'i',
+            'megjegyzes' => $bucsu, 'bucsu' => '',
         ]));
 
         return $id;
@@ -81,7 +83,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(1, $this->levelek($uid));
     }
@@ -90,7 +92,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(20));
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -99,7 +101,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(22));
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -109,8 +111,8 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(1, $this->levelek($uid));
     }
@@ -120,7 +122,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $uid = $this->gondnok($tid, 'asked');
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -130,7 +132,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $uid = $this->gondnok($tid, 'allowed', 0);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -140,7 +142,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom('Búcsú: Szent György vértanú ünnepéhez közelebbi vasárnap');
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -149,7 +151,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom('');
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         self::assertSame(0, $this->levelek($uid));
     }
@@ -159,7 +161,7 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $uid = $this->gondnok($tid);
 
-        \User::sendBucsuReminder();
+        \Eloquent\Church::sendBucsuReminders();
 
         $email = DB::table('emails')->where('type', self::TIPUS)
             ->where('to', DB::table('user')->where('uid', $uid)->value('email'))->first();
@@ -174,6 +176,6 @@ class BucsuReminderTest extends TestCase {
         $tid = $this->templom($this->bucsuSzoveg(21));
         $this->gondnok($tid);
 
-        self::assertGreaterThanOrEqual(1, \User::sendBucsuReminder());
+        self::assertGreaterThanOrEqual(1, \Eloquent\Church::sendBucsuReminders());
     }
 }

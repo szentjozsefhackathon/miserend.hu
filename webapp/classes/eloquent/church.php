@@ -1394,6 +1394,88 @@ class Church extends \Illuminate\Database\Eloquent\Model {
 
     
     /**
+     * #568: Búcsú-emlékeztető a templomgondnokoknak, 21 nappal a búcsú előtt.
+     *
+     * borazslo spec-je: „A várható dátum előtt mondjuk 21 nappal küldjük ki az emailt
+     * a templomgondnokoknak (nem kell egyházmegye felelős, se általános admin)."
+     *
+     * A metódus szándékosan ITT van, nem a User osztályban — borazslo javaslata:
+     * „Szerintem sokkal inkább valami church osztályhoz tartozik, mert a közelgő
+     * búcsúval rendelkező TEMPLOMNAK értesítjük a gondnokait." A kiindulópont
+     * valóban a templom, a felhasználó csak a címzett.
+     *
+     * A dátum szabad szövegből jön, tehát lehet benne pontatlanság — borazslo
+     * megengedte: „nem baj, ha +/- pár nap […] az értesítés nem kell pontosan menjen".
+     *
+     * @param int $napokElotte hány nappal a búcsú előtt szóljunk
+     * @return int hány levelet tettünk sorba
+     */
+    public static function sendBucsuReminders(int $napokElotte = 21): int {
+        $type = 'holder_bucsu_reminder';
+        $celDatum = date('Y-m-d', strtotime("+$napokElotte days"));
+
+        $erintettek = [];
+        foreach (self::where('ok', 'i')->get() as $templom) {
+            if ($templom->nextBucsuDate() === $celDatum) {
+                $erintettek[$templom->id] = $templom;
+            }
+        }
+
+        if ($erintettek === []) {
+            return 0;
+        }
+
+        /*
+         * Gondnok-kiválasztás: a #290 ünnep-emlékeztető mintája, az érintett
+         * templomokra szűkítve. Egyházmegye-felelős és admin NEM kap — borazslo kérése.
+         * A dedup a levelek táblájából megy, egy hónapos ablakkal: a napi cron ne
+         * küldjön kétszer ugyanannak.
+         */
+        $users2notify = DB::table('templomok')
+            ->select('user.*')
+            ->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
+            ->join('user', 'user.uid', '=', 'church_holders.user_id')
+            ->whereIn('templomok.id', array_keys($erintettek))
+            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+                [$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
+            ->where('church_holders.status', 'allowed')
+            ->whereNull('church_holders.deleted_at')
+            ->where('user.notifications', 1)
+            ->whereNotNull('user.email')->where('user.email', '<>', '')
+            ->groupBy('user.email')
+            ->get();
+
+        $kuldott = 0;
+        foreach ($users2notify as $user2notify) {
+            $user = new \User($user2notify->uid);
+            $user->getResponsabilities();
+
+            $sajatTemplomok = [];
+            foreach ($user->responsible['church'] as $churchID) {
+                if (isset($erintettek[$churchID])) {
+                    $templom = $erintettek[$churchID];
+                    $templom->bucsuDatum = $celDatum;
+                    $sajatTemplomok[$churchID] = $templom;
+                }
+            }
+            if ($sajatTemplomok === []) {
+                continue;
+            }
+
+            $user->responsible['church'] = $sajatTemplomok;
+            $user->bucsuDatum = $celDatum;
+
+            $email = new \Eloquent\Email();
+            $email->to = $user->email;
+            $email->render($type, $user);
+            $email->addToQueue();
+            $kuldott++;
+        }
+
+        return $kuldott;
+    }
+
+    /**
      * #568: a `bucsu` szabad szöveg gépi alakja.
      *
      * @return array{bucsu: ?array, szentsegimadas: ?array, unparsed: string}

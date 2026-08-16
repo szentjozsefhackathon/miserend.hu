@@ -1,6 +1,6 @@
 Közeleg a búcsú — nézd át az ünnepi miserendet
 
-Kedves {% if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif %}!<br/>
+Kedves {% include 'emails/_megszolitas.twig' %}!<br/>
 <br/>
 {#
     #568: a szöveget borazslo írta meg a jegyben, itt csak formázzuk. A dátum a
