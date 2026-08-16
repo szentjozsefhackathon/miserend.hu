@@ -56,7 +56,21 @@ class AutocompleteCombined extends Ajax {
 
         // ── 1. Határterületek ────────────────────────────────────────────────
         $boundaryLimit = 15;
-        $boundaryQuery = \Eloquent\Boundary::where('name', 'like', '%' . $text . '%')
+        /*
+         * #496: az ALTERNATÍV névre is keresünk.
+         *
+         * borazslo iránya szerint a helyre szűkítés boundary-n keresztül megy, nem a
+         * templom-dokumentum szöveges mezőin ("Sosem keresünk már megyében, hanem
+         * boundary alapján valamilyen osm entity-ben"). Csakhogy a boundary eddig csak
+         * a `name` oszlopán volt megtalálható, a köznyelvi név viszont gyakran az
+         * `alt_name`-ben ül: a budapesti V. kerület alt_name-je "Belváros-Lipótváros",
+         * a XI.-é "Újbuda". Ezekre ma nulla találat jön, pedig a látogatók így hívják
+         * őket.
+         */
+        $boundaryQuery = \Eloquent\Boundary::where(function ($q) use ($text) {
+                $q->where('name', 'like', '%' . $text . '%')
+                  ->orWhere('alt_name', 'like', '%' . $text . '%');
+            })
             ->where(function ($q) {
                 $q->whereNull('denomination')
                     ->orWhere('denomination', 'like', '%catholic%');
@@ -81,7 +95,14 @@ class AutocompleteCombined extends Ajax {
             // településnév (pl. "Áta") kiszorult a take(15) mögé, mert a %áta% substring
             // sok más boundary-t is talál (117 db), és a religious_administration + kisebb
             // admin_level sorok elé kerültek. Így az egyező település mindig a lista elején van.
-            ->orderByRaw("CASE WHEN name = ? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END", [$text, $text . '%'])
+            // #496: az alternatív névre is illik a rangsor, különben egy PONTOS
+            // alt_name-találat ("Belváros-Lipótváros") a 2-es csoportba esne, és
+            // kiszorulna a take(15) mögül a sok substring-találat miatt.
+            ->orderByRaw(
+                "CASE WHEN name = ? OR alt_name = ? THEN 0"
+                . " WHEN name LIKE ? OR alt_name LIKE ? THEN 1 ELSE 2 END",
+                [$text, $text, $text . '%', $text . '%']
+            )
             ->orderByRaw("CASE WHEN boundary = 'religious_administration' THEN 0 WHEN boundary = 'administrative' THEN 1 ELSE 2 END")
             ->orderBy('admin_level', 'asc')
             ->orderBy('name', 'asc')
