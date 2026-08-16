@@ -230,37 +230,6 @@ class EditOsm extends \Html\Html {
     }
 
     
-   function loadOSMDataWithOverpass() {
-   
-		// Elszállunk, hanincs OSM összekötettetés
-		if(!isset($this->church['osmtype']) or !isset($this->church['osmid']) or $this->church['osmtype'] == '' or $this->church['osmid'] == '') {
-			addMessage('Ehhez a misézőhelyhez nem létezik OSM azonosító, ezért nincs mit szerkeszteni.','danger');
-			return;
-		}
-						
-		// Lekérdezzük az OSM adatokat
-		$overpassapi = new \ExternalApi\OverpassApi();
-		$overpassapi->cache = "1 sec"; // Itt fontos, hogy mindig friss legyen az adat.		
-		$overpassapi->buildOneEntityQuery($this->church['osmtype'],$this->church['osmid']);
-		$overpassapi->run();
-		
-		// Elszállunk, ha nem találtunk OSM adatot az OSM azonosítók alapján
-		if($overpassapi->jsonData->elements == array() ) {
-			addMessage('Ehhez a misézőhelyhez bár van OSM azonosító ('.$this->church['osmtype'].':'.$this->church['osmid'].'), mégsem találjuk azt az OSM-ben.'); 
-		}
-		
-		$this->osmtags = $overpassapi->jsonData->elements[0]->tags;
-		
-		/*
-		// Lekérdezzük azt is, hogy mi veszi körül ezt a helyet
-		$point = [ $overpassapi->jsonData->elements[0]->center->lat, $overpassapi->jsonData->elements[0]->center->lon ];
-		$overpassapi->buildEnclosingBoundariesQuery($point[0],$point[1]);
-		$overpassapi->run();
-		printr($overpassapi);
-		*/
-		
-		return true;
-   }
    
    function loadOSMDataWithOSM() {
    
