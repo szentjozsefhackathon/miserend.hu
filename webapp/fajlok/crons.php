@@ -40,6 +40,11 @@ return [
     ['class' => '\User',                          'function' => 'deleteNonActivatedUsers',    'frequency' => '20 minutes', 'from' => '1am', 'until' => '6am'],
     ['class' => '\User',                          'function' => 'sendHolidayReminder',        'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
     /*
+     * #568: búcsú-emlékeztető a gondnokoknak, 21 nappal a várható dátum előtt.
+     * NAPI futás: a cron azt nézi, mely templom búcsúja esik pontosan 21 nap múlvára.
+     */
+    ['class' => '\User',                          'function' => 'sendBucsuReminder',          'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
+    /*
      * #496: a határ nélkül maradt templomok újra sorba állítása. HAVI futás — a
      * 30 napos korlát miatt gyakoribbnak nincs értelme, lásd a metódus doksiját.
      */
