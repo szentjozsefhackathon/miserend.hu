@@ -30,7 +30,36 @@ class Sqlite extends Api {
         HTML;
 
         $docs['response'] = <<<HTML
-        <h4>misék: „misek”</h4>
+        <h4>misék: „misek” — v5</h4>
+        <p>
+            A <strong>v5</strong> más szerkezetet ad, mint a v4: nem minden egyes
+            előfordulás külön sor, hanem <strong>minden mise a generált időszakával
+            sokszorozva</strong>, konkrét dátumtól dátumig. Az ismétlődés
+            <code>rrule</code>-ként, a kivételek konkrét dátumokként mennek — így a
+            tábla rövid marad, de rrule-lal könnyen felszorozható és kereshető.
+            (Egy templomra két évre mérve 43 sor 1229 előfordulás helyett.)
+        </p>
+        <ul>
+            <li>„mid” (<em>integer not null</em>): a SOR azonosítója</li>
+            <li>„tid” (<em>integer</em>): a templom azonosítója (mint az url-ben)</li>
+            <li>„mise_id” (<em>integer</em>): a MISE azonosítója. Egy mise több
+                időszakkal is szerepel (téli/nyári/adventi), ezen az azonosítón
+                ismerhető fel, hogy ugyanarról a miséről van szó.</li>
+            <li>„idoszak” (<em>varchar(255)</em>): az időszak neve, pl. <em>Advent</em></li>
+            <li>„datumtol”, „datumig” (<em>date</em>): az időszak KONKRÉT első és utolsó
+                napja, <strong>ÉÉÉÉ-HH-NN</strong> alakban (a v4-ben ez hónap+nap volt, év nélkül)</li>
+            <li>„ido” (<em>time</em>): a mise kezdete, pl. <em>07:00:00</em></li>
+            <li>„hossz” (<em>integer</em>): a mise hossza percben</li>
+            <li>„rrule” (<em>text</em>): az ismétlődés RFC 5545 szerint, pl.
+                <em>FREQ=WEEKLY;UNTIL=20261224T225959Z;BYDAY=MO,WE</em></li>
+            <li>„exdate” (<em>text</em>): a kimaradó alkalmak konkrét dátumai, vesszővel
+                elválasztva, pl. <em>2026-12-01,2026-12-08</em></li>
+            <li>„nyelv” (<em>varchar(32)</em>): nyelvek vesszővel elválasztva</li>
+            <li>„milyen” (<em>varchar(64)</em>): egyéb tulajdonságok vesszővel elválasztva</li>
+            <li>„megjegyzes” (<em>varchar(255)</em>)</li>
+        </ul>
+
+        <h4>misék: „misek” — v4 és korábbi</h4>
         <ul>
             <li>„mid” (<em>integer not null</em>): mise azonosító</li>
             <li>„tid” (<em>integer</em>): a templom azonosítója (mint az url-ben)</li>
@@ -215,12 +244,17 @@ class Sqlite extends Api {
         $this->insertDataTemplomok();
 
         echo "<br/>\ninsertDataMisek ... <br/>\n";                
-        $chunkSize = 3000;
-        $this->insertDataMisek($chunkSize);                
-        while( $this->search->countHits > 0 ) {                        
+        if ($this->version >= 5) {
+            // #800: a v5 nem a keresőindex felszorzott példányaiból dolgozik, hanem a
+            // generált periódusokból — templomonként, mert a generálás így működik.
+            $this->insertDataMisekV5();
+        } else {
+            $chunkSize = 3000;
             $this->insertDataMisek($chunkSize);
+            while( $this->search->countHits > 0 ) {
+                $this->insertDataMisek($chunkSize);
+            }
         }
-        
         if ($this->version > 1) {
             $this->insertDataKepek();
         }
@@ -261,6 +295,36 @@ class Sqlite extends Api {
     }
 
     function createTableMisek() {
+        /*
+         * #800: a v5 miserendje MÁS SZERKEZET, nem a v4 bővítése.
+         *
+         * A v4-ig minden egyes előfordulás külön sor volt (datumtol = datumig = egy
+         * nap, "Ezen a napon: ..."), fél évre előre felszorozva. borazslo azt kérte,
+         * hogy ehelyett az iCal-hoz hasonló alak menjen: minden mise a GENERÁLT
+         * PERIÓDUSSAL sokszorozva, konkrét dátumtól dátumig, mellette az ismétlődés
+         * rrule-ként és a kivételek konkrét dátumokként. Így a tábla rövid marad,
+         * viszont rrule-lal könnyen felszorozható és kereshető.
+         */
+        if ($this->version >= 5) {
+            $this->sqlite->statement("CREATE TABLE IF NOT EXISTS [misek] (
+                [mid] INTEGER  PRIMARY KEY NOT NULL,
+                [tid] INTEGER  NULL,
+                [mise_id] INTEGER  NULL,
+                [idoszak] VARCHAR(255)  NULL,
+                [datumtol] DATE  NULL,
+                [datumig] DATE  NULL,
+                [ido] TIME  NULL,
+                [hossz] INTEGER  NULL,
+                [rrule] TEXT  NULL,
+                [exdate] TEXT  NULL,
+                [nyelv] VARCHAR(32)  NULL,
+                [milyen] VARCHAR(64)  NULL,
+                [megjegyzes] VARCHAR(255)  NULL
+            )");
+
+            return;
+        }
+
         $createtablemisek = "CREATE TABLE IF NOT EXISTS [misek] (
             [mid] INTEGER  PRIMARY KEY NOT NULL,
             [tid] iNTEGER  NULL,";
@@ -426,6 +490,94 @@ class Sqlite extends Api {
 
         $line = "v" . $this->version . " " . (int) ( microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"]) . "s : " . $this->massId . "/" . $this->search->total . " -- ";
             echo "\r" . str_pad($line, 120)."<br>";             
+    }
+
+    /**
+     * #800: a v5 miserendje — minden mise a generált periódusával sokszorozva.
+     *
+     * A forrás ugyanaz, mint az iCal-exporté (CalMass::generateMassPeriodInstancesForYears),
+     * mert borazslo kifejezetten azt a formátumot kérte referenciának. Így a két
+     * kimenet nem tud szétcsúszni.
+     *
+     * Templomonként megyünk: a periódus-generálás egy templom összes miséjét együtt
+     * nézi (az időszakok egymáshoz képest súlyozódnak), tehát nem lehet tetszőleges
+     * mise-halmazra darabolni.
+     *
+     * @param int $chunkSize hány templomot dolgozzunk fel egy körben
+     */
+    function insertDataMisekV5(int $chunkSize = 200) {
+        $evek = [(int) date('Y'), (int) date('Y') + 1];
+
+        // Az időszak NEVE nem szerepel a generált szerkezetben, csak az azonosítója.
+        $idoszakNevek = DB::table('cal_generated_periods')->pluck('name', 'id')->toArray();
+
+        $churchIds = DB::table('cal_masses')->distinct()->orderBy('church_id')->pluck('church_id')->all();
+        $osszes = count($churchIds);
+        $kesz = 0;
+
+        foreach (array_chunk($churchIds, $chunkSize) as $csoport) {
+            $inserts = [];
+
+            foreach ($csoport as $churchId) {
+                $masses = \Eloquent\CalMass::where('church_id', $churchId)->get()->all();
+                if ($masses === []) {
+                    continue;
+                }
+
+                foreach (\Eloquent\CalMass::generateMassPeriodInstancesForYears($masses, [], $evek) as $periodus) {
+                    $this->massId++;
+                    $inserts[] = $this->massPeriodToRow($periodus, $idoszakNevek);
+                }
+            }
+
+            if ($inserts !== []) {
+                $this->insertDataSql('misek', $inserts);
+            }
+
+            $kesz += count($csoport);
+            $line = "v" . $this->version . " " . (int) (microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"]) . "s : "
+                . $kesz . "/" . $osszes . " templom, " . $this->massId . " sor";
+            echo "\r" . str_pad($line, 120) . "<br>";
+        }
+    }
+
+    /**
+     * Egy generált periódus-példány sqlite-sorrá alakítása.
+     *
+     * @param array<string,mixed> $periodus a generateMassPeriodInstancesForYears egy eleme
+     * @param array<int,string> $idoszakNevek generated_period_id => név
+     * @return array<string,mixed>
+     */
+    private function massPeriodToRow(array $periodus, array $idoszakNevek): array {
+        $rrule = is_array($periodus['rrule'] ?? null) ? $periodus['rrule'] : [];
+
+        // Az időpont a szabály kezdetéből jön: a dtstart hordozza az órát és a percet.
+        $ido = null;
+        if (!empty($rrule['dtstart'])) {
+            try {
+                $ido = (new \DateTime((string) $rrule['dtstart']))->format('H:i:s');
+            } catch (\Throwable $e) {
+                $ido = null;
+            }
+        }
+
+        return [
+            'mid' => $this->massId,
+            'tid' => (int) ($periodus['church_id'] ?? 0),
+            // A mise SAJÁT azonosítója: egy mise több periódussal is szerepel, és a
+            // fogyasztónak tudnia kell, hogy ugyanarról a miséről van szó.
+            'mise_id' => (int) ($periodus['mass_id'] ?? 0),
+            'idoszak' => $idoszakNevek[$periodus['generated_period_id'] ?? null] ?? '',
+            'datumtol' => $periodus['start_date'] ?? null,
+            'datumig' => $periodus['end_date'] ?? null,
+            'ido' => $ido,
+            'hossz' => (int) ($periodus['duration_minutes'] ?? 0),
+            'rrule' => \SimpleRRule::toRfcString($rrule),
+            'exdate' => implode(',', \SimpleRRule::exdates($rrule)),
+            'nyelv' => implode(',', (array) ($periodus['lang'] ?? [])),
+            'milyen' => implode(',', (array) ($periodus['types'] ?? [])),
+            'megjegyzes' => $periodus['comment'] ?? null,
+        ];
     }
 
     function insertDataKepek() {
