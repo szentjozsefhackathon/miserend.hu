@@ -55,6 +55,8 @@
   "DIFFERENT_LOCATION_HINT": "A koordinátát a térképről vagy az OpenStreetMap-ből másolhatod. Mindkét mező kell, különben a mise a templomban marad.",
   "DIFFERENT_LOCATION_BADGE": "Nem a templomban: {{place}}",
   "DIFFERENT_LOCATION_SHOW_ON_MAP": "Megnyitás az OpenStreetMap-en",
+  "MAP_PICK_HINT": "Kattints a térképre, vagy húzd a jelölőt a helyszínre.",
+  "MAP_UNAVAILABLE": "A térkép most nem érhető el — a koordinátát kézzel is beírhatod.",
   "RECURRENCE": "Ismétlődés",
   "PERIOD": "Időszak",
   "MANUAL_EXPERIOD": "Kézzel kivett időszakok",

@@ -76,6 +76,10 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
                     'rite' => strtoupper($this->church->denomination),
                     'country' => $country,
                     'timeZone' => 'Europe/Budapest',
+                    // #816: a térképes helyszínválasztó kiindulópontja. A szabadtéri
+                    // alkalom jellemzően a templom közelében van.
+                    'lat' => (float) $this->church->lat,
+                    'lon' => (float) $this->church->lon,
                     'hasExternalCalendar' => $this->church->hasExternalCalendar,
                     'eventsFromSensor' => $confessions,
                     'sensorEvents' => $confessions,

@@ -1,0 +1,9 @@
+<!-- #816: térképes helyszínválasztó. A kézi mezők tőle FÜGGETLENÜL is működnek. -->
+<div class="location-picker">
+  @if (hiba) {
+    <p class="map-error">{{ 'MAP_UNAVAILABLE' | translate }}</p>
+  } @else {
+    <div #mapContainer class="map"></div>
+    <small class="map-hint">{{ 'MAP_PICK_HINT' | translate }}</small>
+  }
+</div>

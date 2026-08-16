@@ -88,6 +88,9 @@ export interface DialogData {
   // templomnak van már „illeszthető" rendszeres miserendje (pl. tanítási idő).
   existingPeriodIds?: number[];
   country?: string;
+  /** #816: a szerkesztett templom koordinátája a térképes helyszínválasztóhoz. */
+  churchLat?: number;
+  churchLon?: number;
 }
 
 @Component({
@@ -914,7 +917,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     }
 
     const dialogRef = this.dialog.open(AddFullEventDialogComponent, {
-      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country}
+      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country,
+             churchLat: this.currentChurch.lat, churchLon: this.currentChurch.lon}
     });
 
     dialogRef.afterClosed().subscribe(result => {

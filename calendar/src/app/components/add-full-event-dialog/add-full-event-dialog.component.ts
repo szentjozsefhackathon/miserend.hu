@@ -19,6 +19,7 @@ import {AsyncPipe, TitleCasePipe, CommonModule} from '@angular/common';
 import {map, Observable, of, startWith} from 'rxjs';
 import {MatSelectModule} from '@angular/material/select';
 import {MatCheckboxModule} from '@angular/material/checkbox';
+import {LocationPickerComponent, PickedLocation} from '../location-picker/location-picker.component';
 import {recurrences, Renum} from '../../enum/recurrence';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
 import {Rite, RiteMassTypes} from '../../enum/rites';
@@ -59,6 +60,7 @@ import {ChristmasDay} from "../../enum/christmas-day";
     ReactiveFormsModule,
     MatSelectModule,
     MatCheckboxModule,
+    LocationPickerComponent,
     TranslatePipe,
     TitleCasePipe,
     MatExpansionModule,
@@ -103,6 +105,17 @@ export class AddFullEventDialogComponent {
       this.data.event.locationLon = null;
       this.data.event.locationName = null;
     }
+  }
+
+  /**
+   * #816: a térképen kijelölt pont átvétele.
+   *
+   * A nevet SZÁNDÉKOSAN nem nyúlja meg: azt a felhasználó írta, és egy térképi
+   * kattintás nem tudhatja, hogy a „Röszkei puszta, kereszt" már nem érvényes.
+   */
+  onHelyszinValasztva(pont: PickedLocation): void {
+    this.data.event.locationLat = pont.lat;
+    this.data.event.locationLon = pont.lon;
   }
 
   // #454: Új dátum hozzáadásához használt ideiglenes változó
