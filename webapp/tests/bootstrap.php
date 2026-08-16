@@ -41,3 +41,11 @@ dbconnect();
 
 date_default_timezone_set('Europe/Budapest');
 
+// A levélküldés Twig-sablonból áll elő (\Eloquent\Email::render()), így $twig nélkül
+// egyetlen email-út sem tesztelhető. Ugyanaz a környezet, mint amit a load.php épít.
+//
+// A $GLOBALS azért kell, mert a PHPUnit ezt a fájlt FÜGGVÉNYEN BELÜLRŐL tölti be: a
+// sima $twig értékadás ott lokális változó lenne, a render() `global $twig`-je pedig
+// továbbra is null-t kapna.
+$GLOBALS['twig'] = buildTwigEnvironment();
+

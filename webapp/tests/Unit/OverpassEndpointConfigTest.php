@@ -56,15 +56,51 @@ class OverpassEndpointConfigTest extends TestCase
         }
     }
 
-    /** A globálist mindkét Twig-környezetnek regisztrálnia kell (l. a DANGER-kommentet). */
-    public function testBothTwigEnvironmentsRegisterTheGlobal(): void
+    /**
+     * A globálisnak tényleg ott kell lennie a felépített környezetben.
+     *
+     * Ez eddig a két fájl FORRÁSSZÖVEGÉBEN kereste az `addGlobal` hívást, mert a
+     * Twig-környezet két teljes másolatban élt (load.php és Html::loadTwig), mindkettőn
+     * a DANGER-figyelmeztetéssel. Azóta egyetlen gyár építi mindkettőt, tehát a szöveges
+     * keresés a lényeget vesztette — a lényeg viszont maradt: a globális legyen ott.
+     */
+    public function testTheBuiltEnvironmentRegistersTheGlobal(): void
+    {
+        global $config;
+        $eredeti = $config['overpass']['apiUrl'] ?? null;
+        // Kifejezett érték, mert a beállítás környezetenként más — kikapcsolt külső
+        // API-knál (#695) üres is lehet, és akkor az üresség a HELYES kimenet.
+        $config['overpass']['apiUrl'] = 'https://teszt.example.com/api/interpreter';
+
+        try {
+            $globals = buildTwigEnvironment()->getGlobals();
+
+            self::assertArrayHasKey('overpass_api_url', $globals,
+                'hiányzik az overpass_api_url globális');
+            self::assertSame('https://teszt.example.com/api/interpreter',
+                $globals['overpass_api_url'],
+                'a globálisnak a beállított végpontot kell hoznia');
+        } finally {
+            if ($eredeti === null) {
+                unset($config['overpass']['apiUrl']);
+            } else {
+                $config['overpass']['apiUrl'] = $eredeti;
+            }
+        }
+    }
+
+    /**
+     * És egyik hívó se építsen sajátot: pont a másolatok szétcsúszása volt a baj.
+     */
+    public function testNoCallSiteBuildsItsOwnEnvironment(): void
     {
         foreach ([__DIR__ . '/../../load.php', __DIR__ . '/../../classes/html/html.php'] as $utvonal) {
-            self::assertStringContainsString(
-                "addGlobal('overpass_api_url'",
-                file_get_contents($utvonal),
-                basename($utvonal) . ': hiányzik az overpass_api_url globális.'
-            );
+            $tartalom = file_get_contents($utvonal);
+
+            self::assertStringNotContainsString('new \\Twig\\Environment', $tartalom,
+                basename($utvonal) . ': saját Twig-környezetet épít — használd a buildTwigEnvironment()-et.');
+            self::assertStringContainsString('buildTwigEnvironment(', $tartalom,
+                basename($utvonal) . ': nem a közös gyárból veszi a Twig-környezetet.');
         }
     }
 

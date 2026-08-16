@@ -576,9 +576,12 @@ class User {
                 $user2delete = new User($result->uid);
                 $user2delete->delete();
                 $countDeleted++;
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
+                // \Throwable, nem \Exception: PHP 8-ban a TypeError és társai \Error-ok,
+                // amiket a szűkebb catch nem fog el — ez a job pont ilyentől állt hónapokig
+                // (#239). A hibát naplózzuk is, különben a cron-oldalon kívül nyoma sem marad.
+                logThrowable('deleteNonActivatedUsers (uid: '.$result->uid.')', $e);
                 addMessage('Nem sikerül törölni a felhasználót: '.$result->uid, 'error');
-                echo "Nem sikerült törölni a felhasználót: ".$result->uid." ".$result->email." ".$result->nev." ".$result->regdatum." ".$result->lastlogin." ".$result->jogok." ".print_r($result,1)." ";                
                 continue;
             }
             
@@ -589,6 +592,8 @@ class User {
 			
 		}
 
+		$countDeleted += self::deleteUnreachableNonActivatedUsers($waitingBeforeDelete);
+
 		// #239/#171: itt régen egy `whereIn('uid', $ids2delete)->delete()` állt, de a
 		// $ids2delete változó SEHOL nem kapott értéket — a törlést a fenti ciklus végzi
 		// egyesével. PHP 8 alatt a whereIn(null) TypeError-t dob, ami \Error, nem
@@ -597,7 +602,78 @@ class User {
 		// került success-be. Éles: 2026-03-27 óta nem futott le sikeresen.
 		return $countDeleted;
 	}
-	
+
+	/**
+	 * Az elérhetetlen című, soha be nem lépett fiókok takarítása.
+	 *
+	 * A fenti törlés feltétele egy SIKERESEN kiküldött `user_pleaseactivate` — tehát
+	 * pont azok maradnak bent örökre, akiknek a levele sosem ment ki. Élesben ez a
+	 * robot-regisztrációk halmaza: hamis címmel jönnek, a levél elhasal, belépni sosem
+	 * lépnek be, a sor meg marad. Ezek adják a `user_pleaselogin`/`user_pleaseactivate`
+	 * hibás leveleinek a zömét, és közben szemetelik az adatbázist.
+	 *
+	 * Csak akkor törlünk, ha a fiók MINDHÁROM feltételt teljesíti:
+	 *   - soha nem lépett be,
+	 *   - régebbi a türelmi időnél,
+	 *   - és bizonyítottan elérhetetlen: vagy eleve használhatatlan a címe, vagy több
+	 *     kísérlet után sem sikerült kézbesíteni — és sosem ment ki neki levél sikeresen.
+	 *
+	 * A búcsúlevél itt szándékosan elmarad: oda küldenénk, ahova az előző néhány sem
+	 * jutott el, csak újabb hibás sorokat termelve.
+	 *
+	 * @param  string $waitingBeforeDelete strtotime-kompatibilis türelmi idő
+	 * @return int    a törölt fiókok száma
+	 */
+	static function deleteUnreachableNonActivatedUsers(string $waitingBeforeDelete = '2 weeks'): int {
+		$candidates = DB::table('user')
+			->where('lastlogin', '0000-00-00 00:00:00')
+			->where('regdatum', '<', date('Y-m-d H:i:s', strtotime('-' . $waitingBeforeDelete)))
+			->orderByRaw('RAND()')
+			// Ugyanaz az óvatosság, mint a fenti ágon: egy futás ne söpörjön túl sokat.
+			->limit(20)
+			->get();
+
+		$countDeleted = 0;
+		foreach ($candidates as $candidate) {
+			if (!self::isUnreachable('user_pleaseactivate', $candidate->email)) {
+				continue;
+			}
+
+			try {
+				(new User($candidate->uid))->delete();
+			} catch (\Throwable $e) {
+				logThrowable('deleteUnreachableNonActivatedUsers (uid: ' . $candidate->uid . ')', $e);
+				continue;
+			}
+
+			$countDeleted++;
+			error_log('[miserend] törlöm a(z) ' . $candidate->uid
+				. ' azonosítójú, soha be nem lépett felhasználót: az aktiváló levél nem kézbesíthető.');
+		}
+
+		return $countDeleted;
+	}
+
+	/**
+	 * Bizonyítottan elérhetetlen-e a cím ezen a levéltípuson?
+	 *
+	 * Az „egyetlen sikeres kiküldés sem volt" feltétel a lényeg: ha valaha kiment neki
+	 * levél, akkor a cím működött, tehát nem ez a takarítás dolga.
+	 */
+	static function isUnreachable(string $type, ?string $email): bool {
+		if (!self::isEmailUsable($email)) {
+			return true;
+		}
+
+		$everSent = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'sent')
+			->exists();
+
+		return !$everSent && self::isUndeliverable($type, $email);
+	}
+
 
 	static function sendActivationNotification() {
 		$lastEmailDiff = '-1 week';
@@ -611,6 +687,10 @@ class User {
 			
 
 		foreach($users2notify as $user) {					
+			if (self::skipUnnotifiable('user_pleaseactivate', $user)) {
+				continue;
+			}
+
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaseactivate')
 				->where('to',$user->email)
@@ -642,6 +722,86 @@ class User {
 		return true;
 	}
 	
+	/**
+	 * Hány sikertelen kísérlet után tekintjük kézbesíthetetlennek a címet.
+	 *
+	 * A leggyakoribb ritmus háromhetente egy próba, tehát három hiba nagyjából két
+	 * hónapnyi sikertelenség — egy átmeneti SMTP-kiesés nem éri el.
+	 */
+	const UNDELIVERABLE_ATTEMPTS = 3;
+
+	/**
+	 * Van-e egyáltalán olyan címünk, amire érdemes megpróbálni a kiküldést?
+	 *
+	 * A régi fiókok egy részének nincs használható email-címe. A kiküldés ilyenkor
+	 * biztosan elhasal, csak épp két különböző ágon: NULL-nál az `Email::send()`
+	 * `isset($this->to)` feltétele bukik ("Kevés az adat"), üres vagy hibás sztringnél
+	 * a PHPMailer dob ("Invalid address").
+	 *
+	 * A PHPMailer is FILTER_VALIDATE_EMAIL-lel ellenőriz, tehát amit ez elutasít, azt
+	 * ő is elutasítaná: nem szűrünk ki olyan címet, ami egyébként kimenne.
+	 */
+	static function isEmailUsable(?string $email): bool {
+		return $email !== null
+			&& filter_var(trim($email), FILTER_VALIDATE_EMAIL) !== false;
+	}
+
+	/**
+	 * Kézbesíthetetlennek bizonyult-e már a cím ezen a levéltípuson?
+	 *
+	 * Egyetlen hiba még lehet átmeneti (SMTP-kiesés), ezért csak több, hetekre elnyúló
+	 * sikertelen kísérlet után mondjuk ki.
+	 *
+	 * A sikeres kézbesítés NULLÁZZA a számlálót, és ez nem szépészeti kérdés: az
+	 * inaktivitási értesítő törlés-ága csak akkor fut le, ha a felhasználó előbb átmegy
+	 * ezen a vizsgálaton. Ha a régi hibákat egy azóta bizonyítottan működő cím mellett is
+	 * beszámítanánk, az ilyen fiókok némán kimaradnának a törlésből.
+	 */
+	static function isUndeliverable(string $type, string $email): bool {
+		$errors = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'error');
+
+		$lastSuccess = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'sent')
+			->max('updated_at');
+		if ($lastSuccess !== null) {
+			$errors->where('updated_at', '>', $lastSuccess);
+		}
+
+		return $errors->count() >= self::UNDELIVERABLE_ATTEMPTS;
+	}
+
+	/**
+	 * Kihagyandó-e ez a felhasználó, mert úgysem érnénk el?
+	 *
+	 * Mindkét értesítő cron ugyanabba a körbe futott bele: a levél elhasal, a fiók
+	 * marad, a következő futás pedig újra próbálkozik — örökre. Az inaktivitási
+	 * értesítőnél ez különösen látszik, mert a törlés ága KIZÁRÓLAG `sent` státuszra
+	 * fut: akinek nem megy ki a levél, az sosem jut el a törlésig. Az éles /health
+	 * ezt mutatta: a `user_pleaselogin` típusnál 131 hibás és 48 sikeres levél
+	 * 30 nap alatt, messze a legrosszabb arány.
+	 *
+	 * Törölni emiatt nem törlünk: a kézbesíthetetlenség nem bizonyítja, hogy a fiók
+	 * elhagyott — a törlés viszont visszafordíthatatlan.
+	 */
+	private static function skipUnnotifiable(string $type, $user): bool {
+		if (!self::isEmailUsable($user->email ?? null)) {
+			error_log('[miserend] ' . $type . ': a(z) ' . $user->uid
+				. ' azonosítójú felhasználónak nincs használható email-címe, kihagyom.');
+			return true;
+		}
+		if (self::isUndeliverable($type, $user->email)) {
+			error_log('[miserend] ' . $type . ': a(z) ' . $user->email
+				. ' címre több kísérlet után sem sikerült kézbesíteni, nem próbálkozom tovább.');
+			return true;
+		}
+		return false;
+	}
+
 	static function sendInactivityNotification() {
 		$lastEmailDiff = '-3 week';
 		$inactivityPeriod = '-5 years';
@@ -654,6 +814,10 @@ class User {
 			
 
 		foreach($users2notify as $user) {					
+			if (self::skipUnnotifiable('user_pleaselogin', $user)) {
+				continue;
+			}
+
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaselogin')
 				->where('to',$user->email)
