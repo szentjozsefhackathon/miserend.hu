@@ -165,6 +165,56 @@ class BucsuTest extends TestCase {
         self::assertStringContainsString('Szent György', $r['unparsed']);
     }
 
+    // ---- a valódi forrás: a megjegyzés-mező ----------------------------------
+
+    /**
+     * borazslo javítása a #809-hez: „itt a `templomok.bucsu` mezőt használja. Mert hát
+     * valóban mintha lenne ilyen mező, csak nem használjuk egyáltalán. Az osm adatokból
+     * vesszük már a búcsút, vagy ha nincs, akkor a megjegyzés mezőből próbáljuk kitalálni."
+     *
+     * Igaza volt. A megjegyzés viszont HTML-t tartalmaz és zajos — mindkettőt kezelni kell.
+     */
+    public function testAHtmlEntitasosSzovegetIsErtelmezi(): void {
+        // Élesben 807 templomnál így néz ki: B&uacute;cs&uacute; = „Búcsú"
+        $r = \Bucsu::parse('B&uacute;cs&uacute;: augusztus 20.<br /> V&eacute;dőszent: Szent Istv&aacute;n');
+
+        self::assertSame([8, 20], [$r['bucsu']['month'], $r['bucsu']['day']]);
+    }
+
+    public function testABrCimkeHelyereSzokozKerul(): void {
+        $r = \Bucsu::parse('Búcsú: május 1.<br />Szentségimádási nap: június 3.');
+
+        self::assertSame([5, 1], [$r['bucsu']['month'], $r['bucsu']['day']]);
+        self::assertSame([6, 3], [$r['szentsegimadas']['month'], $r['szentsegimadas']['day']]);
+    }
+
+    /**
+     * A zajszűrő: a megjegyzés tele van dátummal, aminek semmi köze a búcsúhoz.
+     * Címke nélkül nem fogadjuk el — 135 templomnál olvastunk ki így téves dátumot.
+     */
+    public function testACimkeFelismeres(): void {
+        self::assertTrue(\Bucsu::containsBucsuLabel('Búcsú: augusztus 20.'));
+        self::assertTrue(\Bucsu::containsBucsuLabel('A templom ünnepe: október 4.'));
+        self::assertTrue(\Bucsu::containsBucsuLabel('B&uacute;cs&uacute;: m&aacute;jus 1.'));
+        self::assertFalse(\Bucsu::containsBucsuLabel('Nyitvatartás: hétfőn 8-tól. Felújítás: március 3.'));
+        self::assertFalse(\Bucsu::containsBucsuLabel(''));
+    }
+
+    /** Pünkösd és húsvéthétfő önmagában is előfordul az adatban. */
+    public function testAPusztaMozgoUnnepnevek(): void {
+        self::assertSame('2026-05-24', \Bucsu::resolve(\Bucsu::parse('Búcsú: pünkösd')['bucsu'], 2026));
+        self::assertSame('2026-04-06', \Bucsu::resolve(\Bucsu::parse('Búcsú: Húsvét hétfő')['bucsu'], 2026));
+    }
+
+    /**
+     * A puszta „húsvét" minta NEM nyelheti el a számozott alakot. Ezt a saját
+     * tesztem fogta meg, miután a puszta mintákat felvettem.
+     */
+    public function testASzamozottHusvetiVasarnapNyer(): void {
+        self::assertSame('2026-04-19',
+            \Bucsu::resolve(\Bucsu::parse('Szent Benedek Húsvét 3. vasárnapja')['bucsu'], 2026));
+    }
+
     // ---- a templom oldali API ------------------------------------------------
 
     /** @param string $bucsu a nyers mezőérték */

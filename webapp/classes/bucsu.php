@@ -62,7 +62,14 @@ class Bucsu {
         'punkosd vasarnap'                    => 49,
         'aldozocsutortok'                     => 39,
         'urunk mennybemenetele'               => 39,
+        'husvet hetfo'                        => 1,
+        'husvethetfo'                         => 1,
         'husvetvasarnap'                      => 0,
+        // A puszta „pünkösd" a LEGVÉGÉN áll: a fenti, bővebb pünkösdös minták
+        // előbb kell hogy illeszkedjenek, különben elnyelné őket.
+        'punkosd unnepen'                     => 49,
+        'punkosd'                             => 49,
+        'husvet'                              => 0,
     ];
 
     /** Az advent 1. vasárnapjához képesti eltolású ünnepek, napban. */
@@ -85,7 +92,22 @@ class Bucsu {
      */
     public static function parse(?string $szoveg): array {
         $ures = ['bucsu' => null, 'szentsegimadas' => null, 'unparsed' => ''];
-        $szoveg = trim(preg_replace('/\s+/u', ' ', (string) $szoveg));
+
+        /*
+         * #568: a megjegyzés-mező HTML-t tartalmaz.
+         *
+         * Az adat évek alatt, több szerkesztőfelületen keresztül gyűlt: van benne
+         * `<br />`, `<p class="...">`, és entitásokkal kódolt ékezet
+         * (`B&uacute;cs&uacute;` = „Búcsú"). Élesben 807 templomnál entitásos a szöveg.
+         *
+         * Nyersen olvasva a hónapnevek egy része („m&aacute;rcius") felismerhetetlen,
+         * és a címkékre sem lehet illeszteni. Ezért előbb dekódolunk és kiszedjük a
+         * jelöléseket — a `<br>` helyére szóköz kerül, különben az elválasztott
+         * mondatok összeragadnának.
+         */
+        $szoveg = preg_replace('#<br\s*/?>|</p>|</div>#i', ' ', (string) $szoveg);
+        $szoveg = html_entity_decode(strip_tags($szoveg), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $szoveg = trim(preg_replace('/\s+/u', ' ', $szoveg));
         if ($szoveg === '') {
             return $ures;
         }
@@ -134,6 +156,30 @@ class Bucsu {
         $tiszta = trim(preg_replace('/[\s:.,;\-]+/u', ' ', $tiszta));
 
         return mb_strlen($tiszta) > 1 ? $tiszta : '';
+    }
+
+    /**
+     * #568: említi-e a szöveg egyáltalán a búcsút?
+     *
+     * A megjegyzés-mező ZAJOS: húsz év alatt gyűlt szabad szöveg, tele dátumokkal,
+     * amiknek semmi közük a búcsúhoz (miserend, nyitvatartás, események). Ha bármely
+     * dátumot búcsúnak vennénk, 135 templom gondnoka kapna téves levelet arról, hogy
+     * „közeleg a búcsú".
+     *
+     * Ezért a megjegyzésből CSAK akkor olvasunk ki búcsút, ha a szöveg maga is
+     * kimondja. A célzott forrásoknál (OSM `patron_day`, illetve a `bucsu` oszlop)
+     * erre nincs szükség — ott a mező neve maga a bizonyíték.
+     */
+    public static function containsBucsuLabel(?string $szoveg): bool {
+        $tiszta = self::normalizal(html_entity_decode(strip_tags((string) $szoveg), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        foreach (self::BUCSU_CIMKEK as $cimke) {
+            if (str_contains($tiszta, self::normalizal($cimke))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -204,16 +250,21 @@ class Bucsu {
     private static function mozgoUnnep(string $resz): ?array {
         $n = self::normalizal($resz);
 
+        /*
+         * A SZÁMOZOTT alak megy előbb: „Húsvét 3. vasárnapja". A táblában van egy
+         * puszta „husvet" minta is, és az `str_contains` azt előbb megtalálná — így
+         * a harmadik vasárnapból magát húsvétot csinálná. (A tesztem pontosan ezt
+         * fogta meg, miután a puszta mintákat felvettem.)
+         */
+        if (preg_match('/husvet (\d)\.? vasarnapja/', $n, $m)) {
+            return ['type' => 'moveable', 'feast' => 'husvet ' . $m[1] . '. vasarnapja',
+                    'basis' => 'easter', 'offset' => ((int) $m[1] - 1) * 7];
+        }
+
         foreach (self::HUSVETI_UNNEPEK as $minta => $eltolas) {
             if (str_contains($n, $minta)) {
                 return ['type' => 'moveable', 'feast' => $minta, 'basis' => 'easter', 'offset' => $eltolas];
             }
-        }
-
-        // "Húsvét 3. vasárnapja" — az N. vasárnap (N-1) héttel húsvét után.
-        if (preg_match('/husvet (\d)\.? vasarnapja/', $n, $m)) {
-            return ['type' => 'moveable', 'feast' => 'husvet ' . $m[1] . '. vasarnapja',
-                    'basis' => 'easter', 'offset' => ((int) $m[1] - 1) * 7];
         }
 
         foreach (self::ADVENTI_UNNEPEK as $minta => $eltolas) {
@@ -335,9 +386,16 @@ class Bucsu {
     public static function forrasStatisztika(): array {
         $stat = ['szoveges' => 0, 'patron_day' => 0, 'ertelmezhetetlen' => 0];
 
+        /*
+         * #809: a búcsú a MEGJEGYZÉS mezőből jön, ezért arra is szűrünk. A régi
+         * `bucsu` oszlop utolsó tartaléknak marad, a `patron_day` pedig a
+         * strukturált forrás — mindhármat be kell engedni a mintába.
+         */
         $templomok = \Eloquent\Church::where('ok', 'i')
             ->where(function ($q) {
-                $q->where('bucsu', '<>', '')
+                $q->where('megjegyzes', 'like', '%úcsú%')
+                  ->orWhere('megjegyzes', 'like', '%nnepe%')
+                  ->orWhere('bucsu', '<>', '')
                   ->orWhereHas('attributes', fn($a) => $a->where('key', 'patron_day'));
             })
             ->get();
@@ -349,7 +407,14 @@ class Bucsu {
                 $stat['patron_day']++;
             } elseif ($eredmeny['forras'] === 'bucsu_mezo') {
                 $stat['szoveges']++;
-            } elseif (trim((string) $templom->bucsu) !== '') {
+            } elseif (self::containsBucsuLabel($templom->megjegyzes)
+                      || trim((string) $templom->bucsu) !== '') {
+                /*
+                 * Van kitöltött búcsú-adat, csak nem tudjuk kiolvasni belőle a
+                 * dátumot. Ez NEM forrás-kérdés, hanem javítható adat — ezért külön
+                 * számoljuk. Ha a szövegessel összemosnánk, a szám sosem menne
+                 * nullára, és a kivezetés örökre elmaradna.
+                 */
                 $stat['ertelmezhetetlen']++;
             }
         }

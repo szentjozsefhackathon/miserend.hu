@@ -29,7 +29,13 @@ class PatronDayTest extends TestCase {
         $this->churchId = (int) DB::table('templomok')->max('id') + 1;
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'PatronDay Teszt';
-        $minta['bucsu'] = 'Búcsú: március 19.';
+        /*
+         * A búcsú a MEGJEGYZÉS mezőből jön (#809), ezért a fixtúrának azt kell
+         * beállítania. A `bucsu` oszlopot kiürítjük, különben a másolt mintatemplom
+         * régi értéke szólna bele — és pont az derülne ki, amit nem akarunk mérni.
+         */
+        $minta['megjegyzes'] = 'Búcsú: március 19.';
+        $minta['bucsu'] = '';
         DB::table('templomok')->insert($minta);
     }
 
@@ -145,8 +151,10 @@ class PatronDayTest extends TestCase {
 
     /** Az értelmezhetetlen mező külön kategória — az javítható adat, nem forrás. */
     public function testAzErtelmezhetetlenMezoKulonSzamit(): void {
+        // #809: a forrás a MEGJEGYZÉS mező, tehát ott kell elhelyezni a szöveget.
         DB::table('templomok')->where('id', $this->churchId)
-            ->update(['bucsu' => 'Búcsú: Szent György vértanú ünnepéhez közelebbi vasárnap']);
+            ->update(['megjegyzes' => 'Búcsú: Szent György vértanú ünnepéhez közelebbi vasárnap',
+                      'bucsu' => '']);
 
         $stat = \Bucsu::forrasStatisztika();
 
