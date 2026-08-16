@@ -26,14 +26,39 @@ class OsmNameSearchTest extends TestCase {
         DB::beginTransaction();
 
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $this->churchId = (int) DB::table('templomok')->max('id') + 1;
+        // Az árva `lookup_boundary_church` sorok miatt nem elég a templomok maximuma:
+        // egy régi, törölt templom azonosítójára ütköznénk rá.
+        $this->churchId = max(
+            (int) DB::table('templomok')->max('id'),
+            (int) DB::table('lookup_boundary_church')->max('church_id')
+        ) + 1;
 
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Hivatalos Teszt-templom';
         $minta['ismertnev'] = '';
-        $minta['varos'] = 'Tesztfalu';
         $minta['ok'] = 'i';
         DB::table('templomok')->insert($minta);
+
+        /*
+         * #496/#497/#498: a település már NEM a `templomok.varos` oszlopban van — azt
+         * a kivezetés eldobta —, hanem az OSM-határláncban. A teszt eddig az oszlopba
+         * írt, ezért az oszlop eldobása után az INSERT elhasalt, és vele az egész
+         * osztály. A településre keresés viszont fontos eset, ezért nem esik ki:
+         * határként vesszük fel, ahogy élesben is van.
+         */
+        $boundaryId = DB::table('boundaries')->insertGetId([
+            'boundary'    => 'administrative',
+            'admin_level' => 8,
+            'name'        => 'Tesztfalu',
+            'alt_name'    => '',
+            'iso3166_1'   => '',
+            'osmtype'     => 'relation',
+            'osmid'       => 990001,
+        ]);
+        DB::table('lookup_boundary_church')->insert([
+            'boundary_id' => $boundaryId,
+            'church_id'   => $this->churchId,
+        ]);
     }
 
     protected function tearDown(): void {
@@ -57,7 +82,11 @@ class OsmNameSearchTest extends TestCase {
         return \Eloquent\Church::where('templomok.id', $this->churchId)
             ->where(function ($query) use ($minta) {
                 $query->where('nev', 'LIKE', $minta)
-                    ->orWhere('varos', 'LIKE', $minta)
+                    // A település a határláncból jön, nem oszlopból (#496/#497/#498).
+                    ->orWhereHas('boundaries', function ($q) use ($minta) {
+                        $q->where('boundary', 'administrative')
+                          ->where('name', 'LIKE', $minta);
+                    })
                     ->orWhere('ismertnev', 'LIKE', $minta)
                     ->orWhereHas('attributes', function ($q) use ($minta) {
                         $q->where('value', 'LIKE', $minta)
