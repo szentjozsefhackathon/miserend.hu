@@ -3,11 +3,14 @@
 {% set title = 'Szomszédos templomok' %}
 
 {% block body %}
-    {% if neighbours|length > 1 %}
+    {% if neighbours|length > 0 %}
         <ul style="-webkit-padding-start: 20px;-webkit-margin-before: 0em;">
             {% for i in 0..9 %}
                 {% if neighbours[i] %} {{ _self.neighbour(neighbours[i],location) }} {% endif %}
             {% endfor %}
+            {# A Church::getNeighboursAttribute() 10 találatnál levágja a listát, ezért a
+               `> 9` pontosan azt jelenti, hogy a vágás életbe lépett: van még tovább.
+               Nem elcsúszás — a ciklus is szándékosan 10 elemet ír ki. #}
             {% if neighbours|length > 9 %}<li style="display:inline">...</li>{% endif %}
         </ul>
     {% endif %}    

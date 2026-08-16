@@ -749,39 +749,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $distance->MupdateChurch($this);
     }
     
-    public function neighbours() {
-        return $this->where('templomok.id',$this->id)
-                ->join('distances', function($join)
-                    {
-                      $join->on('distances.fromLon', '=', 'lon');
-                      $join->on('distances.fromLat', '=', 'lat');
-
-                    })
-                  ->join('templomok as churchTo',function($join)
-                    {
-                      $join->on('distances.toLon', '=', 'churchTo.lon');
-                      $join->on('distances.toLat', '=', 'churchTo.lat');
-                    })
-                ->select('distances.*','churchTo.*')    
-                ->where('churchTo.ok', 'i')
-                ->orderBy('distances.distance', 'ASC');
-
-    }
-    
-    public function neighbourss() {
-        return \Eloquent\Church::join('distances', function($join)
-                    {
-                      $join->on('distances.toLon', '=', 'lon');
-                      $join->on('distances.toLat', '=', 'lat');
-
-                    })
-                    ->where('distances.fromLon',$this->lon)
-                    ->where('distances.fromLat',$this->lat)
-                    ->where('ok','i')
-                            ->select('templomok.*','distances.distance')
-                    ->orderBy('distances.distance', 'ASC');                                               
-    }
-
     public function getNeighboursAttribute () {
         // #103: mindkét irányban keresünk. Egy pár a distances-ben csak EGYSZER szerepel
         // (from→to), a régi accessor viszont csak a `from = ez` sorokat nézte — ezért ha a
