@@ -38,12 +38,19 @@ class EmailTemplateDomainTest extends TestCase
             . implode(', ', $vetkesek));
     }
 
-    /** Semmilyen más környezet címe sem kerülhet a sablonba. */
-    public function testNoEmailTemplateHardcodesAnyEnvironmentHost(): void
+    /**
+     * Fejlesztői cím semmiképp nem kerülhet levélbe.
+     *
+     * A `staging.miserend.hu` szándékosan NINCS a tiltottak közt: az önkéntes-levél
+     * kifejezetten gyakorlóhelynek ajánlja. Az egy külön, megnevezett szolgáltatásra
+     * mutató link — nem az oldal saját címe, tehát nem a `{{ domain }}` dolga. A
+     * localhost és a 127.0.0.1 viszont sosem helyes: az a fejlesztő gépére mutat.
+     */
+    public function testNoEmailTemplateLinksToADeveloperHost(): void
     {
         $vetkesek = [];
         foreach (self::sablonok() as $utvonal) {
-            if (preg_match('#https?://(staging|dev|localhost|127\.0\.0\.1)#i', (string) file_get_contents($utvonal))) {
+            if (preg_match('#https?://(localhost|127\.0\.0\.1)#i', (string) file_get_contents($utvonal))) {
                 $vetkesek[] = basename($utvonal);
             }
         }
