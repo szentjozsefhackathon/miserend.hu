@@ -16,6 +16,14 @@ class User {
     public $becenev;
     public $nev;
     public $volunteer;
+
+    /**
+     * #568: a közelgő búcsú dátuma a levélsablonnak.
+     *
+     * Deklarálva, nem dinamikusan: a PHP 8.2 óta a dinamikus property deprecated,
+     * és a napi cron minden futásnál kiírná a naplóba.
+     */
+    public $bucsuDatum;
     
     // Derived/computed properties
     public $username;
@@ -1059,6 +1067,12 @@ class User {
 			$email->addToQueue();
 		}
 	}
+
+	/*
+	 * #568: itt állt a sendBucsuReminder(). borazslo javaslatára átkerült a
+	 * \Eloquent\Church osztályba: „Szerintem sokkal inkább valami church osztályhoz
+	 * tartozik, mert a közelgő búcsúval rendelkező templomnak értesítjük a gondnokait."
+	 */
 
 	/**
 	 * #290: Kell-e ünnep-emlékeztetőt küldeni erre a (templom, ünnep) párra? Tiszta logika.

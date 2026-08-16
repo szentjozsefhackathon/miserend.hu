@@ -1,6 +1,6 @@
 Közeleg {{ feastName }} — nézd át a miserendet
 
-Kedves {% if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif %}!<br/>
+Kedves {% include 'emails/_megszolitas.twig' %}!<br/>
 <br/>
 Közeleg <strong>{{ feastName }}</strong>{% if feastStart %} ({{ feastStart }}){% endif %}. Kérlek nézd át, hogy a templom{% if responsible.church|length > 1 %}aid{% endif %}ban jó-e az aznapi miserend, hogy a látogatók pontos információt találjanak arra a napra.<br/>
 <br/>
