@@ -68,17 +68,52 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
                     );
                 }
 
+                $erintettTemplomok = self::affectedChurchIds(
+                    $changeRequest->masses, $changeRequest->deletedMasses, (int) $this->tid
+                );
+
                 $this->save($changeRequest);
                 $this->optimizeExperiods();
-                // Ha frissítettünk egy miserendet, akkor mindig és automatikusan a dátuma is legyen friss!                
-                $this->church->frissites = date('Y-m-d');
-                $this->church->save();
-                $this->content = json_encode($this->getByChurchId($this->tid));
+
+                /*
+                 * Ha frissítettünk egy miserendet, akkor a dátuma is legyen friss — de
+                 * MINDEN érintett templomé, ne csak az útvonalé. #506 óta egy mentés több
+                 * templomot is érinthet (plébánia + fíliák), és a régi kód ilyenkor a
+                 * fília adatlapján hagyta a régi dátumot, pedig épp akkor frissült.
+                 */
+                foreach ($erintettTemplomok as $erintettId) {
+                    \Eloquent\Church::where('id', $erintettId)->update(['frissites' => date('Y-m-d')]);
+                }
+
+                /*
+                 * A válasz minden érintett templom miséit hozza. Egy templomnál ez
+                 * pontosan a régi tartalom; többnél viszont enélkül a szerkesztő elveszítené
+                 * a többi templom miséit, mert a kapott listával írja felül a sajátját.
+                 */
+                $this->content = json_encode($this->getByChurchIds($erintettTemplomok));
                 break;
 
             default:
                 $this->sendJsonError('Method not allowed', 405);
         }
+    }
+
+    /**
+     * #506: több templom miséi egyben. A sorrend az útvonal templomával kezd, hogy az
+     * egy-templomos válasz tartalma és sorrendje se változzon.
+     *
+     * @param int[] $churchIds
+     */
+    public function getByChurchIds(array $churchIds): array {
+        $sorrend = array_values(array_unique(array_merge([(int) $this->tid], array_map('intval', $churchIds))));
+
+        $misek = [];
+        foreach ($sorrend as $churchId) {
+            foreach ($this->getByChurchId($churchId) as $mise) {
+                $misek[] = $mise;
+            }
+        }
+        return $misek;
     }
 
     public function getByChurchId(int $churchId): array {
