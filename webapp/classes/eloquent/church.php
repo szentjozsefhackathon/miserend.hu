@@ -1399,19 +1399,47 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * @return array{bucsu: ?array, szentsegimadas: ?array, unparsed: string}
      */
     public function bucsuOccasions(): array {
-        $eredmeny = \Bucsu::parse($this->bucsu);
+        /*
+         * #568: a búcsú a MEGJEGYZÉS mezőből jön, nem a `bucsu` oszlopból.
+         *
+         * borazslo javítása a #809-hez: „itt a `templomok.bucsu` mezőt használja. Mert
+         * hát valóban mintha lenne ilyen mező, csak nem használjuk egyáltalán. Az osm
+         * adatokból vesszük már a búcsút, vagy ha nincs, akkor a megjegyzés mezőből
+         * próbáljuk kitalálni."
+         *
+         * Igaza volt, és a különbség nagy. Mérve az aktív templomokon:
+         *
+         *   bucsu oszlop kitöltve:            218   (ebből felismert dátum: 166)
+         *   megjegyzés említ búcsút:         1472   (ebből felismert dátum: 1364)
+         *
+         * A `bucsu` oszlop ráadásul NEM szerkeszthető (nincs az edit.php
+         * allowedFields listájában) és egyetlen sablonban sem jelenik meg — csak a
+         * tábla-export adja ki. Vagyis nem karbantartott adat.
+         *
+         * A megjegyzésből CSAK akkor fogadjuk el a dátumot búcsúnak, ha a szöveg maga
+         * is kimondja. Enélkül bármely ottani dátum búcsúnak számítana — mérve 135
+         * templomnál olvastunk ki így olyan dátumot, aminek semmi köze a búcsúhoz, és
+         * a gondnokuk téves értesítőt kapott volna.
+         */
+        $eredmeny = \Bucsu::containsBucsuLabel($this->megjegyzes)
+            ? \Bucsu::parse($this->megjegyzes)
+            : ['bucsu' => null, 'szentsegimadas' => null, 'unparsed' => ''];
+
+        // A régi oszlop utolsó tartaléknak marad: néhány templomnál csak ott van adat.
+        if ($eredmeny['bucsu'] === null) {
+            $regi = \Bucsu::parse($this->bucsu);
+            if ($regi['bucsu'] !== null) {
+                $eredmeny = $regi;
+            }
+        }
 
         /*
-         * #568: az OSM `patron_day` tagje ELSŐBBSÉGET élvez a szabad szöveggel szemben.
+         * #568: az OSM `patron_day` tagje MINDKETTŐT felülírja.
          *
          * borazslo vetette fel: „Sőt OSM ismeri az egyáltalán nem elterjed patron_day
-         * kulcsot." Ez strukturált adat, tehát megbízhatóbb, mint amit egy húsz éve
-         * gyűlő megjegyzés-mezőből ki tudunk olvasni — és nem kell hozzá se új oszlop,
-         * se új szerkesztő-mező: a szinkron minden OSM-taget elment az `attributes`
-         * táblába, tehát ha ki van töltve, az adat már nálunk van.
-         *
-         * A szabad szöveg marad tartaléknak: a kulcs saját bevallás szerint sem
-         * elterjedt, tehát a templomok túlnyomó részénél nem lesz kitöltve.
+         * kulcsot." Ez strukturált adat, tehát megbízhatóbb, mint amit egy szabad
+         * szöveges mezőből ki tudunk olvasni — és nem kell hozzá se új oszlop, se új
+         * szerkesztő-mező: a szinkron minden OSM-taget elment az `attributes` táblába.
          */
         $patronDay = \Bucsu::parsePatronDay($this->patronDayTag());
         if ($patronDay !== null) {
