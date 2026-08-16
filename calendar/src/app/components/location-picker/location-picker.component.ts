@@ -53,6 +53,7 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
   private L: any;
   private map: any;
   private marker: any;
+  private figyelo?: ResizeObserver;
 
   constructor(private leaflet: LeafletLoaderService) {}
 
@@ -78,6 +79,8 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
   ngOnDestroy(): void {
     // A Leaflet globális eseményfigyelőket akaszt az ablakra; a dialógus bezárásakor
     // ezeket el kell engedni, különben minden megnyitás hagy egy halott térképet.
+    this.figyelo?.disconnect();
+    this.figyelo = undefined;
     this.map?.remove();
     this.map = undefined;
     this.marker = undefined;
@@ -103,11 +106,19 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
 
     /*
      * A dialógus a térkép megépítése UTÁN veszi fel a végleges méretét (a Material a
-     * nyitó animáció végén méri). A Leaflet ilyenkor a régi mérettel számolt csempéket
-     * mutatja: a fele szürke marad, amíg valaki meg nem mozgatja. Az újramérés ezt
-     * oldja meg — ez a Leaflet dialógusban való használatának állandó buktatója.
+     * nyitó animáció végén méri), és a felhasználó közben görgethet vagy nyithat egy
+     * összecsukható panelt. A Leaflet ilyenkor a régi mérettel számolt csempéket
+     * mutatja: a fele szürke marad, amíg valaki meg nem mozgatja.
+     *
+     * Egyetlen időzített újramérés ehhez kevés — nem tudjuk, mikor áll meg a doboz.
+     * A ResizeObserver viszont pontosan akkor szól, amikor tényleg változott a méret.
      */
-    setTimeout(() => this.map?.invalidateSize(), 200);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.figyelo = new ResizeObserver(() => this.map?.invalidateSize());
+      this.figyelo.observe(elem);
+    } else {
+      setTimeout(() => this.map?.invalidateSize(), 200);
+    }
   }
 
   /** Ha még nincs választás, a templom a kiindulópont; annak híján Budapest. */
