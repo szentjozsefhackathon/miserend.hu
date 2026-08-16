@@ -1351,6 +1351,44 @@ class Church extends \Illuminate\Database\Eloquent\Model {
 
 
     
+    /**
+     * #568: a `bucsu` szabad szöveg gépi alakja.
+     *
+     * @return array{bucsu: ?array, szentsegimadas: ?array, unparsed: string}
+     */
+    public function bucsuOccasions(): array {
+        return \Bucsu::parse($this->bucsu);
+    }
+
+    /**
+     * A következő búcsú dátuma egy adott naptól számítva.
+     *
+     * Egy értesítő cronnak pontosan ez kell: "mikor lesz legközelebb". Ha az idei
+     * dátum már elmúlt, a jövő évit adjuk — a mozgó ünnepek miatt ezt nem lehet
+     * egyszerű hónap/nap összehasonlítással kiváltani.
+     *
+     * @param string|null $tol Y-m-d, alapból a mai nap
+     * @return string|null Y-m-d, vagy null ha a mező nem értelmezhető
+     */
+    public function nextBucsuDate(?string $tol = null): ?string {
+        $alkalom = $this->bucsuOccasions()['bucsu'];
+        if ($alkalom === null) {
+            return null;
+        }
+
+        $tol = $tol ?? date('Y-m-d');
+        $ev = (int) substr($tol, 0, 4);
+
+        foreach ([$ev, $ev + 1] as $vizsgaltEv) {
+            $datum = \Bucsu::resolve($alkalom, $vizsgaltEv);
+            if ($datum !== null && $datum >= $tol) {
+                return $datum;
+            }
+        }
+
+        return null;
+    }
+
     function getLocationAttribute($value) {
         $location = new \stdClass();
 
