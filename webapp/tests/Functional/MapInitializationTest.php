@@ -107,10 +107,20 @@ final class MapInitializationTest extends FunctionalTestCase {
     public function testMapDoesNotStartBeforeItScrollsIntoView(): void {
         $client = $this->client();
 
-        // ALACSONY ablak, hogy a térkép biztosan a hajtás ALÁ kerüljön. Enélkül a teszt a
-        // futtató ablakméretétől függ: egy magas headless ablakban a templomoldal térképe
-        // eleve látszik, és akkor jogosan indul is el (a CI-ban pont ezért bukott).
-        $client->manage()->window()->setSize(new WebDriverDimension(1024, 300));
+        /*
+         * KESKENY és alacsony ablak, hogy a térkép biztosan a hajtás alá kerüljön.
+         *
+         * Alacsony ablak önmagában nem elég, és emiatt ez a teszt eddig MINDIG kihagyásra
+         * ment: a térkép fölötti tartalom magassága nem függ az ablak MAGASSÁGÁTÓL, csak a
+         * szélességétől. 1024 px széles ablakban a térkép teteje 193 px-nél van, a lenti
+         * feltétel viszont 200 px ráhagyást kér a hajtáson túl — azt semmilyen magassággal
+         * nem lehet teljesíteni.
+         *
+         * Keskeny ablakban a panelek egymás alá torlódnak, és a térkép lejjebb kerül.
+         * Mérve: 1024x300 -> top=193 (ih=157, kellene 357);  360x200 -> top=358 (ih=57,
+         * kell 257). Ezért a mobil méret.
+         */
+        $client->manage()->window()->setSize(new WebDriverDimension(360, 200));
         $client->request('GET', '/templom/1');
 
         // Megvárjuk, hogy a szkript betöltődjön és lefusson (de NE görgetünk).
