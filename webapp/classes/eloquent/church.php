@@ -1008,6 +1008,48 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             // boundaries
             $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();
 
+            /*
+             * #496 / #497 / #498: az OSM-határláncból származó helynevek is kerüljenek
+             * a keresőmezőkbe.
+             *
+             * Eddig az index KIZÁRÓLAG a régi oszlopokból dolgozott (templomok.varos,
+             * megye, orszagok tábla), a fenti `boundaries` mező pedig csak belső
+             * azonosítókat tartalmazott — szövegesen kereshetetlenül. Emiatt egy olyan
+             * név, ami csak az OSM-ben létezik, egyáltalán nem volt megtalálható: a
+             * budapesti XI. kerület alternatív neve például "Újbuda", és arra ma nulla
+             * találat jön. Határon túl ez súlyosabb, ott a `megye` oszlop 670 templomból
+             * 669-nél üres.
+             *
+             * A három jegy mindegyike ezt nevezi meg előfeltételként, és a keresés
+             * javulása önmagában is haszon — az oszlopok eldobása külön lépés marad.
+             */
+            /*
+             * A besorolás SZINT szerint megy, nem pozíció szerint. A location() a
+             * rendezett lista 0./1./2. elemét címkézi ország/megye/településnek, ami
+             * hiányos határláncnál elcsúszik: egy csak 8-as szinttel rendelkező
+             * templomnál a település kerülne az ország helyére. A kereséshez ráadásul
+             * elég is a durvább bontás — minden 8-as és afölötti szint (település,
+             * kerület, városrész) a `varos` mezőbe megy, mert mind ugyanarra válaszol,
+             * hogy "hol van". A budapesti kerület-kibontás eddig is így viselkedett.
+             */
+            $szintek = [];
+            foreach ($this->boundaries()->where('boundary', 'administrative')->get()->toArray() as $hatar) {
+                $szintek[(int) ($hatar['admin_level'] ?? 0)][] = $hatar;
+            }
+
+            // Romániában nincs 6-os szint, ott a megyét (judet) a 4-es hordozza.
+            $megyeSzint = isset($szintek[6]) ? 6 : 4;
+            $telepules = array_merge($szintek[8] ?? [], $szintek[9] ?? [], $szintek[10] ?? []);
+
+            $return['orszag'] = self::withOsmNames($return['orszag'], $szintek[2] ?? []);
+            $return['megye'] = self::withOsmNames($return['megye'] ?? '', $szintek[$megyeSzint] ?? []);
+            $return['varos'] = self::withOsmNames($return['varos'], $telepules);
+
+            // #498: az országKÓD ma csak a régi orszagok.id-n keresztül létezik, pedig a
+            // statisztika és az Angular naptár is kódot vár. Az OSM országrelációi
+            // hordozzák az ISO3166-1-et, a boundary-szinkron el is tárolja.
+            $return['orszagkod'] = (string) ($this->countryCode() ?? '');
+
             // #89: a `location` mező geo_point-ként SZEREPEL a mappingben
             // (fajlok/elasticsearch/mappings/church.json), de eddig SENKI nem töltötte
             // fel — nulla dokumentumban volt benne érték. Emiatt semmilyen távolság-alapú
@@ -1039,6 +1081,51 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         }
         
         return $return;
+    }
+
+    /**
+     * #496 / #497 / #498: a régi oszlop értéke mellé befűzi az OSM-határok neveit.
+     *
+     * A `name` mellett az `alt_name`-et is felvesszük, mert a magyar névváltozatok
+     * gyakran ott ülnek (a XI. kerület alt_name-je "Újbuda", a határon túli
+     * települések magyar neve szintén jellemzően alternatív név).
+     *
+     * Egyetlen érték esetén stringet ad vissza, hogy a dokumentumok alakja ne
+     * változzon feleslegesen ott, ahol nincs mit hozzátenni. Az Elasticsearch a
+     * string és a string-tömb között nem tesz különbséget, a `varos` mező pedig
+     * eddig is tömbbé vált a budapesti kerületeknél.
+     *
+     * @param string|array<int,string>|null $eddigi a régi oszlopból jövő érték
+     * @param array<int,mixed> $hatarok a figyelembe veendő boundary-sorok
+     * @return string|array<int,string>
+     */
+    private static function withOsmNames($eddigi, array $hatarok) {
+        $ertekek = [];
+        foreach (is_array($eddigi) ? $eddigi : [$eddigi] as $ertek) {
+            $ertek = trim((string) $ertek);
+            if ($ertek !== '') {
+                $ertekek[] = $ertek;
+            }
+        }
+
+        foreach ($hatarok as $hatar) {
+            if (!is_array($hatar)) {
+                continue;
+            }
+            foreach (['name', 'alt_name'] as $kulcs) {
+                $nev = trim((string) ($hatar[$kulcs] ?? ''));
+                if ($nev !== '') {
+                    $ertekek[] = $nev;
+                }
+            }
+        }
+
+        $ertekek = array_values(array_unique($ertekek));
+
+        if ($ertekek === []) {
+            return '';
+        }
+        return count($ertekek) === 1 ? $ertekek[0] : $ertekek;
     }
 
     public function toElasticArray()
