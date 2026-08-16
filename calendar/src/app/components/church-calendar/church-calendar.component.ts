@@ -23,7 +23,7 @@ import {AddSimpleEventDialogComponent} from '../add-simple-event-dialog/add-simp
 import {MassUtil} from '../../util/mass-util';
 import {Mass} from '../../model/mass';
 import {CalendarEvent} from '../../model/calendar/calendar-event';
-import {Church} from '../../model/church';
+import {Church, ChurchFamilyMember} from '../../model/church';
 import {SensorEvent} from '../../model/sensor-event';
 import {LiturgicalDay} from '../../model/liturgical-day';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
@@ -106,8 +106,32 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
   @Input() changes: Map<number, Mass> = new Map();
   @Input() deletedMasses: number[] = [];
   @Input() deletedDates: Map<number, string[]> = new Map();
+
   @Input() changedMasses: number[] = [];
   @Input() sensorEvents: SensorEvent[] = [];
+
+  /**
+   * #506: a plébánia és fíliái. Üres marad az egy-templomos szerkesztőben, tehát a
+   * mostani viselkedés semmiben nem változik.
+   */
+  @Input() family: ChurchFamilyMember[] = [];
+
+  /**
+   * A ROKON templomok neve azonosító szerint — a saját templom szándékosan kimarad.
+   *
+   * Így a naptárban csak az idegen esemény kap templomnevet a címe elé; a sajátjaink
+   * ugyanúgy néznek ki, mint eddig.
+   */
+  private otherChurchNames(): Map<number, string> {
+    const nevek = new Map<number, string>();
+    for (const tag of this.family) {
+      if (tag.isCurrent) {
+        continue;
+      }
+      nevek.set(tag.id, tag.name);
+    }
+    return nevek;
+  }
 
   // Szűrő komponens megjelenítése - kikapcsolt javaslatok oldalon
   showFilterComponent: boolean = true;
@@ -273,7 +297,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
               this.changedMasses,
               this.deletedMasses,
               this.deletedDates,
-              this.translateService
+              this.translateService,
+              this.otherChurchNames()
             );
             
             // Add sensor events to the calendar
@@ -327,7 +352,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       [], // changedMasses is empty since we're generating from combined set
       [], // deletedMasses is empty since we've already removed them
       this.deletedDates,
-      this.translateService
+      this.translateService,
+      this.otherChurchNames()
     );
 
     // Add sensor events to the calendar

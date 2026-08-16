@@ -164,10 +164,26 @@ export class MassUtil {
     return calEvents;
   }
 
-  public static createCalendarEvents(masses: Mass[], periods: GeneratedPeriod[], changes: number[], deletedMasses: number[], deletedDates:Map<number, string[]>, translate?: TranslateService): CalendarEvent[] {
+  /**
+   * #506: `otherChurchNames` a rokon templomok neve — család módban ebből derül ki a
+   * naptárban, melyik esemény melyik templomé.
+   *
+   * A saját templom miséin SEMMI nem változik: a térkép csak a rokon templomokat
+   * tartalmazza, tehát az egy-templomos szerkesztő ugyanazt a címet mutatja, mint eddig.
+   */
+  public static createCalendarEvents(masses: Mass[], periods: GeneratedPeriod[], changes: number[], deletedMasses: number[], deletedDates:Map<number, string[]>, translate?: TranslateService, otherChurchNames?: Map<number, string>): CalendarEvent[] {
     const calEvents: CalendarEvent[] = [];
     masses.forEach(mass   => {
       const calendarEvents = this.createCalendarEvent(mass, periods, deletedDates.get(mass.id), translate );
+
+      const otherChurch = otherChurchNames?.get(mass.churchId);
+      if (otherChurch) {
+        calendarEvents.forEach(event => {
+          event.title = otherChurch + ' — ' + event.title;
+          event.extendedProps = { ...(event.extendedProps ?? {}), churchId: mass.churchId, churchName: otherChurch };
+        });
+      }
+
       if(mass.id < 0){
         calendarEvents.forEach(event =>{
           event.color = "#32CD32FF"

@@ -18,8 +18,15 @@ export class EventService {
 
   constructor(private http: HttpClient, private snackBarService: MatSnackBarService) {}
 
-  getChurch(churchId: number): Observable<Church> {
-    return this.http.get<Church>(environment.apiUrl+'church/'+churchId).pipe(
+  /**
+   * #506: `withFamily` esetén a plébánia és a fíliái is jönnek, a miséikkel együtt.
+   *
+   * Alapértelmezésben KIKAPCSOLVA, hogy az egy-templomos betöltés kérése és válasza
+   * változatlan maradjon.
+   */
+  getChurch(churchId: number, withFamily: boolean = false): Observable<Church> {
+    const url = environment.apiUrl + 'church/' + churchId + (withFamily ? '?family=1' : '');
+    return this.http.get<Church>(url).pipe(
       catchError(error => {
         console.error('[EventService] Hiba a templom adatainak betöltésekor:', error);
         this.snackBarService.error('Nem sikerült a templom adatait betölteni.');
