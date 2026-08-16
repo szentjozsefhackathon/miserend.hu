@@ -63,6 +63,10 @@ import {CompressionResult, WeekCompressionUtil, WeekEvent} from '../../util/week
 export interface SimpleDialogData {
   dateTime: Date;
   title: string;
+  /** #506: a választható (írható) templomok — család módon kívül üres. */
+  churches?: ChurchFamilyMember[];
+  /** A dialógus ebbe írja vissza a választást. */
+  selectedChurchId?: number;
 }
 
 export interface EventViewerDialogData {
@@ -88,6 +92,8 @@ export interface DialogData {
   // templomnak van már „illeszthető" rendszeres miserendje (pl. tanítási idő).
   existingPeriodIds?: number[];
   country?: string;
+  /** #506: a választható (írható) templomok — család módon kívül üres. */
+  churches?: ChurchFamilyMember[];
 }
 
 @Component({
@@ -122,6 +128,65 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
    * Így a naptárban csak az idegen esemény kap templomnevet a címe elé; a sajátjaink
    * ugyanúgy néznek ki, mint eddig.
    */
+  /**
+   * #506: az ÍRHATÓ családtagok — köztük a saját templom is.
+   *
+   * A felület csak ezeket kínálja fel: értelmetlen olyan templomot választhatóvá tenni,
+   * amit a szerver úgyis visszautasítana. Család módon kívül üres, tehát nincs választó.
+   */
+  /**
+   * #506: mely templomokat érinti ez a mentés?
+   *
+   * A mentendő mise a saját `churchId`-jét hozza; a törlendőét a betöltött adatból
+   * nézzük meg. A szerkesztett templom mindig benne van, mert a kérés oda megy.
+   */
+  private affectedChurchIds(changed: Mass[], deleted: number[]): number[] {
+    const ids = new Set<number>([this.currentChurch!.id]);
+
+    for (const mass of changed) {
+      if (mass.churchId) {
+        ids.add(mass.churchId);
+      }
+    }
+    for (const id of deleted) {
+      const mass = this.masses.get(id) ?? this.changes.get(id);
+      if (mass?.churchId) {
+        ids.add(mass.churchId);
+      }
+    }
+
+    return Array.from(ids);
+  }
+
+  public writableFamily(): ChurchFamilyMember[] {
+    return this.family.filter(tag => tag.writable);
+  }
+
+  /** Van-e egyáltalán miből választani? Egy templomnál a választó felesleges zaj. */
+  public hasChurchChoice(): boolean {
+    return this.writableFamily().length > 1;
+  }
+
+  /**
+   * Az a templom, amelyikhez az ÚJ esemény kerül.
+   *
+   * Alapból a szerkesztett templom — ez a mai viselkedés. Család módban a dialógusban
+   * választott templom, a saját rítusával: egy görögkatolikus fília miséje ne kapjon
+   * római rítust csak azért, mert a plébánia felől nyitottuk meg.
+   */
+  private targetChurch(churchId?: number): Church {
+    if (!churchId || churchId === this.currentChurch!.id) {
+      return this.currentChurch!;
+    }
+
+    const tag = this.writableFamily().find(t => t.id === churchId);
+    if (!tag) {
+      return this.currentChurch!;
+    }
+
+    return {...this.currentChurch!, id: tag.id, name: tag.name, rite: tag.rite};
+  }
+
   private otherChurchNames(): Map<number, string> {
     const nevek = new Map<number, string>();
     for (const tag of this.family) {
@@ -887,27 +952,36 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       return;
     }
 
-    const dialogRef = this.dialog.open(AddSimpleEventDialogComponent, {
-      data: {dateTime: this.selectedDate, title: MassUtil.getSimpleTitle4Church(this.currentChurch!)}
-    });
+    // #506: a választható templomokat és az alapértelmezést a dialógus adatában adjuk át.
+    // A dialógus ugyanebbe az objektumba írja vissza a választást — így a meglévő,
+    // enumot visszaadó szerződés nem változik.
+    const simpleData: SimpleDialogData = {
+      dateTime: this.selectedDate,
+      title: MassUtil.getSimpleTitle4Church(this.currentChurch!),
+      churches: this.writableFamily(),
+      selectedChurchId: this.currentChurch!.id,
+    };
+
+    const dialogRef = this.dialog.open(AddSimpleEventDialogComponent, {data: simpleData});
 
     dialogRef.afterClosed().subscribe(result => {
       if (result === DialogResponse.SAVE_SIMPLE) {
-        this.saveSimpleEvent();
+        this.saveSimpleEvent(simpleData.selectedChurchId);
       } else if(result === DialogResponse.MORE_DETAILS) {
         this.dialogEvent = CalendarUtil.generateDialogEvent(this.currentChurch, this.translateService, this.selectedDate);
+        this.dialogEvent.churchId = simpleData.selectedChurchId;
         this.openFullDialog('ADD_NEW_MASS', this.selectedDate);
       }
     });
   }
 
-  private saveSimpleEvent() {
+  private saveSimpleEvent(churchId?: number) {
     if (this.selectedDate === undefined) {
       return;
     }
 
     const newMassId = MassUtil.generateTmpMassId();
-    const simpleMass: Mass = MassUtil.createSimpleMassByDate(this.selectedDate, this.currentChurch!, newMassId, this.translateService);
+    const simpleMass: Mass = MassUtil.createSimpleMassByDate(this.selectedDate, this.targetChurch(churchId), newMassId, this.translateService);
 
     this.changes.set(simpleMass.id!, simpleMass);
 
@@ -940,7 +1014,9 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     }
 
     const dialogRef = this.dialog.open(AddFullEventDialogComponent, {
-      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country}
+      // #506: a választható (írható) templomok. Család módon kívül üres, tehát a
+      // dialógus ugyanúgy néz ki, mint eddig.
+      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country, churches: this.writableFamily()}
     });
 
     dialogRef.afterClosed().subscribe(result => {
@@ -957,7 +1033,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           const newSingleMass: Mass = MassUtil.createMass(
             MassUtil.createEventByType(this.dialogEvent, newMassId, undefined, this.translateService),
             this.dialogEvent,
-            this.currentChurch!,
+            this.targetChurch(this.dialogEvent.churchId),
             newMassId
           );
 
@@ -992,7 +1068,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           const periodWeight = this.dialogEvent.period?.weight;
           const specialPeriodType = this.periodService.getSpecialPeriodType(periodId);
           const calendarEvent: CalendarEvent = MassUtil.createEventByType(this.dialogEvent, newMassId, specialPeriodType, this.translateService);
-          const mass: Mass = MassUtil.createMass(calendarEvent, this.dialogEvent, this.currentChurch!, newMassId);
+          const mass: Mass = MassUtil.createMass(calendarEvent, this.dialogEvent, this.targetChurch(this.dialogEvent.churchId), newMassId);
 
           // #352: ha a felhasználó csak rányomott egy meglévő mise módosítására és semmit nem
           // változtatott, ne tegyük változási javaslattá - nem küldünk fantom javaslatot, és
@@ -1049,6 +1125,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     const proceedWithSave = () => {
       this.spinnerService.show();
       const changesArray = Array.from(this.changes.values());
+      const erintettTemplomok = this.affectedChurchIds(changesArray, this.deletedMasses);
       this.eventService.saveChanges(this.currentChurch!.id, changesArray, this.deletedMasses).subscribe(masses => {
       this.changes.clear();
       this.deletedMasses = [];
@@ -1059,7 +1136,12 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       //TODO: EZT MAJD HÁTTÉRBEN
       const currentYear = new Date().getFullYear();
       const years: number[] = [currentYear - 1, currentYear, currentYear + 1];
-      this.searchService.generateMasses(years, this.currentChurch!.id).subscribe();
+      // #506: MINDEN érintett templom indexét újra kell generálni, nem csak a
+      // szerkesztettét — család módban a fília miserendje is most változott, és
+      // enélkül a keresőben a régi maradna.
+      for (const churchId of erintettTemplomok) {
+        this.searchService.generateMasses(years, churchId).subscribe();
+      }
       });
     };
 

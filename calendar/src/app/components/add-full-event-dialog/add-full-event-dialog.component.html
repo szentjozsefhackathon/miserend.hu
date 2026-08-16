@@ -14,6 +14,17 @@
 </div>
 <mat-dialog-content class="mat-typography">
 
+  @if (hasChurchChoice) {
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Melyik templomban?</mat-label>
+      <mat-select [ngModel]="data.event.churchId ?? churches[0].id" (ngModelChange)="onChurchChange($event)">
+        @for (church of churches; track church.id) {
+          <mat-option [value]="church.id">{{ church.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
   <mat-accordion class="example-headers-align" multi>
     <mat-expansion-panel expanded>
       <mat-expansion-panel-header>

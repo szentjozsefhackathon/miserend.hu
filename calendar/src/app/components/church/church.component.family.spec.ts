@@ -25,7 +25,7 @@ describe('ChurchComponent — család módú betöltés', () => {
   } as Mass);
 
   const csaladtag = (id: number, name: string, isCurrent: boolean, masses: Mass[]): ChurchFamilyMember => ({
-    id, name, city: 'Teszt', writable: true, isCurrent, masses,
+    id, name, city: 'Teszt', rite: Rite.ROMAN_CATHOLIC, writable: true, isCurrent, masses,
   });
 
   /** A komponens privát összefésülőjének megfelelő, kiemelt logika. */
