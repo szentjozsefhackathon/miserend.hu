@@ -16,15 +16,18 @@
     {% endif %}    
 {% endblock %}    
 
+{# #257: a templom nevét az OSM-ből gyűjtött névhalmazból vesszük.
+   A `names[0]` a `name:hu` → `name` sorrendet követi, és csak ezek hiányában esik
+   vissza a helyi `nev` oszlopra — a régi viselkedés tehát megmarad ott, ahol nincs
+   OSM-adat. Az `alternative_names[0]` ugyanígy az official/alt/old névsort adja. #}
 {% macro neighbour(array,location) %}
-    <!-- // FIXME for Issue #257 -->
     <li>
         <a 
             href="/templom/{{ array.id }}" 
             class="link" 
-            title="{{ array.ismertnev }} ({{ ( array.distance / 1000 )|number_format(1, '.', '') }} km)"  
+            title="{{ array.alternative_names|first|default(array.ismertnev) }} ({{ ( array.distance / 1000 )|number_format(1, '.', '') }} km)"  
            >
-            {{ array.nev }}{% if location.city.name != array.location.city.name  %} ({{ array.location.city.name  }}){% endif %}
+            {{ array.names|first|default(array.nev) }}{% if location.city.name != array.location.city.name  %} ({{ array.location.city.name  }}){% endif %}
         </a>
     </li>
 {% endmacro %}

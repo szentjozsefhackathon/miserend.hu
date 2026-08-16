@@ -156,7 +156,13 @@ class Table extends Api {
                     $tmp[$column] = $row->$column;
                 }
                 // simple data mapping
-                // FIXME for Issue #257
+                /*
+                 * #257: a tábla-export a helyi oszlopokat adja `name` / `alt_name` néven.
+                 * Ez PUBLIKUS szerződés: a mezők jelentésének megváltoztatása a meglévő
+                 * fogyasztóknál némán más adatot eredményezne. Az OSM-névhalmaz kiadása
+                 * ezért új mezőt kíván (mint a `Church::toAPIArray()`-ben a `names` és az
+                 * `alternative_names`), és a következő API-verzióhoz tartozik.
+                 */
                 $mapping = array('name' => 'nev', 'alt_name' => 'ismertnev');
                 if (array_key_exists($column, $mapping)) {
                     $tmp[$column] = $row->{$mapping[$column]};
