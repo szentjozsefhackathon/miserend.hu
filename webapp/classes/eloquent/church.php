@@ -414,10 +414,32 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     {
         return $this->hasMany(Attribute::class);
     }
+
+    /**
+     * #257: az OSM-ből gyűjtött címkék kulcs => érték alakban.
+     *
+     * A `names` és az `alternative_names` innen épül fel. Eddig mindkettő KÜLÖN
+     * lekérdezéssel olvasta be az attribútumokat, templomonként — egy ötven soros
+     * listánál tehát ötven plusz lekérdezés. Emiatt maradt a katalógusban, a
+     * gyűjteményekben és a szomszédos templomoknál a nyers `nev` oszlop: az OSM-nevekre
+     * váltás a listákat használhatatlanná lassította volna.
+     *
+     * Ha a hívó `->with('attributes')`-szel tölt be, a betöltött kapcsolatot használjuk,
+     * és a plusz lekérdezések eltűnnek. Enélkül a régi viselkedés marad, tehát az
+     * egyedi templomoldal semmit nem veszít.
+     */
+    private function osmAttributeMap(): array
+    {
+        $attributes = $this->relationLoaded('attributes')
+            ? $this->getRelation('attributes')
+            : $this->attributes()->get();
+
+        return $attributes->pluck('value', 'key')->toArray();
+    }
 	
 	public function loadAttributes()
     {
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
         foreach ($attributes as $key => $value) {
 			if(!isset($this->$key))
 				$this->setAttribute($key, $value);
@@ -785,7 +807,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             }
             $seenCoords[$coordKey] = true;
 
-            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
+            // #257: az OSM-neveket a sablon olvassa (names / alternative_names), ezért
+            // mindjárt a kapcsolattal együtt töltjük be — enélkül szomszédonként két
+            // további lekérdezés menne el a névhalmazra.
+            $church = \Eloquent\Church::with('attributes')
+                ->where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
             if (!$church || $church->id == $this->id || isset($seenIds[$church->id])) {
                 continue;
             }
@@ -1080,7 +1106,18 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     }
 
     function scopeChurchesAndMore($query) {
-        // FIXME for Issue #257
+        /*
+         * #257: ez a szűrő a NÉV MINTÁJÁBÓL következtet a misézőhely fajtájára —
+         * „kápolna" a névben, tehát nem templom. A helyi `nev` oszlopon fut, mert az
+         * OSM-név külön táblában él, több sorban templomonként: illeszteni rá csak
+         * alkérdéssel lehetne, és a találat attól függene, melyik nyelvi változat nyer.
+         *
+         * Ez azonban nem csak technikai kérdés. A besorolást ma a NÉV dönti el, pedig
+         * az OSM erre külön címkét tart (`building`, `amenity`, `place_of_worship`
+         * fajtája). A helyes megoldás nem a névhalmazra váltás, hanem a besorolás
+         * kivezetése a névből — az viszont önálló jegy, mert megváltoztatja, mely
+         * misézőhelyek számítanak templomnak a listákban és a statisztikában.
+         */
         return $query->where('nev', 'NOT LIKE', '%kápolna%');
     }
 
@@ -1128,7 +1165,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     public function getNamesAttribute($value) {
 
 
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
         
         // Collect all the possible names of the church
         $names = [];
@@ -1153,7 +1190,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     }
 
     public function getAlternativeNamesAttribute($value) {
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
 
        // Collect all alternative names of the church
        $alternativeNames = [];

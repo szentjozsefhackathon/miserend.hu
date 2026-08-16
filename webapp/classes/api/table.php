@@ -148,6 +148,19 @@ class Table extends Api {
                 ->where('key', 'denomination')
                 ->pluck('value', 'church_id')->toArray();
 
+        /*
+         * #257: a névhalmaz batch-betöltése. Egyesével kérve 10 000 templomnál
+         * ugyanennyi lekérdezés lenne — a `with('attributes')` egyetlen körben hozza,
+         * és a `Church::names` accessor a #787 óta eager-load-tudatos.
+         */
+        $churchNames = [];
+        foreach (\Eloquent\Church::with('attributes')->whereIn('id', $churchIds)->get() as $church) {
+            $churchNames[$church->id] = [
+                'names' => $church->names,
+                'alternative_names' => $church->alternative_names,
+            ];
+        }
+
         foreach ($this->table as $row) {
             $tmp = array();
             foreach ($this->columns as $column) {
@@ -155,11 +168,28 @@ class Table extends Api {
                 if (isset($row->$column) AND in_array($column, array('id', 'nev', 'ismertnev', 'turistautak', 'orszag', 'megye', 'varos', 'cim', 'plebania', 'pleb_eml', 'egyhazmegye', 'espereskerulet', 'leiras', 'megjegyzes', 'miseaktiv', 'misemegj', 'bucsu', 'frissites', 'lat', 'lon', 'geochecked'))) {
                     $tmp[$column] = $row->$column;
                 }
-                // simple data mapping
-                // FIXME for Issue #257
-                $mapping = array('name' => 'nev', 'alt_name' => 'ismertnev');
-                if (array_key_exists($column, $mapping)) {
-                    $tmp[$column] = $row->{$mapping[$column]};
+                /*
+                 * #257: a `name` és az `alt_name` az OSM-névhalmazból jön.
+                 *
+                 * borazslo kérése a #803-hoz: „Simán csinálhatjuk, hogy a name-hez az
+                 * osmból szedett nevek sorából az elsőt tesszük, az alt_name-hez pedig
+                 * az alternative_names első elemét tesszük. Az Api V5-ben #56 pedig
+                 * mindkét mező helyére egy lista/jsonlista kerülhetne."
+                 *
+                 * Mindkettőt megcsinálom: a régebbi verziók az ELSŐ nevet kapják (a mező
+                 * marad string, tehát a meglévő fogyasztóknak nem törik el), a v5 pedig a
+                 * TELJES listát.
+                 *
+                 * A `names[0]` a `name:hu` -> `name` sorrendet követi, és csak ezek
+                 * hiányában esik vissza a helyi `nev` oszlopra — ahol nincs OSM-adat, ott
+                 * tehát pontosan a régi értéket adja.
+                 */
+                if ($column === 'name' || $column === 'alt_name') {
+                    $lista = $column === 'name'
+                        ? ($churchNames[$row->id]['names'] ?? [])
+                        : ($churchNames[$row->id]['alternative_names'] ?? []);
+
+                    $tmp[$column] = $this->version >= 5 ? array_values($lista) : ($lista[0] ?? '');
                 }
                 //extra mapping
                 switch ($column) {

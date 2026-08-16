@@ -43,7 +43,9 @@
 						var distance = t.tavolsag < 1000
 							? (Math.round(t.tavolsag / 100) * 100) + ' m'
 							: (Math.round(t.tavolsag / 100) / 10) + ' km';
-						// FIXME for Issue #257
+						// #257: a `nev` és az `ismertnev` az API-ból már az OSM-ből gyűjtött
+						// névhalmazból jön (Church::toAPIArray → names[0] / alternative_names[0]),
+						// tehát itt nincs mit átállítani.
 						html += '<li><a href="/templom/' + t.id + '">' + t.nev + (t.ismertnev ? ' (' + t.ismertnev + ')' : '') + '</a>, ' + t.varos + ' - ' + distance + '</li>';
 					}
 					html += '</ul>';
