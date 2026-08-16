@@ -414,14 +414,14 @@ class Edit extends \Html\Html {
                 ->get();
 
             foreach ($nearbyChurches as $nearby) {
-                $options[$nearby->id] = $nearby->varos . ' – ' . $nearby->names[0] . ' (~' . round($nearby->distance_km, 1) . ' km)';
+                $options[$nearby->id] = $nearby->locationCityName() . ' – ' . $nearby->names[0] . ' (~' . round($nearby->distance_km, 1) . ' km)';
             }
 
             // Ha van meglévő parent kapcsolat de nincs a common listában, hozzáadunk
             if ($currentParentId && !isset($options[$currentParentId])) {
                 $parentChurch = \Eloquent\Church::find($currentParentId);
                 if ($parentChurch) {
-                    $options[$currentParentId] = '⭐ ' . $parentChurch->varos . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
+                    $options[$currentParentId] = '⭐ ' . $parentChurch->locationCityName() . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
                 }
             }
         } else {
@@ -429,7 +429,7 @@ class Edit extends \Html\Html {
             if ($currentParentId) {
                 $parentChurch = \Eloquent\Church::find($currentParentId);
                 if ($parentChurch) {
-                    $options[$currentParentId] = '⭐ ' . $parentChurch->varos . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
+                    $options[$currentParentId] = '⭐ ' . $parentChurch->locationCityName() . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
                 }
             }
         }
@@ -444,7 +444,7 @@ class Edit extends \Html\Html {
             ->get(['id', 'varos', 'nev']);
         foreach ($allActive as $c) {
             if (!isset($options[$c->id])) {
-                $options[$c->id] = $c->varos . ' – ' . $c->nev;
+                $options[$c->id] = $c->locationCityName() . ' – ' . $c->nev;
             }
         }
 

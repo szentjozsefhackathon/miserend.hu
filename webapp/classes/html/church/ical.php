@@ -174,7 +174,11 @@ class Ical extends \Html\Html {
 
         $nev = is_array($church) ? ($church['nev'] ?? '') : ($church->nev ?? '');
         $ismertnev = is_array($church) ? ($church['ismertnev'] ?? '') : ($church->ismertnev ?? '');
-        $varos = is_array($church) ? ($church['varos'] ?? '') : ($church->varos ?? '');
+        // #497: tömb esetén a toAPIArray már származtatott értéket ad; objektumnál
+        // magunknak kell a boundary-ból kérni.
+        $varos = is_array($church)
+            ? ($church['varos'] ?? '')
+            : ($church instanceof \Eloquent\Church ? $church->locationCityName() : ($church->varos ?? ''));
         $calName = $nev;
         if ($ismertnev) $calName .= $calName ? ' (' . $ismertnev . ')' : $ismertnev;
         if ($varos) $calName .= $calName ? ' - ' . $varos : $varos;
