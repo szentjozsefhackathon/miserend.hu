@@ -58,11 +58,27 @@ class OverpassEndpointConfigTest extends TestCase
      */
     public function testTheBuiltEnvironmentRegistersTheGlobal(): void
     {
-        $globals = buildTwigEnvironment()->getGlobals();
+        global $config;
+        $eredeti = $config['overpass']['apiUrl'] ?? null;
+        // Kifejezett érték, mert a beállítás környezetenként más — kikapcsolt külső
+        // API-knál (#695) üres is lehet, és akkor az üresség a HELYES kimenet.
+        $config['overpass']['apiUrl'] = 'https://teszt.example.com/api/interpreter';
 
-        self::assertArrayHasKey('overpass_api_url', $globals,
-            'hiányzik az overpass_api_url globális');
-        self::assertNotSame('', (string) $globals['overpass_api_url']);
+        try {
+            $globals = buildTwigEnvironment()->getGlobals();
+
+            self::assertArrayHasKey('overpass_api_url', $globals,
+                'hiányzik az overpass_api_url globális');
+            self::assertSame('https://teszt.example.com/api/interpreter',
+                $globals['overpass_api_url'],
+                'a globálisnak a beállított végpontot kell hoznia');
+        } finally {
+            if ($eredeti === null) {
+                unset($config['overpass']['apiUrl']);
+            } else {
+                $config['overpass']['apiUrl'] = $eredeti;
+            }
+        }
     }
 
     /**
