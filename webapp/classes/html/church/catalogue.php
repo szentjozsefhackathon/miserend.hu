@@ -78,7 +78,6 @@ class Catalogue extends \Html\Html {
     }
 
     function loadForm() {
-        // FIXME for Issue #257
         $this->form = \Form::religiousAdministrationSelection(['diocese' => $this->filterDiocese, 'deanery' => $this->filterDeanery]);
 
         
@@ -120,15 +119,29 @@ class Catalogue extends \Html\Html {
     }
 
     function buildQuery() {
-        // FIXME for Issue #257
         $search = \Eloquent\Church::where('templomok.id', '>', 1);
 
         if ($this->filterKeyword) {
             $filterKeyword = '%' . $this->filterKeyword . '%';
             $search = $search->where(function($query) use ($filterKeyword) {
-                $query->where('nev', 'LIKE', $filterKeyword)->
-                        orWhere('varos', 'LIKE', $filterKeyword)->
-                        orWhere('ismertnev', 'LIKE', $filterKeyword);
+                $query->where('nev', 'LIKE', $filterKeyword)
+                    ->orWhere('varos', 'LIKE', $filterKeyword)
+                    ->orWhere('ismertnev', 'LIKE', $filterKeyword)
+                    /*
+                     * #257: az OSM-ből gyűjtött nevekre is keresünk.
+                     *
+                     * A helyi `nev`/`ismertnev` oszlop egyetlen elnevezést tart, az OSM
+                     * viszont többet is (`name`, `name:hu`, `alt_name`, `old_name`,
+                     * `official_name`, és ezek nyelvi változatai). Épp ezek a „ahogy a
+                     * helybeliek ismerik" nevek — a kereső eddig nem talált rájuk.
+                     *
+                     * A helyi oszlopokra szóló feltételek MEGMARADNAK: ahol nincs
+                     * OSM-adat, ott a keresés ugyanúgy működik, mint eddig.
+                     */
+                    ->orWhereHas('attributes', function($q) use ($filterKeyword) {
+                        $q->where('value', 'LIKE', $filterKeyword)
+                          ->where('key', 'REGEXP', '^(alt_|old_|official_)?name(:|$)');
+                    });
             });
 
         }

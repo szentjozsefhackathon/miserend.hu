@@ -181,7 +181,13 @@ class Stat extends Html {
         /*
 		 * Magyarországi aktív templomok frissítettségének statisztikája
 		*/
-		// FIXME for Issue #257
+		/*
+		 * #257: a lenti kizárások a NÉV mintájából következtetnek a misézőhely
+		 * fajtájára (kápolna, imaház, imaterem, közösségi ház). Ugyanaz a kérdés, mint a
+		 * Church::scopeChurchesAndMore()-nál: a besorolást a névből kellene kivezetni,
+		 * nem az OSM-névhalmazra átállítani. Statisztikánál ez ráadásul azt is jelenti,
+		 * hogy megváltoznának a közölt számok — önálló jegyet érdemel.
+		 */
 		$stat = DB::table('templomok')
 			->selectRaw("DATEDIFF(NOW(), frissites) DIV 365 as yearago")
 			->selectRAW("count(*) as count");		
