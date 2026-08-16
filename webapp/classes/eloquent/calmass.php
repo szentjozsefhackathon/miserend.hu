@@ -381,7 +381,7 @@ class CalMass extends CalModel
         $massPeriods = [];
 
         /*
-        $this::logDebug("generateMassInstancesForYears indul", [
+        $this::logDebug("generateMassPeriodInstancesForYears indul", [
             'mass_count' => count($masses),
             'years'      => $years,
         ]);
