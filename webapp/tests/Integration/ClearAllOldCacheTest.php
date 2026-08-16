@@ -119,6 +119,36 @@ class ClearAllOldCacheTest extends TestCase {
         }
     }
 
+    // ---- a cron-regisztráció -------------------------------------------------
+
+    /**
+     * borazslo a #806-hoz: „Nem SQL-ben kéne bekötni az új cronjobot ami lecseréli a
+     * régit, hanem van volt valami cron fájl amiben php alapon gyűjtjük és
+     * ellenőrizzük."
+     *
+     * A forrás a `webapp/fajlok/crons.php` (#638). A régi, egy-API-s sort nem kell
+     * külön törölni: a `Cron::pruneRemoved()` kitakarítja, mert kikerült a listából.
+     */
+    public function testACronRegiszterbenSzerepelAzOsszesitoTakaritas(): void {
+        $registry = \Eloquent\Cron::registry();
+
+        $talalat = array_filter($registry, fn($job) =>
+            ($job['function'] ?? '') === 'clearAllOldCache');
+
+        self::assertCount(1, $talalat, 'A clearAllOldCache-nek pontosan egyszer kell szerepelnie.');
+    }
+
+    /** A leváltott, egy-API-s takarítás nem maradhat a listában. */
+    public function testARegiEgyApisTakaritasKikerult(): void {
+        $registry = \Eloquent\Cron::registry();
+
+        $talalat = array_filter($registry, fn($job) =>
+            ($job['function'] ?? '') === 'clearOldCache');
+
+        self::assertSame([], $talalat,
+            'A pruneRemoved() csak akkor takarítja ki a régi sort, ha nincs a listában.');
+    }
+
     /**
      * Egy rossz API ne akadályozza meg a többit. Ez volt a legnagyobb kockázata
      * annak, hogy egyetlen cronra bízzuk mind a tízet.
