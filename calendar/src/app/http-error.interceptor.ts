@@ -32,8 +32,16 @@ export class HttpErrorInterceptor implements HttpInterceptor {
           errorMessage = `API hiba ${error.status}: ${error.statusText}`;
         }
 
-        // Egyéni üzenet ha az interceptor már beállított
-        if (error.message) {
+        // Egyéni üzenet, ha a HttpTimeoutInterceptor már beállított egyet: az sima
+        // objektumot dob a saját, magyar szövegével, azt vesszük át.
+        //
+        // HttpErrorResponse-nál viszont NEM szabad átvenni. Annak az Angular MINDIG
+        // beállítja a .message-ét ("Http failure response for <url>: 500 ..."), tehát a
+        // feltétel ott mindig igaz volt, és felülírta a fenti, célzottan összerakott
+        // üzenetet — a felhasználó az angol, URL-t is kiíró alapszöveget kapta a
+        // szánt "API hiba 500: Internal Server Error" helyett. A fenti HTTP-ág emiatt
+        // gyakorlatilag sosem látszott.
+        if (error.message && !(error instanceof HttpErrorResponse)) {
           errorMessage = error.message;
         }
 
