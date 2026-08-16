@@ -14,6 +14,8 @@ export interface ChurchFamilyMember {
   id: number;
   name: string;
   city: string;
+  /** A rítus templomonként más lehet (görögkatolikus fília római plébánia alatt). */
+  rite: Rite;
   writable: boolean;
   isCurrent: boolean;
   masses: Mass[];

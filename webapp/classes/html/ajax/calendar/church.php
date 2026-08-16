@@ -132,6 +132,9 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
                 'id'        => (int) $tagChurch->id,
                 'name'      => (string) $tagChurch->nev,
                 'city'      => (string) $tagChurch->varos,
+                // A rítus templomonként más lehet (görögkatolikus fília római
+                // plébánia alatt), és az új esemény alapértelmezését ez adja.
+                'rite'      => strtoupper((string) $tagChurch->denomination),
                 'writable'  => (bool) $tagChurch->writeAccess,
                 'isCurrent' => (int) $tagChurch->id === (int) $church->id,
                 'masses'    => $this->getEventsByChurchId((int) $tagChurch->id),

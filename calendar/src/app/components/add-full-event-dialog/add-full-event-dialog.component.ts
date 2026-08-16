@@ -83,6 +83,25 @@ export class AddFullEventDialogComponent {
   // #454: Új dátum hozzáadásához használt ideiglenes változó
   public newExceptionDate: Date | null = null;
 
+  /**
+   * #506: melyik templomhoz tartozzon az esemény.
+   *
+   * Csak akkor jelenik meg, ha tényleg van miből választani — a plébániának vannak
+   * fíliái, és többhöz is van írásjogunk. Egy templomnál a választó felesleges zaj,
+   * és a dialógus ugyanúgy néz ki, mint eddig.
+   */
+  public get churches() {
+    return this.data.churches ?? [];
+  }
+
+  public get hasChurchChoice(): boolean {
+    return this.churches.length > 1;
+  }
+
+  public onChurchChange(churchId: number): void {
+    this.data.event.churchId = churchId;
+  }
+
   public singleEvent: boolean = this.data.event.renum === Renum.NONE;
   public specialPeriodType?: SpecialType | null = null;
 

@@ -10,6 +10,16 @@
       <mat-icon fontSet="material-symbols-outlined" class="icon">calendar_clock</mat-icon>
       <span>{{ dateTime }}</span>
     </div>
+    @if (hasChurchChoice) {
+      <mat-form-field class="simple-church" appearance="outline">
+        <mat-label>Melyik templomban?</mat-label>
+        <mat-select [ngModel]="churchId" (ngModelChange)="onChurchChange($event)">
+          @for (church of churches; track church.id) {
+            <mat-option [value]="church.id">{{ church.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    }
   </mat-card-content>
   <mat-card-actions>
     <button mat-flat-button (click)="onMoreDetails()">{{ 'SIMPLE_EVENT.MORE_SETTINGS' | translate }}</button>
