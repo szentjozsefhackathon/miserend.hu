@@ -31,6 +31,21 @@ class Api {
      */
     const LEGUJABB_VERZIO = 5;
 
+    /**
+     * #800: a KURRENSNEK hirdetett verzió — ez nem feltétlenül a legmagasabb.
+     *
+     * borazslo a #778-hoz: „még éppen szerintem az api v4 maradhat a kurrensnek
+     * kikiálltot, mert a v5 sqlite még nagyon változnia kell".
+     *
+     * A két szám SZÁNDÉKOSAN külön: a `LEGUJABB_VERZIO` a validálás felső korlátja
+     * (a v5 kéréseket el kell fogadni), az `AJANLOTT_VERZIO` pedig az, amit a
+     * dokumentáció aktuálisként mutat és amire új klienst építeni javaslunk. Amíg a
+     * v5 sqlite mise-formátuma alakul, a kettő nem eshet egybe.
+     *
+     * Ha a v5 megszilárdul, itt egyetlen szám átírása a teendő.
+     */
+    const AJANLOTT_VERZIO = 4;
+
     public function validateVersionMain() {
         // Laza összehasonlítás: a \Request::IntegerRequired() sztringet ad vissza, és a
         // szigorú változat emiatt a meglévő verziókat is elutasítaná.
