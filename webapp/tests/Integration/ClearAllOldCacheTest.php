@@ -138,6 +138,27 @@ class ClearAllOldCacheTest extends TestCase {
         self::assertCount(1, $talalat, 'A clearAllOldCache-nek pontosan egyszer kell szerepelnie.');
     }
 
+    /**
+     * Minden regiszter-bejegyzés LÉTEZŐ metódusra mutasson.
+     *
+     * Ezt a hibát én magam követtem el, amikor egy cront a listában hagytam, de a
+     * metódust közben töröltem: a `Cron::run()` `method_exists()`-szel ellenőriz, és
+     * "Function does not exist" kivétellel áll meg — futásidőben, a naplóban, nem
+     * itt. A regiszter épp azért készült (#638), hogy ne kelljen kézzel egyeztetni.
+     */
+    public function testMindenRegiszterBejegyzesLetezoMetodusraMutat(): void {
+        foreach (\Eloquent\Cron::registry() as $job) {
+            $class = $job['class'] ?? '';
+            $function = $job['function'] ?? '';
+
+            self::assertTrue(class_exists($class), "Nincs ilyen osztály: $class");
+            self::assertTrue(
+                method_exists($class, $function),
+                "Nincs ilyen metódus: $class::$function"
+            );
+        }
+    }
+
     /** A leváltott, egy-API-s takarítás nem maradhat a listában. */
     public function testARegiEgyApisTakaritasKikerult(): void {
         $registry = \Eloquent\Cron::registry();
