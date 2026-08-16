@@ -334,6 +334,39 @@
         <textarea matInput [(ngModel)]="data.event.comment"></textarea>
       </mat-form-field>
 
+      <!--
+        #431: eltérő helyszín. A használati eset: „Röszke plébánia biciklitúrát
+        szervez időnként, és van mise valami random pusztai helyen."
+
+        A mise a plébániáé marad, csak máshol tartják — ezért az alkalomhoz kötjük a
+        helyet, nem új misézőhelyhez. Alapból rejtve: a misék túlnyomó többsége a
+        templomban van, és nem akarjuk minden szerkesztőnek az arcába tolni.
+      -->
+      <div class="eltero-helyszin">
+        <mat-checkbox [(ngModel)]="elteroHelyszin" (change)="onElteroHelyszinValtozott()">
+          {{ 'DIFFERENT_LOCATION' | translate }}
+        </mat-checkbox>
+
+        @if (elteroHelyszin) {
+          <div class="helyszin-mezok">
+            <mat-form-field>
+              <mat-label>{{ 'LOCATION_NAME' | translate }}</mat-label>
+              <input matInput [(ngModel)]="data.event.locationName"
+                     placeholder="pl. Röszkei puszta, kereszt">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'LATITUDE' | translate }}</mat-label>
+              <input matInput type="number" step="0.0000001" [(ngModel)]="data.event.locationLat">
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>{{ 'LONGITUDE' | translate }}</mat-label>
+              <input matInput type="number" step="0.0000001" [(ngModel)]="data.event.locationLon">
+            </mat-form-field>
+            <small class="hint">{{ 'DIFFERENT_LOCATION_HINT' | translate }}</small>
+          </div>
+        }
+      </div>
+
     </mat-expansion-panel>
   </mat-accordion>
 

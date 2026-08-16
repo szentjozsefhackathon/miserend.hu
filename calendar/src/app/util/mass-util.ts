@@ -69,7 +69,15 @@ export class MassUtil {
       // Az auto `experiod`-ot ezután az exclude*PeriodMasses* helper-ek építik fel.
       ...(dialogEvent.manualExperiod && dialogEvent.manualExperiod.length > 0 && {manualExperiod: [...dialogEvent.manualExperiod]}),
       lang: MassUtil.languageCodesToLang(dialogEvent.language),
-      comment: dialogEvent.comment
+      comment: dialogEvent.comment,
+      // #431: az alkalom saját helyszíne. Csak akkor küldjük, ha MINDKÉT koordináta
+      // megvan — fél koordinátával nem lehet térképre tenni, és a féligkész adat
+      // rosszabb, mint a hiányzó.
+      ...(dialogEvent.locationLat != null && dialogEvent.locationLon != null && {
+        locationLat: dialogEvent.locationLat,
+        locationLon: dialogEvent.locationLon,
+        locationName: dialogEvent.locationName ?? null,
+      })
     };
   }
 
@@ -319,7 +327,11 @@ export class MassUtil {
       exdate: mass.exdate,
       experiod: mass.experiod,
       // #428: a kézi kivétel-időszakok visszatöltése a dialógus multiselectjébe
-      manualExperiod: mass.manualExperiod
+      manualExperiod: mass.manualExperiod,
+      // #431: a saját helyszín visszatöltése a szerkesztőbe
+      locationLat: mass.locationLat ?? null,
+      locationLon: mass.locationLon ?? null,
+      locationName: mass.locationName ?? null
     };
   }
 
