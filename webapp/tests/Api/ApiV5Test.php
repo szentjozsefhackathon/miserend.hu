@@ -23,10 +23,20 @@ class ApiV5Test extends TestCase {
 
     private const TESZT_TEMPLOM = 1;
 
-    /** @return array a templom API-tömbje az adott verzióban */
+    /**
+     * @return array a templom API-tömbje az adott verzióban
+     *
+     * A napot KIFEJEZETTEN megadjuk. Alapértelmezésben a `toAPIArray()` a mai napra
+     * kérdez, és ha épp nincs mise, a teszt csak kihagyásra fut — vagyis a futások
+     * fele nem mér semmit. A következő vasárnapon minden templomnak van miséje.
+     */
     private function church(int $verzio, string $length = 'minimal'): array {
         return \Eloquent\Church::find(self::TESZT_TEMPLOM)
-            ->toAPIArray($length, false, $verzio);
+            ->toAPIArray($length, self::kovetkezoVasarnap(), $verzio);
+    }
+
+    private static function kovetkezoVasarnap(): string {
+        return date('Y-m-d', strtotime('next sunday'));
     }
 
     /* ---------- verzió-kezelés ---------- */
@@ -74,9 +84,15 @@ class ApiV5Test extends TestCase {
             self::markTestSkipped('ezen a napon nincs mise ezen a templomon');
         }
 
+        /*
+         * Részhalmazt mérünk, nem pontos egyezést: az `informacio` KIMARAD, ha a
+         * mondat üresre jönne ki (`if($info != '')`). A lényeg, hogy a v4-be ne
+         * kerüljön ÚJ mező — az sértené a meglévő kliensek szerződését.
+         */
         foreach ($misek as $mise) {
-            self::assertSame(['idopont', 'informacio'], array_keys($mise),
-                'a v4 mise-adata bővült — meglévő kliensek szerződését sértjük');
+            self::assertSame([], array_diff(array_keys($mise), ['idopont', 'informacio']),
+                'a v4 mise-adata új mezővel bővült: ' . implode(', ', array_keys($mise)));
+            self::assertArrayHasKey('idopont', $mise);
         }
     }
 
@@ -176,7 +192,8 @@ class ApiV5Test extends TestCase {
 
     /** Verzió nélkül a régi alak jön: a keresőindex építése is ezen az úton megy. */
     public function testWithoutAVersionTheOldShapeIsReturned(): void {
-        $misek = \Eloquent\Church::find(self::TESZT_TEMPLOM)->toAPIArray('minimal')['misek'];
+        $misek = \Eloquent\Church::find(self::TESZT_TEMPLOM)
+            ->toAPIArray('minimal', self::kovetkezoVasarnap())['misek'];
 
         if (!$misek) {
             self::markTestSkipped('ezen a napon nincs mise ezen a templomon');
