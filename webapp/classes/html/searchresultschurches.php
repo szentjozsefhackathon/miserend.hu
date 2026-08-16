@@ -118,7 +118,8 @@ class SearchResultsChurches extends Html {
                 \Eloquent\Church::select('id', 'nev', 'varos')
                     ->whereIn('id', $params['church_ids'])
                     ->get()
-                    ->map(fn($c) => ['id' => $c->id, 'name' => $c->nev, 'city' => $c->varos])
+                    // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.
+                    ->map(fn($c) => ['id' => $c->id, 'name' => $c->nev, 'city' => $c->locationCityName()])
             );
         }
         

@@ -33,6 +33,17 @@ return [
     ['class' => '\User',                          'function' => 'sendUpdateNotification',     'frequency' => '20 minutes', 'from' => '1am', 'until' => '6am'],
     ['class' => '\User',                          'function' => 'deleteNonActivatedUsers',    'frequency' => '20 minutes', 'from' => '1am', 'until' => '6am'],
     ['class' => '\User',                          'function' => 'sendHolidayReminder',        'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
+    /*
+     * #496: a határ nélkül maradt templomok újra sorba állítása. HAVI futás — a
+     * 30 napos korlát miatt gyakoribbnak nincs értelme, lásd a metódus doksiját.
+     */
+    ['class' => '\Crons',                         'function' => 'requeueChurchesWithoutBoundary', 'frequency' => '1 month'],
+    /*
+     * #496: a koordináta nélküli templomok helyadatának átmentése a megjegyzés
+     * mezőbe. EGYSZERI feladat a kivezetés előtt; idempotens, tehát ártalmatlan,
+     * ha a napi futás többször is meghívja.
+     */
+    ['class' => '\Crons',                         'function' => 'archiveLocationOfChurchesWithoutCoordinates', 'frequency' => '1 day'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateChurches',             'frequency' => '6 hours'],
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'updateMasses',               'frequency' => '6 hours'],
     // A teljes indexépítés akkor is hagyhat lyukat, ha közben elhasal valami; ez varrja

@@ -72,8 +72,10 @@ class Service_times extends Api {
 					'church_id' => $church->id,
 					'name' => $church->names[0],
 					'address' => $church->location->address,
-					'city, state' => isset($church->location->city['name']) ? $church->location->city['name'] : $church->varos,
-					'country' => isset($church->location->country['name']) ? $church->location->country['name'] : $church->orszag,
+					// #497/#498: a visszaesés eddig a NYERS oszlopra ment — az `orszag`
+					// ott azonosító, tehát hiányzó boundary-nál "12" ment ki országnévként.
+					'city, state' => isset($church->location->city['name']) ? $church->location->city['name'] : $church->locationCityName(),
+					'country' => isset($church->location->country['name']) ? $church->location->country['name'] : $church->locationCountryName(),
 					'phone' => false,
 					'email' => $church->pleb_eml,
 					'url' => false,

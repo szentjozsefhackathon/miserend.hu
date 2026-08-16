@@ -56,7 +56,8 @@ class NearbyMasses extends Api
                 'church' => [
                     'id' => (int) $church->id,
                     'name' => $church->names[0] ?? '',
-                    'city' => is_array($church->varos) ? ($church->varos[0] ?? '') : $church->varos,
+                    // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.
+                    'city' => $church->locationCityName(),
                     'lat' => (float) $church->lat,
                     'lon' => (float) $church->lon,
                 ],

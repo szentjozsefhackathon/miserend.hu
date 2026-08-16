@@ -61,7 +61,8 @@ class Churchrelationships extends Api {
                 'church' => [
                     'id'   => $c->id,
                     'name' => !empty($c->names) ? $c->names[0] : $c->nev,
-                    'city' => $c->varos,
+                    // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.
+                    'city' => $c->locationCityName(),
                     'lat'  => (float) $c->lat,
                     'lon'  => (float) $c->lon,
                     'rank' => $c->rank,

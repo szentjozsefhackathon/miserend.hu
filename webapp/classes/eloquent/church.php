@@ -857,7 +857,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                     $miseLangs = \Eloquent\CalMass::splitLanguages(
                         is_array($mise->lang) ? implode(',', $mise->lang) : $mise->lang
                     );
-                    if( $this->orszag != 12 or $miseLangs != ['hu'] ) {
+                    if( !$this->isInHungary() or $miseLangs != ['hu'] ) {
                         $translated = array_map(function($l) { return t('LANGUAGES.'.$l); }, $miseLangs);
                         if ($translated) {
                             $info .= ' ' . implode('-', $translated)." nyelven";
@@ -919,8 +919,8 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 'nev' => !empty($this->names) ? $this->names[0] : '',
                 'frissitve' => $this->frissitesFormatted(),
                 'ismertnev' => !empty($this->alternative_names) ? $this->alternative_names[0] : '',
-                'orszag' => ( DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: "" ),
-                'varos' => $this->varos,
+                'orszag' => $this->locationCountryName(),
+                'varos' => $this->locationCityName(),
                 'misek' => $misek,
                 'adoraciok' => $adorations,
                 'gyontatas' => $this->confessions ? $this->confessions['status'] : false,
@@ -943,10 +943,10 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             'ismertnev' => !empty($this->alternative_names) ? $this->alternative_names[0] : '',
             'alternative_names' => $this->alternative_names,
             'frissitve' => $this->frissitesFormatted(),            
-            'orszag' => ( DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: "" ),
+            'orszag' => $this->locationCountryName(),
             'egyhazmegye' => ( DB::table('egyhazmegye')->where('id', $this->egyhazmegye)->value('nev') ?: "" ),
-            'megye' => ( DB::table('megye')->where('id', $this->megye)->value('megyenev') ?: "" ),
-            'varos' => $this->varos,
+            'megye' => $this->locationCountyName(),
+            'varos' => $this->locationCityName(),
             'cim' => $this->cim,
             'megkozelites' => '',
             'plebania' => str_replace('<br>', "\n", strip_tags($this->plebania, '<br>')),
@@ -1349,7 +1349,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         if (!empty($this->alternative_names)) {
             $return .= ' (' . $this->alternative_names[0] . ')';
         } else {
-            $return .= ' (' . $this->varos . ')';
+            $return .= ' (' . $this->locationCityName() . ')';
         }
         return $return;
     }
@@ -1482,6 +1482,124 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $boundaries,
             fn($boundary) => (int) ($boundary['admin_level'] ?? 0) !== 4
         ));
+    }
+
+    /**
+     * #496 / #497 / #498: a templom helynevei az OSM-határokból, a régi oszlopokra
+     * való visszaeséssel.
+     *
+     * A három jegy a `templomok.varos`, `.megye` és `templomok.orszag` kivezetéséről
+     * szól. Ahhoz, hogy az oszlopok eldobhatók legyenek, előbb minden fogyasztónak
+     * ezeken a metódusokon kell keresztülmennie — utána a kivezetés annyi, hogy a
+     * visszaesési ág kiesik innen, és nem kell 23 fájlt átírni.
+     *
+     * A visszaesés SZÁNDÉKOSAN bent van most: a szlovák állomány 23%-ának egyáltalán
+     * nincs boundary-ja (szinkronhiány), és 47 templomnak nincs koordinátája sem.
+     * Amíg ez így van, a régi oszlop a jobb válasz, mint az üres string.
+     *
+     * A besorolás szint szerint megy, nem pozíció szerint: a location() a rendezett
+     * lista 0./1./2. elemét címkézi, ami hiányos határláncnál elcsúszik.
+     */
+    private function adminBoundaryName(array $szintek): ?string {
+        $talalat = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->whereIn('admin_level', $szintek)
+                ->orderBy('admin_level', 'desc')
+                ->first();
+
+        $nev = trim((string) ($talalat->name ?? ''));
+
+        return $nev !== '' ? $nev : null;
+    }
+
+    /**
+     * Település. Ha van kerület is, azzal együtt — így a nagyvárosi templomoknál nem
+     * vész el a pontosság.
+     *
+     * Ez SZÁNDÉKOSAN a régi oszlop alakját reprodukálja, mert az API-ban és a
+     * felületen ez látszik. Két országfüggő eset van, mindkettőt valódi adaton mértem:
+     *
+     *   Budapest, Szent Imre-templom      8=Budapest  9=XI. kerület  10=Szentimreváros
+     *       -> "Budapest XI. kerület", ami bitre a régi `templomok.varos`.
+     *       A puszta legspecifikusabb elem "Szentimreváros" lenne: pontosabb ugyan,
+     *       de a látogató szempontjából visszalépés ahhoz képest, amit ma lát.
+     *
+     *   Köln, St. Aposteln                6=Köln      9=Innenstadt   10=Altstadt-Nord
+     *       Köln kreisfreie Stadt, tehát NINCS 8-as szintje. Ha vakon a 9-esre esnénk
+     *       vissza, "Innenstadt" jönne ki "Köln" helyett.
+     *
+     * Ezért a kerületet CSAK akkor fűzzük hozzá, ha a település a 8-as szintről jött.
+     * Ha a településnek a 6-osra kellett visszaesni, a 9-es már másfajta felosztás,
+     * és a régi adat sem tartalmazta.
+     */
+    public function locationCityName(): string {
+        $telepules = $this->adminBoundaryName([8]);
+        if ($telepules !== null) {
+            $kerulet = $this->adminBoundaryName([9]);
+            return $kerulet !== null ? $telepules . ' ' . $kerulet : $telepules;
+        }
+
+        // Nincs 8-as szint (pl. német kreisfreie Stadt): a 6-os maga a település.
+        return $this->adminBoundaryName([6])
+            ?? $this->adminBoundaryName([9])
+            ?? $this->adminBoundaryName([10])
+            ?? (string) $this->varos;
+    }
+
+    /** Megye. Romániában nincs 6-os szint, ott a 4-es (judet) hordozza. */
+    public function locationCountyName(): string {
+        $boundary = $this->adminBoundaryName([6]) ?? $this->adminBoundaryName([4]);
+        if ($boundary !== null) {
+            return $boundary;
+        }
+
+        return (string) (DB::table('megye')->where('id', $this->megye)->value('megyenev') ?: '');
+    }
+
+    public function locationCountryName(): string {
+        return $this->adminBoundaryName([2])
+            ?? (string) (DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: '');
+    }
+
+    /**
+     * Magyarországi templom-e. A naptár ez alapján dönti el, kell-e nyelvi zászló a
+     * magyar mise mellé, a statisztika pedig ez alapján szűkít.
+     *
+     * Elsődlegesen az ISO-kód, mert a `templomok.orszag = 12` a kivezetéssel eltűnik.
+     */
+    public function isInHungary(): bool {
+        $kod = $this->countryCode();
+        if ($kod !== null) {
+            return $kod === 'HU';
+        }
+
+        return (int) $this->orszag === self::MAGYARORSZAG_ID;
+    }
+
+    /** A régi `orszagok` tábla magyar sorának azonosítója. */
+    public const MAGYARORSZAG_ID = 12;
+
+    /**
+     * #498: lekérdezés-szintű szűrés a magyarországi templomokra.
+     *
+     * A statisztika eddig `where('orszag', 12)`-vel szűkített — pont az az oszlop,
+     * amit ki akarunk vezetni. A boundary-alapú megfelelője az országhatáron megy.
+     *
+     * NÉVRE és ISO-kódra IS illesztünk. Az ISO a helyes hosszú távon, de ma 7964
+     * határból egyetlenegynél van kitöltve (a szinkronnak újra kell futnia), addig
+     * a puszta ISO-szűrés üres statisztikát adna.
+     */
+    public function scopeInHungary($query) {
+        return $query->whereIn('templomok.id', function ($sub) {
+            $sub->select('lookup_boundary_church.church_id')
+                ->from('lookup_boundary_church')
+                ->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+                ->where('boundaries.admin_level', 2)
+                ->where(function ($w) {
+                    $w->where('boundaries.iso3166_1', 'HU')
+                      ->orWhere('boundaries.name', 'Magyarország');
+                });
+        });
     }
 
     /**
