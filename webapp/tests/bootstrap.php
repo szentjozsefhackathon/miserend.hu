@@ -39,6 +39,15 @@ dbconnect();
 // cron rows (e.g. testCronInitAddsMissingJobsAndKeepsExistingHistory) would fail.
 \Eloquent\Cron::init();
 
+/*
+ * A DOMAIN konstanst a load.php definiálja, a tesztek viszont nem azt töltik be. Enélkül
+ * minden olyan út elszáll vagy csendben tartalékértékre esik, ami a beállított címre
+ * hivatkozik — például az iCal-események UID-je (Html\Church\Ical::uidHost).
+ */
+if (!defined('DOMAIN')) {
+    define('DOMAIN', $GLOBALS['config']['path']['domain'] ?? 'http://localhost');
+}
+
 date_default_timezone_set('Europe/Budapest');
 
 // A levélküldés Twig-sablonból áll elő (\Eloquent\Email::render()), így $twig nélkül
