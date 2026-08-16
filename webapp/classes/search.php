@@ -193,7 +193,98 @@ class Search {
         $bool['should'][] = ['wildcard'=>[$prefix.'varos'=>[ 'value' => '*'.$keyword.'*', 'boost'=>12 ]]];
         $bool['should'][] = ['wildcard'=>[$prefix.'alternative_names'=>[ 'value' => '*'.$keyword.'*', 'boost'=>4 ]]];
     
+        /*
+         * #793: a szabad szöveget BOUNDARY-ra is lefordítjuk.
+         *
+         * borazslo döntése: „Sajnos meg kell próbálni a szabad szöveget is boundary-ra
+         * fordítani, mert az emberek gyakran egyszerűek és nem jönnek rá a másik
+         * útvonalra. Csak belefér a pontatlanság és egyebek. Hiszen a beírt szabadszöveg
+         * egyszerre lehet a templom nevének részlete meg egy helyadata is."
+         *
+         * Eddig a helyre szűkítés CSAK az autocomplete-választáson keresztül működött:
+         * aki beírta, hogy „Újbuda", és entert nyomott, nulla találatot kapott, mert a
+         * templom-dokumentum egyetlen mezőjében sem szerepel ez a szó — csak a boundary
+         * alternatív nevében.
+         *
+         * `should`-ág, tehát csak BŐVÍTI a találatokat, nem szűkíti: a kulcsszó
+         * továbbra is illeszkedhet a templom nevére. A boost szándékosan a pontos
+         * városnév-egyezés (18) alatt van — a helymatch valódi jel, de gyengébb, mint
+         * amikor maga a beírt szó a település neve a dokumentumban.
+         */
+        $boundaryIds = self::boundaryIdsForKeyword($keyword);
+        if ($boundaryIds !== []) {
+            $bool['should'][] = ['terms' => [$prefix . 'boundaries' => $boundaryIds, 'boost' => 16]];
+        }
+
         $this->query['bool']['must'][] = ['bool' => $bool ];
+    }
+
+    /**
+     * #793: a beírt szöveghez tartozó boundary-azonosítók.
+     *
+     * Rétegesen keresünk, és az ELSŐ nem üres réteget használjuk: pontos név, majd
+     * kezdet szerinti, majd részlet. Enélkül egy rövid, gyakori szó (pl. „Szent")
+     * tucatnyi településre illeszkedne, és minden ottani templomot előrehozna egy
+     * olyan keresésnél, ami valójában a templom NEVÉRE vonatkozott.
+     *
+     * Az `alt_name`-re is illesztünk: a köznyelvi név gyakran ott ül (a budapesti
+     * V. kerületé „Belváros-Lipótváros", a XI.-é „Újbuda").
+     *
+     * OSM-azonosítót NEM követelünk meg — az autocomplete igen, de ott a találatra
+     * kattintani is lehet. Itt csak szűrünk, és a régi oszlopokból származó
+     * boundary-k is valódi területek.
+     *
+     * @param string $keyword a beírt szöveg
+     * @param int $limit hány boundary-t veszünk figyelembe legfeljebb
+     * @return array<int,int>
+     */
+    public static function boundaryIdsForKeyword(string $keyword, int $limit = 25): array {
+        $keyword = trim($keyword);
+        if (mb_strlen($keyword) < 3) {
+            return [];
+        }
+
+        $engedett = [
+            'religious_administration', 'administrative', 'postal_code',
+            'region', 'historic', 'tourism_region', 'wine_growing_area',
+        ];
+
+        foreach ([$keyword, $keyword . '%', '%' . $keyword . '%'] as $minta) {
+            // Eggyel többet kérünk a korlátnál, hogy MEG TUDJUK KÜLÖNBÖZTETNI a
+            // "pont ennyi van" esetet a "ennél több van" esettől.
+            $talalat = \Eloquent\Boundary::whereIn('boundary', $engedett)
+                ->where(function ($q) use ($minta) {
+                    $q->where('name', 'like', $minta)
+                      ->orWhere('alt_name', 'like', $minta);
+                })
+                ->orderBy('admin_level')
+                ->take($limit + 1)
+                ->pluck('id')
+                ->all();
+
+            if ($talalat === []) {
+                continue;
+            }
+
+            /*
+             * Ha egy réteg TÚLCSORDUL, akkor nem megkülönböztető, és eldobjuk.
+             *
+             * Ez a zajszűrő. A "Szent" például 25+ területre illeszkedik kezdetként
+             * (Szentgotthárdi járás, Szentesi, Szentlőrinci járás...), pedig aki ezt
+             * beírja, az szinte biztosan a templom NEVÉRE gondol. Ha ezeket
+             * beengednénk, minden ottani templom előrébb kerülne.
+             *
+             * A szabály önszabályozó: nem kell kitalált hosszúság-küszöb, a
+             * találatszám maga mondja meg, hogy a szöveg helynévként értelmes-e.
+             */
+            if (count($talalat) > $limit) {
+                continue;
+            }
+
+            return array_map('intval', $talalat);
+        }
+
+        return [];
     }
 
     function notTitle($notTitle) {
