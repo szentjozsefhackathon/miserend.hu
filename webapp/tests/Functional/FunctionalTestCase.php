@@ -61,6 +61,26 @@ abstract class FunctionalTestCase extends PantherTestCase
             [
                 'connection_timeout_in_ms' => self::CONNECTION_TIMEOUT_MS,
                 'request_timeout_in_ms' => self::REQUEST_TIMEOUT_MS,
+                /*
+                 * A betöltés ne várja meg a képeket és a többi alerőforrást.
+                 *
+                 * Az alapértelmezett `normal` stratégiánál a WebDriver a `load` eseményig
+                 * vár, abba pedig minden `<img>` beleszámít — a templomok LEÍRÁSA viszont
+                 * szabad HTML, amibe a szerkesztők idegen kiszolgálókról ágyaznak be
+                 * képeket. A #2474-es templom leírásában például hat kép mutat a
+                 * `rakosliget.plebania.hu`-ra, sima HTTP-n. Ha az a szerver épp lassú a
+                 * futtatóról, a lap sosem készül el, és a teszt időtúllépéssel bukik —
+                 * miközben az alkalmazás a HTML-t 200-zal, azonnal kiszolgálta.
+                 *
+                 * Ez adta a korábbi néma beakadásokat is: a szerver rendben válaszolt, a
+                 * böngésző viszont egy harmadik fél képére várt. `eager` mellett a
+                 * betöltés a DOMContentLoaded-nél tér vissza. A tesztjeink a DOM
+                 * tartalmát mérik, és ahol tényleg megjelenésre várnak, ott úgyis
+                 * kifejezett `waitFor()` áll.
+                 */
+                'capabilities' => [
+                    'pageLoadStrategy' => 'eager',
+                ],
             ]
         );
     }
