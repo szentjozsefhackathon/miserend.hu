@@ -83,9 +83,9 @@ class OsrmApi extends \ExternalApi\ExternalApi {
     /**
      * Útvonal-távolság méterben két pont között, vagy null, ha nem kapható.
      *
-     * A null SZÁNDÉKOSAN nem kivétel: a hívó (l. \Distance::resolveDistance) ilyenkor
-     * a légvonalbeli távolságra esik vissza. Az útvonaltervező kiesése ne állítsa meg a
-     * szomszéd-számítást — legfeljebb pontatlanabb lesz.
+     * A null SZÁNDÉKOSAN nem kivétel: a hívó (\Distance::resolveDistance) ilyenkor a
+     * Mapquestre, majd a légvonalbeli távolságra esik vissza. Az útvonaltervező kiesése
+     * ne állítsa meg a szomszéd-számítást — legfeljebb pontatlanabb lesz.
      */
     function routeDistance(array $from, array $to): ?float {
         if ($this->apiUrl === '/' || $this->apiUrl === '') {
