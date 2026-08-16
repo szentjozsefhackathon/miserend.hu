@@ -154,10 +154,12 @@ class Church extends \Html\Html {
 
         $church->MgetReligious_administration();
         
-        if( count($church->neighbours) < 1 ) {
-           // $distance = new \Distance();        
-           // $distance->MupdateChurch($church);
-        }        
+        // A `neighbours` accessor NINCS gyorsítótárazva: minden olvasása újra lefuttatja a
+        // lekérdezést (1 sor a distances-ből + koordinátánként egy templom-keresés, max 60).
+        // Itt korábban egy `if (count($church->neighbours) < 1)` állt, aminek a TÖRZSE
+        // teljes egészében ki volt kommentelve — a feltétele viszont lefutott, és ezzel
+        // minden templomoldal kétszer fizette ki ugyanazt a lekérdezés-sorozatot.
+        // Az egyetlen valódi olvasás lentebb van: $this->neighbours = $church->neighbours.
   
 								
         copyArrayToObject($church->toArray(), $this);

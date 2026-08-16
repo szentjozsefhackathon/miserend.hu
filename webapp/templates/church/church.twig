@@ -278,7 +278,7 @@
         {% include "panel.twig" with {title:'Jó tudni','body': megjegyzes } %}
     {% endif %}
 		
-    {% if neighbours|length > 1 %}
+    {% if neighbours|length > 0 %}
         {% include 'church/_panelneighbours.twig' %}
     {% endif %}
     
