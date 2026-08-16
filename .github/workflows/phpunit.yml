@@ -126,7 +126,7 @@ jobs:
           fi
 
       - name: Run functional tests
-        # Normálisan ~80 másodperc. Ha a böngésző beakad, itt bukjon el, ne a job
+        # Normálisan ~60 másodperc. Ha a böngésző beakad, itt bukjon el, ne a job
         # felső korlátjánál — így a Docker-naplós lépés is lefut és látszik az ok.
         timeout-minutes: 12
         working-directory: webapp/tests
@@ -136,8 +136,17 @@ jobs:
           FUNCTIONAL_VENDOR_AUTOLOAD: ${{ github.workspace }}/test-results/functional-vendor/autoload.php
         run: |
           export PANTHER_CHROME_BINARY="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          # --testdox: tesztenként EGY TELJES SOR.
+          #
+          # A PHPUnit alapértelmezett pont-sorozata csak 63 teszt után zár sort, a
+          # GitHub Actions naplója viszont kizárólag teljes sorokat jelenít meg. Amikor
+          # a böngésző beakadt és a lépés az időkorlátnál elhalt, emiatt a PHPUnit
+          # fejléce után EGYETLEN sor sem látszott — pedig a tesztek futottak. Így nem
+          # derült ki, melyiknél akadt meg. Soronkénti kimenettel a napló megmutatja az
+          # utolsó lefutott tesztet, tehát a következő a bűnös.
           "${{ github.workspace }}/test-results/functional-vendor/bin/phpunit" \
             -c phpunit.functional.xml \
+            --testdox \
             --log-junit "${{ github.workspace }}/test-results/functional-junit.xml"
 
       - name: Inspect test result files

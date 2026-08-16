@@ -13,11 +13,19 @@ use PHPUnit\Framework\TestCase;
  */
 class OverpassEndpointConfigTest extends TestCase
 {
-    /** @return string[] */
+    /**
+     * A böngészőből Overpasst hívó sablonok.
+     *
+     * A `_map.twig` (OpenLayers) is itt volt, de kiderült, hogy HALOTT KÓD: egyetlen
+     * sablon sem include-olta, mindenhol a `_map_leaflet.twig` fut. Törölve — vele
+     * együtt az egyetlen olyan oldalelem is, ami külső, BLOKKOLÓ scriptet töltött
+     * (openlayers.org, 770 KB).
+     *
+     * @return string[]
+     */
     private static function sablonok(): array
     {
         return [
-            __DIR__ . '/../../templates/_map.twig',
             __DIR__ . '/../../templates/church/create.twig',
         ];
     }
