@@ -280,6 +280,15 @@
                    [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'"
                    [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
             }
+            <!--
+              #431/#816: helyszín-jel a fejlécben (borazslo kérése). A panel alapból
+              CSUKVA van, tehát enélkül a saját helyszín a szerkesztőben rejtve marad
+              — épp az, amiről tudni kellene, hogy be van állítva.
+            -->
+            @if (elteroHelyszin) {
+              <mat-icon class="mcal-location-icon"
+                        [matTooltip]="'DIFFERENT_LOCATION_BADGE' | translate:{place: helyszinCimke()}">place</mat-icon>
+            }
           </div>
         </mat-panel-description>
       </mat-expansion-panel-header>

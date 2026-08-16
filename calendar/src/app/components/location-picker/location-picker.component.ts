@@ -61,13 +61,53 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
     this.leaflet.load()
       .then(L => {
         this.L = L;
-        this.terkepetEpit();
+        this.meretreVar();
       })
       .catch(() => {
         // Szándékosan nem dobjuk tovább: a térkép kiegészítés, nem feltétel. A
         // koordináta kézzel is beírható, és a szerkesztő többi része ép marad.
         this.hiba = 'MAP_UNAVAILABLE';
       });
+  }
+
+  /**
+   * #816: a térkép csak akkor épül fel, amikor a doboznak VAN mérete.
+   *
+   * A helyszín-blokk egy alapból CSUKOTT „Tulajdonságok" panelben ül. Ha a térképet a
+   * nézet elkészültekor építenénk meg, a doboz 0×0 lenne: a Leaflet ekkora területre
+   * egyetlen csempét kér le, és a kinyitás után is az marad — borazslo pontosan ezt
+   * kapta, „egy-egy a sarkában szinte találkozó négyzetnyi térképpel (többi fehér)".
+   *
+   * Az utólagos `invalidateSize()` erre nem elég megbízható válasz: a doboz mérete a
+   * dialógus animációja, a panel kinyitása és a görgetés közben többször is változik.
+   * Ezért inkább megvárjuk az első valódi méretet, és onnantól minden változásnál
+   * újramérünk.
+   */
+  private meretreVar(): void {
+    const elem = this.mapContainer?.nativeElement;
+    if (!elem) {
+      return;
+    }
+
+    if (typeof ResizeObserver === 'undefined') {
+      // Régi böngésző: marad a régi, időzített megoldás.
+      this.terkepetEpit();
+      setTimeout(() => this.map?.invalidateSize(), 300);
+      return;
+    }
+
+    this.figyelo = new ResizeObserver(() => {
+      const {offsetWidth: szelesseg, offsetHeight: magassag} = elem;
+      if (szelesseg === 0 || magassag === 0) {
+        return;
+      }
+      if (!this.map) {
+        this.terkepetEpit();
+      } else {
+        this.map.invalidateSize();
+      }
+    });
+    this.figyelo.observe(elem);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -104,21 +144,7 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
 
     this.jeloloFrissit();
 
-    /*
-     * A dialógus a térkép megépítése UTÁN veszi fel a végleges méretét (a Material a
-     * nyitó animáció végén méri), és a felhasználó közben görgethet vagy nyithat egy
-     * összecsukható panelt. A Leaflet ilyenkor a régi mérettel számolt csempéket
-     * mutatja: a fele szürke marad, amíg valaki meg nem mozgatja.
-     *
-     * Egyetlen időzített újramérés ehhez kevés — nem tudjuk, mikor áll meg a doboz.
-     * A ResizeObserver viszont pontosan akkor szól, amikor tényleg változott a méret.
-     */
-    if (typeof ResizeObserver !== 'undefined') {
-      this.figyelo = new ResizeObserver(() => this.map?.invalidateSize());
-      this.figyelo.observe(elem);
-    } else {
-      setTimeout(() => this.map?.invalidateSize(), 200);
-    }
+    // A méret további változásait a `meretreVar()` figyelője követi.
   }
 
   /** Ha még nincs választás, a templom a kiindulópont; annak híján Budapest. */

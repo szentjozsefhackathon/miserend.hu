@@ -103,3 +103,13 @@
  flex-direction: column;
  gap: 1em;
 }
+
+/* #431/#816: helyszín-jel a „Tulajdonságok" fejlécében.
+   A színt szándékosan nem a szöveghez igazítom: pont az a lényeg, hogy kiüssön. */
+.mcal-location-icon {
+  color: #b8500a;
+  font-size: 20px;
+  height: 20px;
+  width: 20px;
+  vertical-align: middle;
+}

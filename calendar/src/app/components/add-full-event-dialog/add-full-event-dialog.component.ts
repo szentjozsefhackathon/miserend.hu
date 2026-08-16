@@ -118,6 +118,25 @@ export class AddFullEventDialogComponent {
     this.data.event.locationLon = pont.lon;
   }
 
+  /**
+   * #816: mi álljon a fejléc helyszín-jelének tooltipjében.
+   *
+   * Fél koordinátánál (a felhasználó még csak az egyiket írta be) a `MassUtil` még
+   * nem ad címkét — a jel viszont már ott van a bekapcsolt jelölő miatt. Ilyenkor
+   * inkább a mező nevét mutatjuk, mint egy „NaN, NaN"-t.
+   */
+  helyszinCimke(): string {
+    const alkalom = {
+      locationLat: this.data.event.locationLat,
+      locationLon: this.data.event.locationLon,
+      locationName: this.data.event.locationName,
+    } as any;
+
+    return MassUtil.hasOwnLocation(alkalom)
+      ? MassUtil.locationLabel(alkalom)
+      : this.translateService.instant('DIFFERENT_LOCATION');
+  }
+
   // #454: Új dátum hozzáadásához használt ideiglenes változó
   public newExceptionDate: Date | null = null;
 

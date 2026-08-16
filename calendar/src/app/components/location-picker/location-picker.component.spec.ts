@@ -31,6 +31,14 @@ describe('LocationPickerComponent (#816)', () => {
     mapHandlers = {};
     markerHandlers = {};
 
+    // A valódi ResizeObserver csak elrendezés után szól; a teszt kézzel vált ki.
+    (window as any).ResizeObserver = class {
+      __hivd: () => void;
+      constructor(cb: () => void) { this.__hivd = cb; }
+      observe(): void { /* a méretet a teszt adja meg */ }
+      disconnect(): void { /* nincs mit elengedni */ }
+    };
+
     map = {
       setView: jasmine.createSpy('setView').and.callFake(() => map),
       on: jasmine.createSpy('on').and.callFake((n: string, h: any) => { mapHandlers[n] = h; }),
@@ -65,11 +73,24 @@ describe('LocationPickerComponent (#816)', () => {
     component = fixture.componentInstance;
   });
 
-  /** A `ngAfterViewInit` a betöltő ígéretére vár — meg kell várni a felfutását. */
-  async function inditsd(): Promise<void> {
+  /**
+   * A `ngAfterViewInit` a betöltő ígéretére vár, a térkép pedig csak akkor épül fel,
+   * amikor a doboznak VAN mérete. A ResizeObserver a jsdom-mentes böngészőtesztben is
+   * él, de a méret-visszajelzés időzítése bizonytalan — ezért kézzel adjuk meg.
+   */
+  async function inditsd(szelesseg = 500, magassag = 260): Promise<void> {
     fixture.detectChanges();
     await loader.load();
     await Promise.resolve();
+    meretetAd(szelesseg, magassag);
+  }
+
+  /** A doboz méretének megadása + a figyelő kézi meghívása. */
+  function meretetAd(szelesseg: number, magassag: number): void {
+    const elem = component.mapContainer!.nativeElement;
+    Object.defineProperty(elem, 'offsetWidth', {value: szelesseg, configurable: true});
+    Object.defineProperty(elem, 'offsetHeight', {value: magassag, configurable: true});
+    (component as any).figyelo?.__hivd?.();
   }
 
   describe('kiindulópont', () => {
@@ -195,6 +216,40 @@ describe('LocationPickerComponent (#816)', () => {
       fixture.destroy();
 
       expect(map.remove).toHaveBeenCalled();
+    });
+  });
+
+  describe('csukott panelben', () => {
+
+    /**
+     * A helyszín-blokk egy alapból CSUKOTT panelben ül: a doboz ilyenkor 0×0. Ha a
+     * térképet ekkor építenénk meg, a Leaflet egyetlen csempényi területet kérne le,
+     * és a kinyitás után is az maradna — borazslo pontosan ezt kapta: „egy-egy a
+     * sarkában szinte találkozó négyzetnyi térképpel (többi fehér)".
+     */
+    it('nulla méretnél még nem épül fel a térkép', async () => {
+      await inditsd(0, 0);
+
+      expect(L.map).not.toHaveBeenCalled();
+    });
+
+    it('a panel kinyitásakor épül fel', async () => {
+      await inditsd(0, 0);
+      expect(L.map).not.toHaveBeenCalled();
+
+      meretetAd(500, 260);
+
+      expect(L.map).toHaveBeenCalledTimes(1);
+    });
+
+    /** További méretváltozásnál nem újraépítünk, hanem újramérünk. */
+    it('újabb méretváltozásnál csak újramér', async () => {
+      await inditsd(500, 260);
+
+      meretetAd(700, 260);
+
+      expect(L.map).toHaveBeenCalledTimes(1);
+      expect(map.invalidateSize).toHaveBeenCalled();
     });
   });
 });
