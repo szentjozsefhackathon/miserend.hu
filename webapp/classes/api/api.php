@@ -165,6 +165,10 @@ class Api {
             // 2023-02-29-et, a 2023-02-31-et és a 2026-04-31-et is — miközben ugyanezeket
             // a \Request naptár-tudatos ellenőrzése helyesen visszautasította.
             $this->throwIf($name, \Validate::dateError($input));
+        } elseif($type == 'timestamp') {
+            $this->throwIf($name, \Validate::timestampError($input));
+        } elseif($type == 'email') {
+            $this->throwIf($name, \Validate::emailError($input));
         } elseif($type == 'float') {
             $this->validateFloat($name, $details, $input);
         } elseif($type == 'string') {
