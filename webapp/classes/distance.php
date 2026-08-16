@@ -228,12 +228,18 @@ class Distance {
      * szolgáltatásokkal lenne mérhető, és pont az nem derülne ki, hogy melyik nyer.
      */
     protected function osrmApi(): \ExternalApi\OsrmApi {
-        return new \ExternalApi\OsrmApi();
+        // Példányonként egyszer: a resolveDistance() templomonként fut a
+        // MupdateChurch() ciklusában, és minden hívásnál új objektumot gyártani
+        // fölösleges — a beállítás úgysem változik futás közben.
+        return $this->osrm ??= new \ExternalApi\OsrmApi();
     }
 
     protected function mapquestApi(): \ExternalApi\MapquestApi {
-        return new \ExternalApi\MapquestApi();
+        return $this->mapquest ??= new \ExternalApi\MapquestApi();
     }
+
+    private ?\ExternalApi\OsrmApi $osrm = null;
+    private ?\ExternalApi\MapquestApi $mapquest = null;
 
     function getRawDistance($pointFrom, $pointTo) {
         $this->validatePoint($pointFrom);
