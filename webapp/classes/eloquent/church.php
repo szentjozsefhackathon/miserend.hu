@@ -921,6 +921,10 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 'ismertnev' => !empty($this->alternative_names) ? $this->alternative_names[0] : '',
                 'orszag' => $this->locationCountryName(),
                 'varos' => $this->locationCityName(),
+                // #805: a v5-ben a fix mezők mellé a TELJES határlista is kimegy.
+                ...(($apiVersion !== null && $apiVersion >= 5)
+                    ? ['hatarok' => $this->administrativeBoundaryList()]
+                    : []),
                 'misek' => $misek,
                 'adoraciok' => $adorations,
                 'gyontatas' => $this->confessions ? $this->confessions['status'] : false,
@@ -947,6 +951,15 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             'egyhazmegye' => ( DB::table('egyhazmegye')->where('id', $this->egyhazmegye)->value('nev') ?: "" ),
             'megye' => $this->locationCountyName(),
             'varos' => $this->locationCityName(),
+            /*
+             * #805: a v5-ben a fix orszag/megye/varos MELLÉ kimegy a teljes
+             * határlista is, admin_level sorrendben. A fix mezőket nem vesszük el:
+             * a v5 boríték egyébként is kompatibilis, és a meglévő kliensek
+             * (KAPP) nem esnek szét egy verzióváltáson.
+             */
+            ...(($apiVersion !== null && $apiVersion >= 5)
+                ? ['hatarok' => $this->administrativeBoundaryList()]
+                : []),
             'cim' => $this->cim,
             'megkozelites' => '',
             'plebania' => str_replace('<br>', "\n", strip_tags($this->plebania, '<br>')),
@@ -1482,6 +1495,47 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $boundaries,
             fn($boundary) => (int) ($boundary['admin_level'] ?? 0) !== 4
         ));
+    }
+
+    /**
+     * #56 / #805: az összes adminisztratív határ, admin_level szerint rendezve.
+     *
+     * borazslo kérése: „Ha mi úgysem használunk fix orszag-megye-varos-t akkor nem
+     * lenne helyesebb API v5 templomlekérdezéshez egyszerűen berakni az összes
+     * adminisztrációs boundary-t admin_level sorrendben egy tömbben szépen listázva?
+     * Flexibilisebb és hosszabb távon is működöbb."
+     *
+     * Igaza van, és pont ez a kivezetés lényege: az `admin_level` jelentése
+     * országonként MÁS (Romániában nincs 6-os szint, Kölnben a 6-os maga a város),
+     * tehát a fix három mező eleve hazugság volt. A lista nem próbál dönteni arról,
+     * melyik szint „a megye" — a fogyasztó látja a szintet, és eldönti maga.
+     *
+     * @return array<int,array{szint: int, nev: string, alt_nev: ?string, osm: ?string}>
+     */
+    public function administrativeBoundaryList(): array {
+        $hatarok = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->orderBy('admin_level')
+                ->get();
+
+        $lista = [];
+        foreach ($hatarok as $hatar) {
+            $nev = trim((string) $hatar->name);
+            if ($nev === '') {
+                continue;
+            }
+
+            $lista[] = [
+                'szint' => (int) $hatar->admin_level,
+                'nev' => $nev,
+                'alt_nev' => trim((string) $hatar->alt_name) !== '' ? $hatar->alt_name : null,
+                'osm' => ($hatar->osmtype && $hatar->osmid)
+                    ? $hatar->osmtype . '/' . $hatar->osmid
+                    : null,
+            ];
+        }
+
+        return $lista;
     }
 
     /**
