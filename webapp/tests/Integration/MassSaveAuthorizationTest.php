@@ -117,6 +117,64 @@ class MassSaveAuthorizationTest extends TestCase {
         self::assertSame([self::MASIK_TEMPLOM], $erintett);
     }
 
+    // ---- a mise ELVITELE egyik templomtól a másikhoz ------------------------------
+
+    /**
+     * A szabály másik fele: „oda írhatsz, ahol jogod van" kimondatlanul azt is jelenti,
+     * hogy ONNAN ELVENNI is csak joggal szabad.
+     *
+     * Enélkül aki a B templomhoz kapott jogot, egy létező mise azonosítójával és
+     * `churchId => B`-vel elvihette volna a misét az A templomtól, amihez semmi joga
+     * nincs. A szerver ugyanis csak a beküldött (cél) templomra ellenőrzött.
+     */
+    public function testAMiseEredetiTemplomaIsErintett(): void {
+        $miseId = $this->makeMass(self::MASIK_TEMPLOM);
+
+        $erintett = $this->erintett([
+            ['id' => $miseId, 'churchId' => self::UTVONAL_TEMPLOM, 'title' => 'Elvitt mise'],
+        ]);
+
+        self::assertSame([self::UTVONAL_TEMPLOM, self::MASIK_TEMPLOM], $erintett,
+            'A forrás templomra is kell jogosultság, különben elvehető tőle a mise.');
+    }
+
+    /**
+     * borazslo észrevétele: „ha a teljes ismétlődő sorozatot módosítottam egyik
+     * templomból a másikra, akkor csak egy helyen jelent meg a módosítási javaslat."
+     * A forrás gondnoka így nem értesült arról, hogy egy misét elvisznek tőle — pedig
+     * ez az ő miserendjét változtatja meg.
+     */
+    public function testAHelybenMaradoMiseNemDuplazzaAzErintetteket(): void {
+        $miseId = $this->makeMass(self::MASIK_TEMPLOM);
+
+        $erintett = $this->erintett([
+            ['id' => $miseId, 'churchId' => self::MASIK_TEMPLOM, 'title' => 'Marad'],
+        ]);
+
+        self::assertSame([self::MASIK_TEMPLOM], $erintett);
+    }
+
+    /** Új misénél (még nincs azonosító) nincs eredeti templom, amit hozzá kellene venni. */
+    public function testAzUjMiseNemHozMagavalEredetiTemplomot(): void {
+        $erintett = $this->erintett([
+            ['churchId' => self::MASIK_TEMPLOM, 'title' => 'Új mise'],
+        ]);
+
+        self::assertSame([self::MASIK_TEMPLOM], $erintett);
+    }
+
+    /**
+     * A szerkesztő ideiglenes azonosítója NEGATÍV — az nem létező mise, nem szabad
+     * adatbázisban keresni rá.
+     */
+    public function testAzIdeiglenesNegativAzonositoNemErintSemmiTovabbit(): void {
+        $erintett = $this->erintett([
+            ['id' => -3, 'churchId' => self::MASIK_TEMPLOM, 'title' => 'Még nem mentett'],
+        ]);
+
+        self::assertSame([self::MASIK_TEMPLOM], $erintett);
+    }
+
     private function makeMass(int $churchId): int {
         return DB::table('cal_masses')->insertGetId([
             'church_id'  => $churchId,

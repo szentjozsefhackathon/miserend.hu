@@ -347,7 +347,16 @@ export class MassUtil {
       // #431: a saját helyszín visszatöltése a szerkesztőbe
       locationLat: mass.locationLat ?? null,
       locationLon: mass.locationLon ?? null,
-      locationName: mass.locationName ?? null
+      locationName: mass.locationName ?? null,
+      /*
+       * #506: a mise SAJÁT templomát is vissza kell adni.
+       *
+       * Enélkül a „Melyik templomban?" választó a lista első elemére esett vissza, és
+       * mentéskor a mise NÉMÁN átkerült oda. Család módban ez adatvesztés: egy fília
+       * miséjét a plébánia felől megnyitva a plébániához íródott volna.
+       * (borazslo: „ott »Bicsérd« szerepel, nem a helyes templom".)
+       */
+      churchId: mass.churchId
     };
   }
 

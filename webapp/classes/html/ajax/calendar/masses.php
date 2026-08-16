@@ -196,6 +196,29 @@ class Masses extends \Html\Ajax\Calendar\CalendarApi {
         foreach ($masses as $mass) {
             $adat = CalModel::arrayKeysToSnakeCase(is_array($mass) ? $mass : (array) $mass);
             $erintett[] = (int) ($adat['church_id'] ?? $utvonalTemplom);
+
+            /*
+             * A mise EREDETI temploma is érintett, ha a mentés átviszi máshova.
+             *
+             * Enélkül két baj volt egyszerre. Jogosultság: aki a B templomhoz kapott
+             * jogot, egy létező mise azonosítójával és `church_id => B`-vel ELVIHETTE
+             * volna a misét az A templomtól, amihez semmi joga nincs — a szabály
+             * ("oda írhatsz, ahol jogod van") kimondatlanul azt is jelenti, hogy
+             * onnan is elvenni csak joggal szabad. Értesítés: a forrás gondnoka nem
+             * látta a javaslatban, hogy egy misét elvisznek tőle (borazslo: „csak egy
+             * helyen jelent meg a módosítási javaslat"), és a `frissites` dátuma sem
+             * frissült nála, pedig épp akkor változott a miserendje.
+             *
+             * A hovatartozást az ADATBÁZISBÓL nézzük, nem a beküldött adatból — arra
+             * épp azért nem bízhatjuk, mert a kérés maga akarja megváltoztatni.
+             */
+            $azonosito = (int) ($adat['id'] ?? 0);
+            if ($azonosito > 0) {
+                $letezo = CalMass::find($azonosito);
+                if ($letezo) {
+                    $erintett[] = (int) $letezo->church_id;
+                }
+            }
         }
 
         foreach ($deletedMasses as $torlendoId) {

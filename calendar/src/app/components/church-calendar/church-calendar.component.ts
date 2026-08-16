@@ -147,6 +147,19 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       if (mass.churchId) {
         ids.add(mass.churchId);
       }
+      /*
+       * #506: az EREDETI templom is érintett, ha a mise átkerült máshova.
+       *
+       * borazslo: „ha a teljes ismétlődő sorozatot módosítottam egyik templomból a
+       * másikra, akkor csak egy helyen jelent meg a módosítási javaslat." A forrás
+       * gondnoka így nem is értesült arról, hogy egy misét elvisznek tőle — pedig ez
+       * az ő miserendjét változtatja meg. (Egyetlen alkalomnál azért működött, mert
+       * ott a forráson keletkezik egy kivétel-dátum, tehát ő is változik.)
+       */
+      const eredeti = mass.id != null ? this.masses.get(mass.id) : undefined;
+      if (eredeti?.churchId) {
+        ids.add(eredeti.churchId);
+      }
     }
     for (const id of deleted) {
       const mass = this.masses.get(id) ?? this.changes.get(id);
@@ -179,7 +192,15 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       return this.currentChurch!;
     }
 
-    const tag = this.writableFamily().find(t => t.id === churchId);
+    /*
+     * #506: a TELJES családban keresünk, nem csak az írhatókban.
+     *
+     * Ha csak az írhatókat néznénk, egy nem írható templom miséje mentéskor némán a
+     * szerkesztett templomhoz került volna — vagyis a jogosultság hiánya ADATMOZGÁSSÁ
+     * fordult volna át. A szerver templomonként ellenőriz: jobb, ha a mentés
+     * elutasításra kerül, mint ha rossz helyre sikerülne.
+     */
+    const tag = this.family.find(t => t.id === churchId);
     if (!tag) {
       return this.currentChurch!;
     }
