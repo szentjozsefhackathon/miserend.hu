@@ -201,22 +201,8 @@ class CalMass extends CalModel
                 }
                 $timezone = $churchTimezones[$mass->church_id] ?? 'Europe/Budapest';
 
-                // ---- duration konvertálása percekre ----
-                $durationMinutes = 0;
-                if (!empty($mass->duration)) {
-                    if (is_string($mass->duration)) {
-                        $decoded = json_decode($mass->duration, true);
-                        if (json_last_error() === JSON_ERROR_NONE) {
-                            $mass->duration = $decoded;
-                        }
-                    }
-                    if (is_array($mass->duration)) {
-                        $days = (int)($mass->duration['days'] ?? 0);
-                        $hours = (int)($mass->duration['hours'] ?? 0);
-                        $minutes = (int)($mass->duration['minutes'] ?? 0);
-                        $durationMinutes = $days * 24 * 60 + $hours * 60 + $minutes;
-                    }
-                }
+                // A hossz átszámítása egy helyen él, l. durationInMinutes().
+                $durationMinutes = self::durationInMinutes($mass->duration);
 
                 // --- ha nincs period_id: egyszeri esemény ---
                 if (empty($mass->period_id)) {
@@ -421,22 +407,8 @@ class CalMass extends CalModel
                 }
                 $timezone = $churchTimezones[$mass->church_id] ?? 'Europe/Budapest';
 
-                // ---- duration konvertálása percekre ----
-                $durationMinutes = 0;
-                if (!empty($mass->duration)) {
-                    if (is_string($mass->duration)) {
-                        $decoded = json_decode($mass->duration, true);
-                        if (json_last_error() === JSON_ERROR_NONE) {
-                            $mass->duration = $decoded;
-                        }
-                    }
-                    if (is_array($mass->duration)) {
-                        $days = (int)($mass->duration['days'] ?? 0);
-                        $hours = (int)($mass->duration['hours'] ?? 0);
-                        $minutes = (int)($mass->duration['minutes'] ?? 0);
-                        $durationMinutes = $days * 24 * 60 + $hours * 60 + $minutes;
-                    }
-                }
+                // A hossz átszámítása egy helyen él, l. durationInMinutes().
+                $durationMinutes = self::durationInMinutes($mass->duration);
 
                 
                 // --- RRULE feldolgozás ---
@@ -705,7 +677,7 @@ class CalMass extends CalModel
                     'rite' => $mass->rite,
                     'types' => $mass->types,
                     'title' => $mass->title,
-                    'duration_minutes' => 0, // A $mass->duration-ből ki tudnánk találni. TODO
+                    'duration_minutes' => self::durationInMinutes($mass->duration),
                     'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
                     'comment' => "extra ".$mass->comment,
                     'rrule' => $mass->rrule, 
@@ -853,6 +825,40 @@ class CalMass extends CalModel
             $results = array_merge($results, $noPeriodMasses);
         }
         return $results;
+    }
+
+    /**
+     * A mise hossza percben.
+     *
+     * A `duration` JSON: `{"days": d, "hours": h, "minutes": m}`, bármelyik mezője
+     * hiányozhat vagy lehet null. A modell tömbbé alakítja, de a hívó kaphat nyers
+     * sztringet is, ezért mindkettőt elviseljük.
+     *
+     * Ugyanez a számítás eddig kétszer szerepelt szó szerint, egy harmadik helyen pedig
+     * beégetett 0 állt helyette — ott az „extra" (időszak nélküli) miséknél a hossz
+     * elveszett, és az iCal-export emiatt egyórásnak vette őket.
+     */
+    public static function durationInMinutes($duration): int
+    {
+        if (empty($duration)) {
+            return 0;
+        }
+
+        if (is_string($duration)) {
+            $decoded = json_decode($duration, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return 0;
+            }
+            $duration = $decoded;
+        }
+
+        if (!is_array($duration)) {
+            return 0;
+        }
+
+        return (int) ($duration['days'] ?? 0) * 24 * 60
+            + (int) ($duration['hours'] ?? 0) * 60
+            + (int) ($duration['minutes'] ?? 0);
     }
 
       /**
