@@ -10,6 +10,8 @@ import {TranslatePipe} from '@ngx-translate/core';
 import {MatFormFieldModule} from '@angular/material/form-field';
 import {MatSelectModule} from '@angular/material/select';
 import {FormsModule} from '@angular/forms';
+import {MassUtil} from '../../util/mass-util';
+import {ChurchFamilyMember} from '../../model/church';
 
 @Component({
   selector: 'app-add-simple-event-dialog',
@@ -61,6 +63,14 @@ export class AddSimpleEventDialogComponent {
   onChurchChange(churchId: number): void {
     this.churchId = churchId;
     this.data.selectedChurchId = churchId;
+  }
+
+  /**
+   * #506: mindig „település, templomnév" — a naptár rövidítő szabálya itt NEM jó.
+   * A választó döntési pont: ha félreértjük, a mise rossz templomhoz íródik.
+   */
+  churchLabel(tag: ChurchFamilyMember): string {
+    return MassUtil.familySelectorLabel(tag);
   }
 
   onSaveSimple(): void {

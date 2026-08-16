@@ -5,7 +5,7 @@ import {Rite, RITE_DEFINITIONS} from '../enum/rites';
 import {LanguageCode} from '../enum/language-code';
 import {CalendarEvent} from '../model/calendar/calendar-event';
 import {RecurrenceRule} from '../model/calendar/recurrence-rule';
-import {Church} from '../model/church';
+import {Church, ChurchFamilyMember} from '../model/church';
 import {DialogEvent} from '../model/dialog-event';
 import {GeneratedPeriod} from '../model/generated-period';
 import {ScriptUtil} from './script-util';
@@ -518,6 +518,70 @@ export class MassUtil {
     const lat = Number(mass.locationLat).toFixed(6);
     const lon = Number(mass.locationLon).toFixed(6);
     return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
+  }
+
+  /**
+   * #506: mit írjunk a naptárban a ROKON templomok eseményei elé?
+   *
+   * borazslo szabálya: „gyakran jobb a település nevét kiírni mint a templomét".
+   * Igaza van — egy plébánia fíliái jellemzően különböző falvakban vannak, és a
+   * hívőnek a falu mond valamit, nem a titulus. De ha KÉT misézőhely is ugyanabban a
+   * faluban van, a falunév már nem különböztet meg.
+   *
+   *   - a szerkesztett templom:                       nincs előtag
+   *   - azonos településen másik misézőhely:          a templom neve
+   *   - másik település, ott EGY érintett hely:       a település neve
+   *   - másik település, ott TÖBB érintett hely:      település + templom neve
+   *
+   * A számolás az ÉRINTETT (családban lévő) helyekre megy, nem a település összes
+   * templomára: a naptárban is csak ezek jelennek meg, tehát csak ezeket kell
+   * megkülönböztetni.
+   *
+   * A szerkesztett templom szándékosan kimarad a térképből, hogy az egy-templomos
+   * szerkesztő címei bitre ugyanazok maradjanak, mint eddig.
+   */
+  public static familyCalendarLabels(family: ChurchFamilyMember[]): Map<number, string> {
+    const sajatVaros = (family.find(tag => tag.isCurrent)?.city ?? '').trim();
+
+    const helyekVarosonkent = new Map<string, number>();
+    for (const tag of family) {
+      const varos = (tag.city ?? '').trim();
+      helyekVarosonkent.set(varos, (helyekVarosonkent.get(varos) ?? 0) + 1);
+    }
+
+    const cimkek = new Map<number, string>();
+    for (const tag of family) {
+      if (tag.isCurrent) {
+        continue;
+      }
+      const varos = (tag.city ?? '').trim();
+
+      // Település nélkül (hiányzó határlánc) a templomnév az egyetlen fogódzó.
+      if (varos === '' || varos === sajatVaros) {
+        cimkek.set(tag.id, tag.name);
+        continue;
+      }
+
+      cimkek.set(tag.id, (helyekVarosonkent.get(varos) ?? 0) > 1
+        ? `${varos}, ${tag.name}`
+        : varos);
+    }
+
+    return cimkek;
+  }
+
+  /**
+   * #506: a szerkesztő „Melyik templomban?" választójának feliratai.
+   *
+   * Itt SZÁNDÉKOSAN nem a naptár rövidítő szabálya megy, hanem mindig település +
+   * templomnév. A választó döntési pont: ha félreértjük, a mise rossz templomhoz
+   * íródik. Egy rövidebb, de kétértelmű felirat itt drágább, mint a hosszabb.
+   * (borazslo mindkettőt felajánlotta — ez a „fixen mindegyik település + templom
+   * név" ága.)
+   */
+  public static familySelectorLabel(tag: ChurchFamilyMember): string {
+    const varos = (tag.city ?? '').trim();
+    return varos !== '' ? `${varos}, ${tag.name}` : tag.name;
   }
 
   public static getRenumByMass(mass: Mass): Renum {

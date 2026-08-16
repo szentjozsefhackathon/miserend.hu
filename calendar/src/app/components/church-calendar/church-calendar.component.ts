@@ -187,15 +187,20 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     return {...this.currentChurch!, id: tag.id, name: tag.name, rite: tag.rite};
   }
 
+  /**
+   * #506: mi álljon a rokon templomok eseményei előtt a naptárban.
+   *
+   * A szabályt a `MassUtil.familyCalendarLabels` tartja — borazslo kérésére a
+   * település neve az elsődleges, és csak ott jön hozzá a templomnév, ahol egy
+   * településen több érintett misézőhely van.
+   */
   private otherChurchNames(): Map<number, string> {
-    const nevek = new Map<number, string>();
-    for (const tag of this.family) {
-      if (tag.isCurrent) {
-        continue;
-      }
-      nevek.set(tag.id, tag.name);
-    }
-    return nevek;
+    return MassUtil.familyCalendarLabels(this.family);
+  }
+
+  /** #506: a „Melyik templomban?" választó felirata — mindig település + templomnév. */
+  public churchSelectorLabel(tag: ChurchFamilyMember): string {
+    return MassUtil.familySelectorLabel(tag);
   }
 
   // Szűrő komponens megjelenítése - kikapcsolt javaslatok oldalon

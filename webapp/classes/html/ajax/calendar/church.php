@@ -131,7 +131,9 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
             $family[] = [
                 'id'        => (int) $tagChurch->id,
                 'name'      => (string) $tagChurch->nev,
-                'city'      => (string) $tagChurch->varos,
+                // #496/#497/#498: a település az OSM-határokból, NEM a `templomok.varos`
+                // oszlopból — azt a #805 eldobja, és a névképzés némán kiürülne.
+                'city'      => $tagChurch->locationCityName(),
                 // A rítus templomonként más lehet (görögkatolikus fília római
                 // plébánia alatt), és az új esemény alapértelmezését ez adja.
                 'rite'      => strtoupper((string) $tagChurch->denomination),

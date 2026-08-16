@@ -23,6 +23,7 @@ import {recurrences, Renum} from '../../enum/recurrence';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
 import {Rite, RiteMassTypes} from '../../enum/rites';
 import {MassUtil} from '../../util/mass-util';
+import {ChurchFamilyMember} from '../../model/church';
 import {LanguageCode} from '../../enum/language-code';
 import {DialogResponse} from '../../enum/dialog-response';
 import {MatExpansionModule} from '@angular/material/expansion';
@@ -125,6 +126,14 @@ export class AddFullEventDialogComponent {
 
   public onChurchChange(churchId: number): void {
     this.data.event.churchId = churchId;
+  }
+
+  /**
+   * #506: mindig „település, templomnév" — a naptár rövidítő szabálya itt NEM jó.
+   * A választó döntési pont: ha félreértjük, a mise rossz templomhoz íródik.
+   */
+  public churchLabel(tag: ChurchFamilyMember): string {
+    return MassUtil.familySelectorLabel(tag);
   }
 
   public singleEvent: boolean = this.data.event.renum === Renum.NONE;

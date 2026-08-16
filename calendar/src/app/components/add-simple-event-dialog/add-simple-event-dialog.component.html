@@ -15,7 +15,7 @@
         <mat-label>Melyik templomban?</mat-label>
         <mat-select [ngModel]="churchId" (ngModelChange)="onChurchChange($event)">
           @for (church of churches; track church.id) {
-            <mat-option [value]="church.id">{{ church.name }}</mat-option>
+            <mat-option [value]="church.id">{{ churchLabel(church) }}</mat-option>
           }
         </mat-select>
       </mat-form-field>
