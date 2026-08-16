@@ -246,6 +246,32 @@ class OSM {
      *
      * @throws Exception Ha az Overpass API lekérdezésből hiányoznak az elemek
      */
+    /** Egy futásban ennyi elemnél többet nem dolgozunk fel. */
+    const URL_MISEREND_LIMIT = 10000;
+
+    /**
+     * #658: az `url:miserend` értékéből a templom azonosítója.
+     *
+     * #410: a mintát nem horgonyozzuk, így a http/https/www prefix nem számít; kezeli
+     * az opcionális `?`-et és a path-suffixeket (pl. /templom/5/calendar). Mindkét
+     * útvonal-formát elfogadja: `templom/N` és `(?)templom=N`.
+     *
+     * #510: az `uj.miserend.hu`-t szándékosan NEM fogadjuk el (negatív lookbehind):
+     * hibás adat, essen a „van url:miserend, de nem használható" ágba.
+     *
+     * Külön metódus, hogy tesztelhető legyen, MELYIK alakot fogadjuk el — a jegy épp
+     * arról szól, hogy az OSM-ben sokféle alak van forgalomban.
+     */
+    public static function churchIdFromMiserendUrl(?string $url): ?int {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+        if (preg_match('#(?<!uj\.)miserend\.hu/?\??templom(?:=|/)(\d+)#i', $url, $match) !== 1) {
+            return null;
+        }
+        return (int) $match[1];
+    }
+
     function syncUrlMiserendFromOSM() {
         
         $overpass = new \ExternalApi\OverpassApi();
@@ -254,29 +280,74 @@ class OSM {
          if (!$overpass->jsonData->elements) {
             throw new Exception("Missing Json Elements from OverpassApi Query");
         }
+
+        /*
+         * #658: a hibás értékeket JELENTJÜK, nem dobjuk el némán.
+         *
+         * Az OSM-ben sokféle alak van forgalomban (http nélkül, `?templom=345`,
+         * `uj.miserend.hu`, elgépelt hoszt), és borazslo egyetlen nagy changesetben
+         * akarja rendbe tenni. Ahhoz viszont tudnia kell, MELYIK elemről van szó —
+         * eddig ezek nyom nélkül elvesztek (a kódban ottfelejtett TODO helyén).
+         */
+        $hibasErtek = [];
+        $ismeretlenTemplom = [];
+        $sikeres = 0;
+
         $c = 0;
         foreach ($overpass->jsonData->elements as $element) {
             $c++;
-            if($c > 10000) exit;
-            // #410: robusztusabb match. A mintát nem horgonyozzuk, így a
-            // http/https/www prefix nem számít; kezeli az opcionális `?`-et és
-            // a path-suffixeket (pl. /templom/5/calendar). Mindkét útvonal-
-            // formát elfogadja: templom/N és (?)templom=N. A korábbi {1,5}
-            // helyett \d+ (nincs 5-jegyű felső korlát az ID-n).
-            // #510: az uj.miserend.hu-t szándékosan NEM matcheljük (negatív
-            // lookbehind) - hibás adat, így a "van url:miserend, de nem
-            // használható" ágba esik, amit borazslo kézzel javít.
-            preg_match('#(?<!uj\.)miserend\.hu/?\??templom(?:=|/)(\d+)#i', $element->tags->{'url:miserend'} ?? '', $match);
-            if(!isset($match[1])) {
-                /*
-                 * TODO: Van url:miserend, de az értéke vacak.
-                 */
-                //printr($element);
+            if ($c > self::URL_MISEREND_LIMIT) {
+                // Itt korábban `exit` állt: az a cron-futtatót is megölte, tehát a munka
+                // SOHA nem került sikeres állapotba, és a többi cron sem futott le utána.
+                echo "OSM url:miserend: elértem a(z) " . self::URL_MISEREND_LIMIT
+                    . " elemes korlátot, a többit ebben a körben kihagyom.\n";
+                break;
+            }
 
-            } else {
-                $church = \Eloquent\Church::find($match[1]);
-                if($church)
-                    $this->saveOSM2Church($church,$element);
+            $ertek = $element->tags->{'url:miserend'} ?? '';
+            $tid = self::churchIdFromMiserendUrl($ertek);
+
+            if ($tid === null) {
+                $hibasErtek[] = $this->osmElementLabel($element) . ' → ' . $ertek;
+                continue;
+            }
+
+            $church = \Eloquent\Church::find($tid);
+            if (!$church) {
+                $ismeretlenTemplom[] = $this->osmElementLabel($element) . ' → ' . $ertek;
+                continue;
+            }
+
+            $this->saveOSM2Church($church, $element);
+            $sikeres++;
+        }
+
+        $this->reportUrlMiserendIssues($sikeres, $hibasErtek, $ismeretlenTemplom);
+    }
+
+    /** Az OSM-elem emberi azonosítója, hogy a jelentésből meg lehessen találni. */
+    private function osmElementLabel($element): string {
+        return ($element->type ?? '?') . '/' . ($element->id ?? '?');
+    }
+
+    /**
+     * #658: a futás összegzése. A cron-oldalon és a `docker logs`-ban is látszik,
+     * tehát egyetlen futásból megvan a javítandó elemek listája.
+     */
+    private function reportUrlMiserendIssues(int $sikeres, array $hibasErtek, array $ismeretlenTemplom): void {
+        printf("OSM url:miserend: %d elem átkötve, %d hibás értékű, %d ismeretlen templomra mutat.\n",
+            $sikeres, count($hibasErtek), count($ismeretlenTemplom));
+
+        foreach ([
+            'Nem értelmezhető url:miserend érték' => $hibasErtek,
+            'Nem létező templomra mutat'          => $ismeretlenTemplom,
+        ] as $cim => $lista) {
+            if (!$lista) {
+                continue;
+            }
+            echo '  ' . $cim . ":\n";
+            foreach ($lista as $sor) {
+                echo '    ' . $sor . "\n";
             }
         }
     }
