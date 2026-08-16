@@ -319,6 +319,24 @@
           "default": null,
           "extra": ""
         },
+        "location_lat": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "location_lon": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "location_name": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
         "created_at": {
           "type": "date",
           "nullable": false,
