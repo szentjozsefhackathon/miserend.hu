@@ -18,7 +18,6 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class RequeueChurchesWithoutBoundaryTest extends TestCase {
 
-    private int $sorszam = 0;
 
     protected function setUp(): void {
         parent::setUp();
@@ -37,7 +36,7 @@ class RequeueChurchesWithoutBoundaryTest extends TestCase {
      */
     private function templom(?string $ellenorizve, bool $vanHatar, array $mezok = []): int {
         $minta = (array) DB::table('templomok')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1 + $this->sorszam++;
+        $id = szabadTemplomId();
 
         DB::table('templomok')->insert(array_merge($minta, [
             'id' => $id, 'ok' => 'i', 'lat' => 48.1, 'lon' => 17.1,

@@ -27,16 +27,7 @@ class ApiV5BoundaryListTest extends TestCase {
         DB::beginTransaction();
 
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        /*
-         * A `max(templomok.id) + 1` NEM elég: a `lookup_boundary_church` táblában
-         * maradhatnak ÁRVA sorok olyan templom-azonosítóra, ami már nem létezik.
-         * Ilyenkor a friss fixtúra-templom örökölné az idegen határokat, és a teszt
-         * hatot látna kettő helyett — pont ebbe futottam bele.
-         */
-        $this->churchId = max(
-            (int) DB::table('templomok')->max('id'),
-            (int) DB::table('lookup_boundary_church')->max('church_id')
-        ) + 1;
+        $this->churchId = szabadTemplomId();
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Határlista teszt';
         $minta['ok'] = 'i';

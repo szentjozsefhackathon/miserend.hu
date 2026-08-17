@@ -70,3 +70,40 @@ if (!function_exists('t')) {
 // továbbra is null-t kapna.
 $GLOBALS['twig'] = buildTwigEnvironment();
 
+
+/**
+ * Olyan templom-azonosítót ad, amire SEMMI nem hivatkozik.
+ *
+ * A tesztek eddig `MAX(templomok.id) + 1`-et használtak. Ez akkor romlik el, ha egy
+ * korábbi futás után maradt árva sor egy hivatkozó táblában: az új templom megörökli
+ * az idegen maradványt. Nálam ez úgy jött ki, hogy a `LocationNamesFromBoundariesTest`
+ * magyar határláncot épített, de „Deutschland"-ot kapott vissza — egy régebbi futás
+ * `lookup_boundary_church` sorai ugyanerre az id-re mutattak.
+ *
+ * A CI-n ez sosem látszik, mert ott minden futás üres adatbázison indul. Helyben
+ * viszont — ahol a fejlesztés zajlik — hamis, félrevezető bukást ad.
+ *
+ * Ezért az összes templomra hivatkozó oszlopot is megnézzük, nem csak a `templomok`-at.
+ */
+function szabadTemplomId(): int {
+    static $kovetkezo = null;
+
+    if ($kovetkezo === null) {
+        $db = \Illuminate\Database\Capsule\Manager::connection()->getDatabaseName();
+        $hivatkozok = \Illuminate\Database\Capsule\Manager::select(
+            'SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.columns
+             WHERE TABLE_SCHEMA = ? AND COLUMN_NAME IN (?, ?, ?)',
+            [$db, 'church_id', 'templom_id', 'tid']
+        );
+
+        $max = (int) \Illuminate\Database\Capsule\Manager::table('templomok')->max('id');
+        foreach ($hivatkozok as $oszlop) {
+            $ertek = \Illuminate\Database\Capsule\Manager::table($oszlop->t)->max($oszlop->c);
+            $max = max($max, (int) $ertek);
+        }
+        $kovetkezo = $max + 1;
+    }
+
+    // Egy futáson belül több teszt is kérhet — ne kapják ugyanazt.
+    return $kovetkezo++;
+}

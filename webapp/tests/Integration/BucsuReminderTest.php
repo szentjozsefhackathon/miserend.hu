@@ -36,7 +36,7 @@ class BucsuReminderTest extends TestCase {
     /** @param string $bucsu a szabad szöveges mező tartalma */
     private function templom(string $bucsu): int {
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1 + $this->sorszam++;
+        $id = szabadTemplomId();
 
         DB::table('templomok')->insert(array_merge($minta, [
             // #809: a búcsú a MEGJEGYZÉS mezőből jön, nem a bucsu oszlopból.

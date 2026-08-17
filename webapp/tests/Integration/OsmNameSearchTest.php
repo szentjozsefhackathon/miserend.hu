@@ -26,12 +26,7 @@ class OsmNameSearchTest extends TestCase {
         DB::beginTransaction();
 
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        // Az árva `lookup_boundary_church` sorok miatt nem elég a templomok maximuma:
-        // egy régi, törölt templom azonosítójára ütköznénk rá.
-        $this->churchId = max(
-            (int) DB::table('templomok')->max('id'),
-            (int) DB::table('lookup_boundary_church')->max('church_id')
-        ) + 1;
+        $this->churchId = szabadTemplomId();
 
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Hivatalos Teszt-templom';
