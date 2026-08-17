@@ -59,13 +59,7 @@ class User {
                 foreach ($user as $key => $value) {
                     $this->$key = $value;
                 }
-                $this->username = $user->login;
-                $this->nickname = $user->becenev;
-                $this->name = $user->nev;
-                $this->roles = explode('-', trim($this->jogok, " \t\n\r\0\x0B-"));
-                foreach($this->roles as $k => $v)
-                    if($v == '')
-                        unset($this->roles[$k]);                
+                $this->refreshDerivedFields();
                 $this->getResponsabilities();
                 if ($this->checkRole('miserend')) {
                     $this->isadmin = true;
@@ -73,10 +67,16 @@ class User {
                 return true;   
 
             } else {
-                 //TODO: kitalálni mit csináljon, ha  nincs megfelelő azobosítójú user. Legyen vendég?
-                // There is no user with this uid;
+                /*
+                 * #829: nincs ilyen azonosítójú felhasználó -> VENDÉG.
+                 *
+                 * A kód eddig is ezt csinálta (lentebb a vendég-ág fut le), csak
+                 * kérdésként állt itt egy TODO. A viselkedés szándékos: egy törölt vagy
+                 * elavult munkamenet-azonosítótól ne haljon meg az oldal, a látogató
+                 * pedig lássa a nyilvános tartalmat. A `false` visszatérés azt jelentené,
+                 * hogy a hívónak kellene kezelnie — de egyetlen hívó sem teszi.
+                 */
                 $uid = 0;
-                //return false;
             }        
         }
         //Lássuk a vendégeket
@@ -199,11 +199,16 @@ class User {
             'notifications' => 'Email értesítések engedélyezése körül hiba lépett fel!',
         );
 
+        // #829: a mezőnkénti általános mondat helyett a KONKRÉT ok, ha tudjuk.
+        // A régi szöveg mindent egybemosott („Nem megfelelő email cím! Talán már
+        // használatban van?"), így a felhasználó találgathatott, mit rontott el.
+        $this->presaveErrors = [];
+
         foreach (array('uid', 'username', 'nickname', 'name', 'email', 'volunteer', 'roles','notifications') as $input) {
             if (isset($vars[$input])) {
                 if (!$this->presave($input, $vars[$input])) {
                     $return = false;
-                    addMessage($dangers[$input], 'danger');
+                    addMessage($this->presaveErrorFor($input) ?? $dangers[$input], 'danger');
                 }
             }
         }
@@ -248,28 +253,94 @@ class User {
         return true;
     }
 
+    /**
+     * #829: mezőnkénti hibaokok az utolsó `presave()`/`modify()` körből.
+     *
+     * A `presave()` `false`-t ad vissza, ha valami nem stimmel — de eddig nem mondta
+     * meg, mi. A felület ezért mezőnként egyetlen, mindent lefedő mondatot írt ki, és
+     * a „kötelező mező üres" ugyanúgy nézett ki, mint a „már foglalt".
+     *
+     * @var array<string,string>
+     */
+    public $presaveErrors = [];
+
+    /** #829: hibaok rögzítése egy mezőhöz. Az utolsó ok marad meg — az a legszűkebb. */
+    private function presaveError(string $key, string $reason): void {
+        $this->presaveErrors[$key] = $reason;
+    }
+
+    /** #829: mi volt a baj ezzel a mezővel? `null`, ha semmi. */
+    public function presaveErrorFor(string $key): ?string {
+        return $this->presaveErrors[$key] ?? null;
+    }
+
+    /**
+     * #829: a felhasználó-objektum származtatott mezőinek felfrissítése.
+     *
+     * Ugyanez a négy értékadás állt a konstruktorban és a `save()` végén is — a régi
+     * TODO („ezt már egyszer leírtam") pontosan erre mutatott. Két példány közül az
+     * egyik előbb-utóbb lemarad: a `name` mező például a `save()`-ből hiányzott is.
+     */
+    private function refreshDerivedFields(): void {
+        $this->username = $this->login ?? null;
+        $this->nickname = $this->becenev ?? null;
+        $this->name = $this->nev ?? null;
+
+        $this->roles = isset($this->jogok)
+            ? array_values(array_filter(
+                explode('-', trim((string) $this->jogok, " \t\n\r\0\x0B-")),
+                fn($jog) => $jog !== ''
+            ))
+            : [];
+    }
+
     function presave($key, $val) {
         if (!isset($this->presaved))
             $this->presaved = array();
-        //TODO: check duplicate for: logn + email
-        //TODO: van, amit ne engedjen, csak, amikor még tök új a cuccos.
-        //TODO: a nickname - becenev / name - nev esetén ez nem segít, bár nem sok dupla munka azért
-        //TODO: elrontja ...
-        //if($this->$key == $val) return true;
-        //TODO: szóljon vissza a kötelező
-        if ($val == '' AND in_array($key, array('username', 'login', 'email'))) {
-            return false;
+        /*
+         * #829: a régi TODO-k feloldása.
+         *
+         *  - „check duplicate for: login + email" — MEGVAN. A loginé a `checkUsername()`
+         *    (`new User($username)`, és ha van uid, elutasít), az e-mailé az
+         *    `isEmailInUse()` lentebb. Ami NINCS: adatbázis-szintű egyedi index, tehát
+         *    két egyszerre érkező regisztráció elvben átcsúszhat. Lásd #829 leírását.
+         *  - „van, amit ne engedjen, csak amikor még tök új" — MEGVAN: a login csak
+         *    `uid == 0` mellett állítható, utána a `$this->username != $val` elutasít.
+         *  - „a nickname/becenev esetén ez nem segít" — a becenév és a név szabad
+         *    szöveg, nincs is mihez képest ütköznie; a `sanitize()` elég rá.
+         *
+         * Ami tényleg hiányzott: a hívó nem tudta meg, MIÉRT bukott el a mentés. A
+         * `presave()` néma `false`-t adott, a felület pedig mezőnként EGYETLEN, mindent
+         * lefedő mondatot írt ki („Nem megfelelő email cím! Talán már használatban
+         * van?"). A „kötelező mező üres" és a „már foglalt" tehát ugyanúgy nézett ki.
+         * Ezért gyűjtjük az okokat, és a hívó azokat mutatja meg.
+         */
+        if ($val === '' OR $val === null) {
+            if (in_array($key, array('username', 'login', 'email'))) {
+                $this->presaveError($key, 'Ezt a mezőt kötelező kitölteni.');
+                return false;
+            }
         }
 
         if ($key == 'uid') {
-            if ($this->uid != $val)
+            if ($this->uid != $val) {
+                $this->presaveError($key, 'Az azonosító nem egyezik a bejelentkezettével.');
                 return false;
+            }
         } elseif (in_array($key, array('username', 'login'))) {
             if ($this->uid == 0) {
-                if (!checkUsername($val))
-                    return false;                    
+                if (!checkUsername($val)) {
+                    // A `checkUsername()` formára ÉS foglaltságra is néz — a kettőt
+                    // szétválasztva a felhasználó tudja, mit kell másképp csinálnia.
+                    $letezo = new User($val);
+                    $this->presaveError($key, $letezo->uid > 0
+                        ? 'Ez a felhasználónév már foglalt.'
+                        : 'A felhasználónév csak betűt és számot tartalmazhat, legfeljebb 20 karaktert.');
+                    return false;
+                }
                 $this->presaved['login'] = sanitize($val);
             } elseif ($this->username != $val) {
+                $this->presaveError($key, 'A felhasználónevet később nem lehet megváltoztatni.');
                 return false;
             }
         } elseif (in_array($key, array('jelszo', 'password'))) {
@@ -294,8 +365,10 @@ class User {
                 $this->presaved[$key] = 0;
             elseif (in_array($val, array(0, 1)))
                 $this->presaved[$key] = $val;
-            else
-                return false;       
+            else {
+                $this->presaveError($key, 'Az önkéntesség csak be- vagy kikapcsolt lehet.');
+                return false;
+            }
         } elseif (in_array($key, array('regdatum', 'lastlogin', 'lastactive'))) {
             if (is_numeric($val)) {
                 $this->presaved[$key] = date('Y-m-d H:i:s', $val);
@@ -305,17 +378,24 @@ class User {
                 return false;
         } elseif ($key == 'email') {
             if (!filter_var($val, FILTER_VALIDATE_EMAIL)) {
+                $this->presaveError($key, 'Ez nem érvényes email cím.');
                 return false;
             }
             if ($this->isEmailInUse($val) AND ( !isset($this->email) OR $val != $this->email )) {
+                $this->presaveError($key, 'Ezzel az email címmel már regisztráltak.');
                 return false;
             }
             $this->presaved[$key] = $val;
         } elseif ($key == 'notifications') {
-            if(!in_array($val,[0,1])) return false;            
+            if(!in_array($val,[0,1])) {
+                $this->presaveError($key, 'Az értesítés csak be- vagy kikapcsolt lehet.');
+                return false;
+            }
             $this->presaved[$key] = $val;
-        } else
+        } else {
+            $this->presaveError($key, 'Ismeretlen mező, nem menthető.');
             return false;
+        }
 
         return true;
     }
@@ -350,14 +430,8 @@ class User {
         foreach ($this->presaved as $key => $val)
             $this->$key = $val;
 
-        //TODO: ezt már egyszer leírtam
-        $this->username = $this->login;
-        $this->nickname = $this->becenev;
-        $this->name = $this->nev;
-        if(isset($this->jogok))
-            $this->roles = explode('-', trim($this->jogok, " \t\n\r\0\x0B-"));
-        else
-            $this->roles = [];
+        // #829: a származtatott mezők közös helyen — a konstruktor is ezt hívja.
+        $this->refreshDerivedFields();
 
         unset($this->presaved);
 

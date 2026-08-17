@@ -50,6 +50,20 @@ function checkUsername($username) {
     if (preg_match("/( |\"|'|;)/i", $username))
         return false;
 
+    /*
+     * #829: „én ezt feloldanám” — ez terméki döntés, ezért nem magamtól oldom fel.
+     *
+     * Ma csak ékezet nélküli betű és szám mehet. A feloldás nem egy regexp átírása:
+     *
+     *  - a felhasználónév URL-be kerül (`/user/<nev>/edit`), tehát kódolni kellene;
+     *  - a `sanitize()` és a levélsablonok is átmennének rajta;
+     *  - és a legfontosabb: két név, ami csak ékezetben tér el („Peter” / „Péter”),
+     *    a bejelentkezésnél összetéveszthető lenne — a `login` mezőn ma nincs egyedi
+     *    index, tehát a védelem kizárólag ezen az ellenőrzésen múlik.
+     *
+     * A becenév (`becenev`) mező viszont MÁR MOST is szabad szöveg, és a felületen
+     * az jelenik meg — az ékezetes megjelenítés tehát adott.
+     */
     //TODO: én ezt feloldanám
     if (!preg_match("/^([a-z0-9]{1,20})$/i", $username))
         return false;
