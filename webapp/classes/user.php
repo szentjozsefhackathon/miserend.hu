@@ -924,6 +924,22 @@ class User {
 		// $tmp = new stdClass(); $tmp->uid = 1595; $users2notify = [ $tmp ];
 				
 		foreach($users2notify as $user2notify) {
+			/*
+			 * #823: a kézbesíthetetlen címeket itt is kihagyjuk.
+			 *
+			 * A másik két értesítő (`user_pleaseactivate`, `user_pleaselogin`) már így
+			 * működik, ez viszont kimaradt — pedig ugyanabba a körbe fut: a levél
+			 * elhasal, a fiók marad, a következő futás újra próbálkozik. A fenti SQL
+			 * csak KÉT HÉTIG véd (a `NOT EXISTS` ablak), utána újraindul a kör.
+			 *
+			 * Ráadásul minden sikertelen kísérlet előtt tokent is írunk a
+			 * `church_update_tokens`-be — vagyis a hiábavaló próbálkozás nem csak
+			 * levélszemét, hanem adatbázis-szemét is.
+			 */
+			if (self::skipUnnotifiable('user_pleaseupdate', $user2notify)) {
+				continue;
+			}
+
 			$user = new User($user2notify->uid);
 			$user->getResponsabilities();
 
