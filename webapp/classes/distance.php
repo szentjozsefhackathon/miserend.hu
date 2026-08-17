@@ -167,9 +167,7 @@ class Distance {
              * a kört. 
              */
             if($highestDistance > $maxDistance) {
-                //echo "Van nagyobb kör is. Bocsesz.";
-                
-                //TODO: duplicated code
+                // #829: a duplikált blokk megszűnt — az `updatePairDistance()` közös.
                 $bbox = $this->getBBox($point, $highestDistance);
                 $churchesInBBox = \Eloquent\Church::inBBox($bbox)->where('id', '!=', $churchFrom->id);
                 
