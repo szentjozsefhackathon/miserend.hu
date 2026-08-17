@@ -598,9 +598,10 @@ class CalMass extends CalModel
                 }
                 foreach ($periods as $generatedPeriod) {
                     $start = Carbon::parse($generatedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                    // TODO / FIXME: valamiért itt volt egy subDay. Talán mert az alap periods-nak van inclusive beállítása. 
-                    // Passz. Az egy napo hossszú periódusoknál biztos nem kel subDay(). Majd meglátjuk a töbi határnál mi a helyzet.
-                    // $end = Carbon::parse($generatedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
+                    // #832: az `end_date` BELEÉRTENDŐ — a nap végéig tart az időszak.
+                    // A régi jegyzet („valamiért itt volt egy subDay […] Passz.")
+                    // bizonytalan volt; a kizárás ága mostantól ugyanezt a szabályt
+                    // követi, tehát a két olvasat nem tér el egymástól.
                     $end = Carbon::parse($generatedPeriod->end_date)->endOfDay()->setTimezone($timezone);
 
                     /*
@@ -623,17 +624,40 @@ class CalMass extends CalModel
 
                     // Experiod feldolgozása: csak az adott időszakba eső periódusok érdeklnek
                     // Aztán a beleeső napokat áttesszük exDate-be
-                    foreach($excludedPeriods as $exPeriodString) { //TODO és FIXME az átfedésre nem biztos hogy ez jó!
+                    /*
+                     * #832: a kizárt időszak UTOLSÓ NAPJA is kizárt.
+                     *
+                     * A régi jelzés itt állt: „az átfedésre nem biztos hogy ez jó!" —
+                     * és tényleg nem volt jó. Ugyanezt az `end_date` oszlopot a
+                     * függvény KÉTFÉLEKÉPPEN olvasta: a mise saját időszakánál
+                     * `endOfDay()` (a nap beleértve), a kizárt időszaknál viszont
+                     * `subDay()->endOfDay()`, vagyis egy nappal korábban.
+                     *
+                     * Megmérve: egy 06-01..06-10 kizárt időszak csak 06-09-ig zárt ki,
+                     * tehát a mise a kizárás UTOLSÓ NAPJÁN megjelent. Élesben ez azt
+                     * jelenti, hogy pl. a nyári szünet záró napján a tanévi miserend is
+                     * kiírásra került — és senki nem szólt érte, mert nem hiba, csak
+                     * egy fölösleges sor a listában.
+                     *
+                     * Az `end_date` a rendszerben beleértendő (a „Nyári szünet
+                     * 06-16..08-31" utolsó napja is szünet), tehát a `subDay()` volt a
+                     * hibás. A lekérdezés `>` feltétele ugyanez az elcsúszás: ha a
+                     * kizárt időszak épp a mise időszakának első napján ér véget, az
+                     * még átfedés.
+                     */
+                    foreach($excludedPeriods as $exPeriodString) {
                         $exGeneratedPeriods = CalGeneratedPeriod::where('period_id', $exPeriodString)
                                             ->where('start_date', '<=', $end->toDateString())
-                                            ->where('end_date', '>', $start->toDateString())
+                                            ->where('end_date', '>=', $start->toDateString())
                                             ->get();
                         //Nagyon nagyon furcsa lenne, ha kettő is lenne belőle, de ugye....                                            
                         foreach($exGeneratedPeriods as $exGeneratedPeriod) {
                             
                             // ExGeneratedPeriod intervallum (igazítva napokra, ugyanabban a timezone-ban mint $start/$end)
                             $exStart = Carbon::parse($exGeneratedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                            $exEnd   = Carbon::parse($exGeneratedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
+                            // #832: nincs `subDay()` — az `end_date` beleértendő, ahogy a
+                            // mise saját időszakánál is.
+                            $exEnd   = Carbon::parse($exGeneratedPeriod->end_date)->endOfDay()->setTimezone($timezone);
 
                             // Ha nincs átfedés, kihagyjuk
                             if ($exEnd->lt($start) || $exStart->gt($end)) {

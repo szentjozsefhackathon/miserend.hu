@@ -11,6 +11,15 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
 class Church extends \Html\Ajax\Calendar\CalendarApi {
 
+    /**
+     * #832: a naptár időzónája — EGY helyen.
+     *
+     * A válasz `timeZone` mezője és az időpontok formázása ugyanabból az értékből
+     * dolgozik. Ha kettéválna, a kliens olyan zónát kapna, amiben az időpontok nem is
+     * értendők — és ez a fajta hiba némán csúszik el egy órával.
+     */
+    const TIMEZONE = 'Europe/Budapest';
+
     protected $elastic;
     public $tid;
     public $church;
@@ -52,8 +61,23 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
                 $this->church->append(['hasExternalCalendar']);
                 $confessions = $this->church->getConfessions('-40 days', '20 hours');
                 $c = 1;
+                /*
+                 * #832: az időzóna KIMONDVA, nem a szerver beállításából.
+                 *
+                 * A régi `date()` a PHP alapértelmezett zónáját használta. Az ma
+                 * `Europe/Budapest` (a `load.php` állítja be), tehát az érték helyes
+                 * volt — de csak véletlenül: ha a szerver zónája valaha megváltozik,
+                 * a gyóntatás-időpontok NÉMÁN elcsúsznak, és a válaszban továbbra is
+                 * `timeZone: Europe/Budapest` állna mellettük. Épp ezért volt itt a
+                 * „TODO timezone kérdések".
+                 *
+                 * Ugyanazt a zónát használjuk, amit a válasz is hirdet — a kettő nem
+                 * mondhat mást.
+                 */
+                $zona = new \DateTimeZone(self::TIMEZONE);
                 foreach ($confessions as &$confession) {
-                    $confession['startDate'] = date('Y-m-d\TH:i:s', strtotime($confession['start'])); // TODO timezone kérdések
+                    $confession['startDate'] = (new \DateTime('@' . strtotime($confession['start'])))
+                        ->setTimezone($zona)->format('Y-m-d\TH:i:s');
                     unset($confession['start']);
                     unset($confession['end']);
                     $confession['churchId'] = $this->church->id;
@@ -75,7 +99,7 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
                     'name' => $this->church->nev,
                     'rite' => strtoupper($this->church->denomination),
                     'country' => $country,
-                    'timeZone' => 'Europe/Budapest',
+                    'timeZone' => self::TIMEZONE,
                     'hasExternalCalendar' => $this->church->hasExternalCalendar,
                     'eventsFromSensor' => $confessions,
                     'sensorEvents' => $confessions,

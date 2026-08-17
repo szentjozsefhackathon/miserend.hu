@@ -244,10 +244,17 @@ export class SuggestionsComponent implements OnInit {
       res => {
         this.snackBarService.success('Sikeres jóváhagyás!');
 
-        //TODO: EZT MAJD HÁTTÉRBEN
+        /*
+         * #832: az újragenerálás tűz-és-felejts — lásd a church-calendar párját.
+         * A „háttérben" a SZERVER oldalán volna értelmes (sorkezelés), a felület
+         * felől már most sem blokkol. Itt a kezelő nélküli `subscribe()`-ot javítom:
+         * a szolgáltatás hiba esetén újradobja a hibát, ami különben elkapatlanul
+         * buborékolna tovább.
+         */
         const currentYear = new Date().getFullYear();
         const years: number[] = [currentYear - 1, currentYear, currentYear + 1];
-        this.searchService.generateMasses(years, this.currentChurch!.id).subscribe();
+        this.searchService.generateMasses(years, this.currentChurch!.id)
+          .subscribe({error: () => { /* a szolgáltatás már jelezte a felhasználónak */ }});
 
         this.suggestionPackages = res.suggestionPackages.map(pkg => ({
           ...pkg,
