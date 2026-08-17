@@ -109,7 +109,13 @@
                         {% if mychurches %}{% include "panel.twig" with {'title':'Módosítás','body': mychurches|raw } %}{% endif %}
                         <!-- {% if selfAdvertisement %}{% include "_panelselfadvertisement.twig"  %}{% endif %} -->
                     </div>
-                    <div class="col-md-{% if columns2 %}9{% else %}6{% endif %} col-sm-6 church-site-main-content">
+                    {#
+                        #822: a kis képernyős szélesség is kövesse az oszlop-számot.
+                        Kétoszlopos módban NINCS jobb oldalsáv, a fő tartalom mégis
+                        `col-sm-6` maradt: 3 + 6 = 9 a 12-ből, tehát tabletnézetben a
+                        szélesség negyede üresen állt. A `col-md` már jól számolt.
+                    #}
+                    <div class="col-md-{% if columns2 %}9{% else %}6{% endif %} col-sm-{% if columns2 %}9{% else %}6{% endif %} church-site-main-content">
                         {% block pageHeader %}
                             <div class="page-header">
                                 <h2>{{ title|raw }}</h2>
