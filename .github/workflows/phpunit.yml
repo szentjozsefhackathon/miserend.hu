@@ -2,6 +2,14 @@ name: PHPUnit
 
 on:
   pull_request:
+  # A masteren 2026. június 5. óta NEM futott le a tesztsor. A `workflow_run` az
+  # app-image buildhez van kötve, az viszont csak TAG-re indul — tehát a beolvasztott
+  # állapotot senki nem próbálta ki. Minden PR a SAJÁT fejére zöld; hogy a merge után
+  # mi lesz belőlük együtt, arról eddig semmit nem tudtunk.
+  #
+  # Ez nem elméleti: a #833-ban javított végzetes hiba pont így élt túl a masteren.
+  push:
+    branches: [master]
   workflow_run:
     workflows: ["🐳 Build & publish app image"]
     types:
