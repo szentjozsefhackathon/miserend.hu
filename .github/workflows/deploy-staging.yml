@@ -50,6 +50,11 @@ jobs:
           key: ${{ secrets.STAGING_SSH_KEY }}
           port: ${{ secrets.STAGING_SSH_PORT || 22 }}
           command_timeout: 40m   # a Dockerfile-build (npm + calendar + PHP) + a friss seed hosszú
+          # A KAPCSOLÓDÁS felső korlátja (alapértelmezés 30s). A 2026-08-16-i futás
+          # pont 30 másodpercnél halt el `dial tcp ... i/o timeout`-tal: az előző
+          # deploy buildje még dolgozott, a gép nem ért rá válaszolni. A parancs
+          # futhat sokáig, a kézfogásra viszont ne másodperceken múljon a deploy.
+          timeout: 2m
           script: |
             set -euo pipefail
 

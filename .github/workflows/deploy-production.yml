@@ -44,6 +44,9 @@ jobs:
           key: ${{ secrets.STAGING_SSH_KEY }}
           port: ${{ secrets.STAGING_SSH_PORT || 22 }}
           command_timeout: 40m
+          # Lásd a staging-workflow indoklását: a 30 másodperces alapértelmezés
+          # kevés, ha a gépen épp egy másik deploy buildje fut.
+          timeout: 2m
           script: |
             set -euo pipefail
 
