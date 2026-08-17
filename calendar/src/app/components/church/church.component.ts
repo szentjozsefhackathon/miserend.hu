@@ -47,9 +47,33 @@ export class ChurchComponent implements OnInit {
     this.initEvents();
   }
 
+  /**
+   * #830: család módban vagyunk?
+   *
+   * Kétféleképpen kerülhetünk ide: a `?csalad=1` paraméterrel (ez volt az első
+   * megoldás, és a régi linkek miatt marad), vagy a `/plebania/:id` útvonalon —
+   * borazslo kérésére, mert a paraméter nem osztható meg jól és nem is beszédes.
+   *
+   * Az útvonalat SZÁNDÉKOSAN a teljes címből nézzük, nem az Angular útvonal-mintából:
+   * a naptár egy PHP-lapba ágyazva fut, és így akkor is helyesen dönt, ha a
+   * beágyazás miatt a router csak részleges címet lát.
+   *
+   * @param csaladParam a `?csalad` paraméter értéke (vagy `null`)
+   * @param utvonal a böngésző címsorának útvonal-része
+   */
+  public static isFamilyRoute(csaladParam: string | null, utvonal: string): boolean {
+    if (csaladParam === '1') {
+      return true;
+    }
+    return /(^|\/)plebania\/[0-9]+(\/|$)/.test(utvonal ?? '');
+  }
+
   private initEvents() {
     const churchId: number = +this.activatedRoute.snapshot.params['id'];
-    const familyMode: boolean = this.activatedRoute.snapshot.queryParamMap.get('csalad') === '1';
+    const familyMode: boolean = ChurchComponent.isFamilyRoute(
+      this.activatedRoute.snapshot.queryParamMap.get('csalad'),
+      window.location.pathname
+    );
 
     this.eventService.getChurch(churchId, familyMode).subscribe({
       next: (church: Church) => {
