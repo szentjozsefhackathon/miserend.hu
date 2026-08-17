@@ -110,12 +110,31 @@ class Health extends Html {
 		}
 		
 		
+		/*
+		 * #822: az sqlite-fájlok állapota.
+		 *
+		 * A ciklus `1..4` volt, kézzel beírva. Két baja volt ezzel:
+		 *
+		 *  - a v5 (#56/#778) EGYÁLTALÁN nem látszott, pedig a `LEGUJABB_VERZIO`
+		 *    kiadott verzió — épp arról nem tudtuk meg, hogy elkészült-e;
+		 *  - a v1–v3 örökké PIROSAN állt, mert azokat évek óta nem generáljuk. Az
+		 *    állandó, tennivaló nélküli piros arra tanít, hogy a lapot ne vegyük
+		 *    komolyan — pont az ellenkezőjét éri el, mint amiért van.
+		 *
+		 * Mostantól a `Sqlite::GENERALT_VERZIOK` a forrás: azokat mérjük, amiket
+		 * tényleg építünk. A régebbieket felsoroljuk, de „befagyasztva" jelöléssel,
+		 * hibajelzés nélkül.
+		 */
 		$results = [];
-		for($i=1;$i<=4;$i++) {		
+		$generalt = \Api\Sqlite::GENERALT_VERZIOK;
+		$osszes = range(1, max($generalt));
+
+		foreach($osszes as $i) {
 			$tables = [];
 			$sqlite = new \Api\Sqlite();
-			$sqlite->version = $i;			
-			
+			$sqlite->version = $i;
+			$befagyasztott = !in_array($i, $generalt, true);
+
 			if(!$tables = $sqlite->checkSqliteFile()) {
 				$alert = 'danger';
 			} else 
@@ -127,8 +146,14 @@ class Health extends Html {
 				$alert = 'danger';
 				$filemtime = false;
 			}
-								
+
+			// A befagyasztott verzióknál a hiba nem tennivaló: nem is generáljuk őket.
+			if($befagyasztott && $alert == 'danger') {
+				$alert = 'secondary';
+			}
+
 			$tmp = " <a class=\"alert-".$alert."\" href=\"$sqlite->folder$sqlite->sqliteFileName\">".$sqlite->sqliteFileName."</a> ";
+			if($befagyasztott) $tmp .= "<small class=\"text-muted\">(befagyasztva, nem generáljuk)</small> ";
 			if($filemtime) $tmp .= "(".$filemtime.") ";
 			
 			if($alert == "success") {	

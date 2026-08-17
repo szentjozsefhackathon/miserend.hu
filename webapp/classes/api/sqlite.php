@@ -635,10 +635,26 @@ class Sqlite extends Api {
         return $return;
     }
 
+    /**
+     * #822: mely SQLite-verziókat építjük újra.
+     *
+     * A v1–v3 BEFAGYASZTOTT: a fájlok kimennek a régi klienseknek, de tartalmuk nem
+     * változik, tehát újragenerálni sem kell. A v4 a kurrens (`Api::AJANLOTT_VERZIO`),
+     * a v5 pedig a legújabb kiadott (`Api::LEGUJABB_VERZIO`).
+     *
+     * A v5 eddig KIMARADT: a #56/#778 megírta a v5 mise-tábláját, de a cron csak a
+     * v4-et építette (`for ($i = 4; $i >= 4; $i--)`), tehát a v5 sqlite SOHA nem
+     * készült el. Aki v5-öt kért, elavult vagy hiányzó fájlt kapott.
+     *
+     * FIGYELEM: ez megduplázza ennek a cronnak a futásidejét (két teljes fájl,
+     * fejenként 5000+ templom és 280e+ mise).
+     */
+    const GENERALT_VERZIOK = [4, 5];
+
     function cron() {
-        for ($i = 4; $i >= 4; $i--) {
-            $_REQUEST['v'] = $i;
-	    $this->version = $i;
+        foreach (self::GENERALT_VERZIOK as $verzio) {
+            $_REQUEST['v'] = $verzio;
+            $this->version = $verzio;
             $this->run();
         }
     }
