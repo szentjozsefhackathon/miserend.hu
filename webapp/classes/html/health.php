@@ -345,6 +345,29 @@ class Health extends Html {
 			->count();
 		
 		$this->boundariesStats['orphan_count'] = $orphanBoundaries;
+
+		/*
+		 * #825: nem csak a SZÁMUKAT mutatjuk meg, hanem magukat a sorokat is.
+		 *
+		 * Eddig egy piros szám állt itt, tennivaló nélkül. Egy szám alapján viszont nem
+		 * lehet eldönteni, hogy baj-e: az árva határ lehet ártalmatlan maradék (a
+		 * templom átkerült egy másik határ alá), lehet egy elrontott szinkron nyoma, és
+		 * lehet olyan egyházmegye-határ is, amit MI hozunk létre — utóbbi teljesen
+		 * szabályos, csak épp nincs alatta templom.
+		 *
+		 * Törölni szándékosan NEM törlünk: a határ-sor eldobása visszafordíthatatlan,
+		 * és egy ma árva határ holnap újra kötődhet. Előbb látni kell, mik ezek.
+		 */
+		$this->boundariesStats['orphan_list'] = DB::table('boundaries')
+			->leftJoin('lookup_boundary_church', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+			->whereNull('lookup_boundary_church.church_id')
+			->select('boundaries.id', 'boundaries.name', 'boundaries.boundary',
+				'boundaries.admin_level', 'boundaries.osmtype', 'boundaries.osmid',
+				'boundaries.updated_at')
+			->orderBy('boundaries.boundary')
+			->orderBy('boundaries.admin_level')
+			->limit(200)
+			->get();
 		
 		// 3. Templomok száma, amiknek nincs olyan boundary, aminek van osmid és osmtype
 		$churchesWithoutOsmBoundary = DB::table('templomok')
