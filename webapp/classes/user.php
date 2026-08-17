@@ -878,14 +878,14 @@ class User {
 
 			$users2notify = DB::table('templomok')
 				// #497: a `varos` alias a levélsablonnak kell. Tömeges lekérdezés, ezért
-				// nem templomonként kérdezünk, hanem korrelált alkérdéssel — a boundary
-				// neve, visszaeséssel a régi oszlopra, amíg az létezik.
+				// nem templomonként kérdezünk, hanem korrelált alkérdéssel.
+				//
+				// #824: a `templomok.varos`-ra való visszaesés KIKERÜLT. Az oszlopot a
+				// kivezetés eldobta, tehát a `COALESCE` egy nem létező oszlopra
+				// hivatkozott — a lekérdezés az éles migráció után azonnal elhasalt
+				// volna, és vele az egész „frissítsd az adataidat" értesítő.
 				->select('templomok.id as tid','templomok.nev','templomok.ismertnev','templomok.frissites')
-				->selectRaw("COALESCE((SELECT b.name FROM lookup_boundary_church lbc"
-					. " JOIN boundaries b ON b.id = lbc.boundary_id"
-					. " WHERE lbc.church_id = templomok.id AND b.boundary = 'administrative'"
-					. " AND b.admin_level IN (8,9,10) ORDER BY b.admin_level DESC LIMIT 1),"
-					. " templomok.varos) AS varos")
+				->selectRaw(\Eloquent\Church::citySubquerySql('templomok.id') . ' AS varos')
 				->join('church_holders','templomok.id','=','church_holders.church_id')
 				->addSelect('church_holders.description')
 				->join('user','user.uid','=','church_holders.user_id')
