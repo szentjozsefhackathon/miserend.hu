@@ -326,12 +326,38 @@ class Health extends Html {
 			->distinct()
 			->count('lookup_boundary_church.church_id');
 
+		/*
+		 * #827: KÖZIGAZGATÁSI határ — ez külön szám, és ez a fontosabbik.
+		 *
+		 * A fenti sor BÁRMILYEN kapcsolatot beszámít. Csakhogy az OSM sokféle határt
+		 * ad vissza (`postal_code`, `judicial`, `wine_community`, `timezone`…), és a
+		 * `religious_administration` határokat ráadásul MI hozzuk létre minden
+		 * templomhoz az egyházmegyéjéből. Egy templom tehát „100%-ban kereshető"-nek
+		 * látszhat úgy, hogy egyetlen közigazgatási határa sincs.
+		 *
+		 * Márpedig a HELYNEVEK kizárólag közigazgatási határból jönnek
+		 * (`locationCityName()` és társai). Ez a szám dönti el, hogy a `templomok.varos`
+		 * eldobása (#496/#497/#498) hány templomot hagyna helynév nélkül — épp ezért
+		 * nem szabad összemosni a kettőt.
+		 */
+		$churchesWithAdminBoundary = DB::table('lookup_boundary_church')
+			->join('templomok', 'templomok.id', '=', 'lookup_boundary_church.church_id')
+			->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+			->where('templomok.ok', 'i')
+			->whereNull('templomok.deleted_at')
+			->where('boundaries.boundary', 'administrative')
+			->distinct()
+			->count('lookup_boundary_church.church_id');
+
 		$this->boundariesStats = [
 			'with_osm' => [
 				'count' => $churchBoundaryStats->count ?? 0,
 				'never_checked_count' => $churchBoundaryStats->never_checked_count ?? 0,
 				'with_boundary_count' => $churchesWithBoundary,
 				'without_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithBoundary),
+				// #827: a helynevekhez ez a szám kell, nem a fenti.
+				'with_admin_boundary_count' => $churchesWithAdminBoundary,
+				'without_admin_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithAdminBoundary),
 				'avg_days_old' => $churchBoundaryStats->avg_days_old ? round($churchBoundaryStats->avg_days_old, 2) : 0,
 				'newest' => $churchBoundaryStats->newest ?? null,
 				'oldest' => $churchBoundaryStats->oldest ?? null
