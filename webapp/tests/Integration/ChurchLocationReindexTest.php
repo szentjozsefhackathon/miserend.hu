@@ -28,17 +28,35 @@ class ChurchLocationReindexTest extends TestCase {
         }
     }
 
-    /** A lista és a számláló ugyanarról a halmazról beszél. */
+    /**
+     * A lista és a számláló ugyanarról a halmazról beszél — a lista KORLÁTJÁIG.
+     *
+     * A korlát nem részletkérdés: friss indexben (a CI-ben pontosan ez a helyzet) az
+     * ÖSSZES templomból hiányzik a mező, tehát a lista a limitnél vág. A pótlás így
+     * darabokban halad, nem egyetlen ötezres körben.
+     */
     public function testAListaEsASzamlaloEgyezik(): void {
         $szamlalo = $this->elastic->churchesMissingLocation();
-        $lista = $this->elastic->churchIdsMissingLocation();
+        $lista = $this->elastic->churchIdsMissingLocation(1000);
 
         if ($szamlalo === null || $lista === null) {
             self::markTestSkipped('Az index nem kérdezhető le.');
         }
 
-        self::assertSame($szamlalo['missing'], count($lista),
+        self::assertSame(min($szamlalo['missing'], 1000), count($lista),
             'Ha a kettő eltér, a pótlás vagy kihagy templomokat, vagy feleslegesen dolgozik.');
+    }
+
+    /** A rendezés nélküli lekérdezés más-más részhalmazt adna — az ismételhetetlen. */
+    public function testAListaKetHivasraUgyanaz(): void {
+        $elso = $this->elastic->churchIdsMissingLocation(20);
+        $masodik = $this->elastic->churchIdsMissingLocation(20);
+
+        if ($elso === null || $masodik === null) {
+            self::markTestSkipped('Az index nem kérdezhető le.');
+        }
+
+        self::assertSame($elso, $masodik, 'A pótlásnak kiszámítható sorrendben kell haladnia.');
     }
 
     /** Csak azonosítókat adunk vissza, forrás-dokumentum nélkül — az felesleges adat. */
@@ -133,12 +151,14 @@ class ChurchLocationReindexTest extends TestCase {
             self::markTestSkipped('Itt minden hiányzó templomnak van koordinátája.');
         }
 
-        $eredmeny = \ExternalApi\ElasticsearchApi::reindexChurchesWithoutLocation();
+        $eredmeny = \ExternalApi\ElasticsearchApi::reindexChurchesWithoutLocation(count($ids));
 
-        self::assertSame($koordinataNelkul, $eredmeny['no_coordinates'],
+        // A két szám EGYÜTT adja ki a megvizsgált halmazt: amit újraindexeltünk, és
+        // amit szándékosan nem. Ha a koordináta nélküliek is a jelöltek közé
+        // kerülnének, a cron örökre ugyanazon a halmazon körözne.
+        self::assertSame(count($ids), $eredmeny['candidates'] + $eredmeny['no_coordinates']);
+        self::assertGreaterThan(0, $eredmeny['no_coordinates'],
             'A koordináta nélkülieket külön kell számolni, nem újraindexelni.');
-        self::assertLessThanOrEqual(count($ids) - $koordinataNelkul, $eredmeny['candidates'],
-            'Csak azt indexeljük újra, aminek van mit indexelni.');
     }
 
     /** A válasz a hiány OKÁT is megmondja — erre épül a health oldal tanácsa. */

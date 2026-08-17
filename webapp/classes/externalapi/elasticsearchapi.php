@@ -1037,6 +1037,13 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			'size' => $limit,
 			'_source' => false,
 			'query' => ['bool' => ['must_not' => [['exists' => ['field' => 'location']]]]],
+			/*
+			 * Rendezés nélkül az Elasticsearch nem ígér stabil sorrendet, tehát két
+			 * egymás utáni lekérdezés MÁS ezret adhatna vissza ugyanabból az ötezerből.
+			 * A `_doc` a legolcsóbb determinisztikus rendezés — így a pótlás
+			 * kiszámítható darabokban halad előre, nem ugrál összevissza.
+			 */
+			'sort' => ['_doc'],
 		]));
 		$this->run();
 
