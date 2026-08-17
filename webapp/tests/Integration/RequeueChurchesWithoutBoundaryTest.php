@@ -37,7 +37,13 @@ class RequeueChurchesWithoutBoundaryTest extends TestCase {
      */
     private function templom(?string $ellenorizve, bool $vanHatar, array $mezok = []): int {
         $minta = (array) DB::table('templomok')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1 + $this->sorszam++;
+        // Az árva `lookup_boundary_church` sorok miatt nem elég a templomok maximuma:
+        // egy régen törölt templom azonosítójára ütköznénk rá, és a teszttemplomnak
+        // ÖRÖKÖLT határa lenne — épp azt nem tudná mérni, hogy határ nélküli.
+        $id = max(
+            (int) DB::table('templomok')->max('id'),
+            (int) DB::table('lookup_boundary_church')->max('church_id')
+        ) + 1 + $this->sorszam++;
 
         DB::table('templomok')->insert(array_merge($minta, [
             'id' => $id, 'ok' => 'i', 'lat' => 48.1, 'lon' => 17.1,

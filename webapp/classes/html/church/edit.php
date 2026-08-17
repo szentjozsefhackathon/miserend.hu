@@ -9,6 +9,8 @@ class Edit extends \Html\Html {
     public $help;
     public $input;
     public $nearbyChurches;
+    /** #819: az ős-templomokból örökölt gondnokok (a `_panelholders.twig`-nek). */
+    public $derivedHolders;
 
     /* #639: mit tegyünk a beküldött ellátó-plébánia választással. */
     public const PARENT_REPLACE = 'replace';
@@ -187,6 +189,13 @@ class Edit extends \Html\Html {
         if ($user->checkRole('miserend')) {
             $this->addFormNewHolder();
         }
+
+        /*
+         * #819: a származtatott gondnokok — akik egy ős-templom gondnokaként férnek
+         * hozzá. borazslo kérése: „Az /edit oldalon oldalt jelenjenek meg a gondnokok
+         * mellett a származtatott gondnokai is." A `_panelholders.twig` írja ki.
+         */
+        $this->derivedHolders = $this->church->derivedHolders();
    
 
         $this->addFormAdministrative();

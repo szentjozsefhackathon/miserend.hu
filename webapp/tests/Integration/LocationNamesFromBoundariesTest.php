@@ -23,7 +23,13 @@ class LocationNamesFromBoundariesTest extends TestCase {
         DB::beginTransaction();
 
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $this->churchId = (int) DB::table('templomok')->max('id') + 1;
+        // Az árva `lookup_boundary_church` sorok miatt nem elég a templomok maximuma:
+        // egy régen törölt templom azonosítójára ütköznénk rá, és a teszttemplom
+        // ÖRÖKÖLNÉ annak határláncát — nálam így lett a magyar templomból „Deutschland".
+        $this->churchId = max(
+            (int) DB::table('templomok')->max('id'),
+            (int) DB::table('lookup_boundary_church')->max('church_id')
+        ) + 1;
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Helynév Teszt';
         $minta['ok'] = 'i';

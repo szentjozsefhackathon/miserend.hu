@@ -992,6 +992,46 @@ class User {
 		return true;
 	}
 
+	/**
+	 * #819: mely templomokért felel a felhasználó — a SZÁRMAZTATOTTAKKAL együtt?
+	 *
+	 * A `responsible['church']` csak a közvetlen gondnokságot ismeri, a szerkesztési
+	 * jog viszont a `checkWriteAccess()` óta öröklődik lefelé. A kettő szétcsúszása
+	 * ott fáj, ahol értesítőt küldünk: egy saját gondnok nélküli fíliáról SENKI nem
+	 * kapott levelet, pedig a plébánosa hozzáfér és neki kellene intézkednie.
+	 *
+	 * Külön metódus, nem a `responsible['church']` kibővítése: azt a felület is
+	 * használja („Templomai: 3"), és ott a közvetlen gondnokság a helyes válasz — a
+	 * származtatott hozzáférés nem ugyanaz, mint a vállalt felelősség.
+	 *
+	 * @return int[]
+	 */
+	public function responsibleChurchIds(): array {
+		if (!isset($this->responsible['church'])) {
+			$this->getResponsabilities();
+		}
+
+		$ids = [];
+		foreach ((array) ($this->responsible['church'] ?? []) as $kulcs => $ertek) {
+			// A hívók egy része azonosító-listát tart benne, más része id => Church
+			// térképet (lásd sendUpdateNotification) — mindkettőt el kell fogadni.
+			$churchId = is_object($ertek) ? (int) $ertek->id : (int) (is_int($kulcs) && !is_scalar($ertek) ? $kulcs : $ertek);
+			if (!$churchId) {
+				continue;
+			}
+			$ids[] = $churchId;
+
+			$templom = \Eloquent\Church::find($churchId);
+			if ($templom) {
+				foreach ($templom->descendantChurchIds() as $leszarmazott) {
+					$ids[] = $leszarmazott;
+				}
+			}
+		}
+
+		return array_values(array_unique($ids));
+	}
+
 	/** #290: egy konkrét, 2 hétre lévő ünnepre küld a gondnokoknak (gondnokonként 1 email). */
 	private static function sendHolidayReminderForFeast($feast) {
 		$type = 'holder_holiday_reminder';
@@ -1023,8 +1063,9 @@ class User {
 			$user->getResponsabilities();
 
 			// Csak azok a templomok, amelyeknek KELL az emlékeztető erre az ünnepre.
+			// #819: a származtatott templomok is — a plébános a fíliáiról is kap.
 			$churches = [];
-			foreach ($user->responsible['church'] as $churchID) {
+			foreach ($user->responsibleChurchIds() as $churchID) {
 				$church = \Eloquent\Church::find($churchID);
 				if (!$church || $church->ok !== 'i') continue;
 				$filled = \Eloquent\CalMass::where('church_id', $churchID)
