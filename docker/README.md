@@ -59,20 +59,20 @@ Ez a fájl akkor hasznos, ha automatizált teszteket futtatsz, és szükséged v
 
 - Fejlesztéshez:
 ```
-docker compose -f compose.yaml -f compose.dev.yml up
+docker compose -f docker/compose.yml -f docker/compose.dev.yml up
 ```
 
 - Teszteléshez:
 
 ```
-docker compose -f compose.yml -f compose.test.yml up
+docker compose -f docker/compose.yml -f docker/compose.test.yml up
 ```
 
 - Kibana hozzáadása:
 Az előbbi paransokhoz csak add hozzá a kibana compose fájlt:
 
 ```
-  -f compose.kibana.yml
+  -f docker/compose.kibana.yml
 ```
 
 A fájlokat egymásra rétegezve is használhatod, pl. fejlesztés közben Kibana-val:
