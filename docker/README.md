@@ -69,10 +69,17 @@ docker compose -f docker/compose.yml -f docker/compose.test.yml up
 ```
 
 - Kibana hozzáadása:
-Az előbbi paransokhoz csak add hozzá a kibana compose fájlt:
+Az előbbi parancsokhoz csak add hozzá a kibana compose fájlt az `up` elé:
 
 ```
   -f docker/compose.kibana.yml
+```
+
+- OSRM hozzáadása:
+Az előbbiekhez csak a következő kapcsolót kell hozzáadni az `up` elé:
+
+```
+--profile osrm
 ```
 
 A fájlokat egymásra rétegezve is használhatod, pl. fejlesztés közben Kibana-val:
