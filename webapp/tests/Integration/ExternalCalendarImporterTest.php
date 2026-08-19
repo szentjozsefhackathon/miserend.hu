@@ -68,7 +68,7 @@ class ExternalCalendarImporterTest extends TestCase
         ExternalCalendarImporter::replaceFromIcs($ics, 1);
 
         $mass = Eloquent\CalMass::where('church_id', 1)
-            ->where('comment', ExternalCalendarImporter::IMPORT_MARKER)
+            ->imported()
             ->firstOrFail();
         $this->assertSame('Magyar nyelvű vasárnapi szentmise', $mass->title);
         $this->assertSame('2026-08-09T12:00:00', $mass->start_date);
@@ -88,7 +88,7 @@ class ExternalCalendarImporterTest extends TestCase
             . "END:VCALENDAR\r\n";
 
         $modifiedOn = null;
-        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, null, $modifiedOn);
 
         $this->assertSame('2026-02-14', $modifiedOn);
     }
@@ -105,7 +105,7 @@ class ExternalCalendarImporterTest extends TestCase
             . "END:VEVENT\r\nEND:VCALENDAR\r\n";
 
         $modifiedOn = null;
-        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, null, $modifiedOn);
 
         $this->assertNull($modifiedOn);
     }
@@ -119,7 +119,7 @@ class ExternalCalendarImporterTest extends TestCase
             . "END:VEVENT\r\nEND:VCALENDAR\r\n";
 
         $modifiedOn = null;
-        ExternalCalendarImporter::replaceFromIcs($ics, 1, $modifiedOn);
+        ExternalCalendarImporter::replaceFromIcs($ics, 1, null, $modifiedOn);
 
         $this->assertNull($modifiedOn);
     }
@@ -208,7 +208,7 @@ class ExternalCalendarImporterTest extends TestCase
         ExternalCalendarImporter::replaceFromIcs($ics, 1);
 
         $mass = Eloquent\CalMass::where('church_id', 1)
-            ->where('comment', ExternalCalendarImporter::IMPORT_MARKER)
+            ->imported()
             ->firstOrFail();
         $this->assertSame('2026-03-29T18:00:00', $mass->start_date);
         $this->assertSame('2026-03-29T18:00:00', $mass->rrule['dtstart']);
@@ -239,25 +239,106 @@ class ExternalCalendarImporterTest extends TestCase
         }
     }
 
-    public function testSavingCalendarUrlReactivatesTheExistingCalendar(): void
+    /**
+     * #157: az azonos URL-t visszakapcsoljuk, nem hozunk létre másodpéldányt.
+     *
+     * A naptárt mostantól az URL azonosítja, nem a neve. Korábban templomonként
+     * EGYETLEN sor volt („Google Calendar"), aminek az URL-jét felülírtuk — az volt
+     * a több naptár akadálya.
+     */
+    public function testSavingTheSameUrlReactivatesTheExistingCalendar(): void
     {
+        $url = 'https://calendar.google.com/calendar/ical/example/public/basic.ics';
         $calendar = Eloquent\ExternalCalendar::create([
             'church_id' => 1,
-            'name' => 'Google Calendar',
-            'url' => 'https://calendar.google.com/old.ics',
+            'name' => 'Szent József templom - Miserend',
+            'url' => $url,
             'active' => 0,
         ]);
 
-        ExternalCalendarImporter::saveCalendarUrl(
-            1,
-            'https://calendar.google.com/calendar/ical/example/public/basic.ics',
-            ['142.250.74.78']
-        );
+        ExternalCalendarImporter::saveCalendarUrls(1, $url, ['142.250.74.78']);
 
         $calendar->refresh();
         $this->assertSame(1, $calendar->active);
-        $this->assertSame('https://calendar.google.com/calendar/ical/example/public/basic.ics', $calendar->url);
         $this->assertSame(1, Eloquent\ExternalCalendar::where('church_id', 1)->count());
+        $this->assertSame('Szent József templom - Miserend', $calendar->name,
+            'a meglévő nevet nem írjuk felül');
+    }
+
+    /** Másik URL = másik naptár: a régi elalszik, nem tűnik el. */
+    public function testReplacingTheUrlDeactivatesTheOldCalendar(): void
+    {
+        $regi = Eloquent\ExternalCalendar::create([
+            'church_id' => 1,
+            'name' => 'Régi naptár',
+            'url' => 'https://calendar.google.com/calendar/ical/regi/public/basic.ics',
+            'active' => 1,
+        ]);
+
+        ExternalCalendarImporter::saveCalendarUrls(
+            1,
+            'https://calendar.google.com/calendar/ical/uj/public/basic.ics',
+            ['142.250.74.78']
+        );
+
+        $regi->refresh();
+        $this->assertSame(0, $regi->active, 'a régi naptár elalszik');
+        $this->assertSame(1, Eloquent\ExternalCalendar::where('church_id', 1)->where('active', 1)->count());
+    }
+
+    /**
+     * A jegy lényege: templomonként több naptár.
+     *
+     * borazslo példája: „Pl. Szegeden a szentségimádásosat vagy a kápolnát."
+     */
+    public function testTobbNaptarEgyTemplomhoz(): void
+    {
+        ExternalCalendarImporter::saveCalendarUrls(
+            1,
+            "https://calendar.google.com/calendar/ical/miserend/public/basic.ics\n"
+            . "https://calendar.google.com/calendar/ical/szentsegimadas/public/basic.ics",
+            ['142.250.74.78']
+        );
+
+        $aktiv = Eloquent\ExternalCalendar::where('church_id', 1)->where('active', 1)->get();
+
+        $this->assertCount(2, $aktiv);
+        $this->assertSame(['Naptár 1', 'Naptár 2'], $aktiv->pluck('name')->all(),
+            'ideiglenes név, amit az első import cserél le a feed X-WR-CALNAME-jére');
+    }
+
+    /** Az üres sorok és az ismétlődések nem hoznak létre naptárat. */
+    public function testAzUresEsIsmetlodoSorokatKiszurjuk(): void
+    {
+        $url = 'https://calendar.google.com/calendar/ical/egy/public/basic.ics';
+
+        ExternalCalendarImporter::saveCalendarUrls(1, "\n  $url  \n\n$url\n", ['142.250.74.78']);
+
+        $this->assertSame(1, Eloquent\ExternalCalendar::where('church_id', 1)->where('active', 1)->count());
+    }
+
+    /** Egyetlen rossz URL az egész mentést visszautasítja — ne fél-jó állapot maradjon. */
+    public function testEgyRosszUrlVisszautasitjaAMentest(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        ExternalCalendarImporter::saveCalendarUrls(
+            1,
+            "https://calendar.google.com/calendar/ical/jo/public/basic.ics\nhttp://192.168.0.1/belso.ics",
+            ['142.250.74.78']
+        );
+    }
+
+    /** #157: a feed saját neve. A Google minden exportba beleírja. */
+    public function testANaptarNeveAFeedbolJon(): void
+    {
+        $ics = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:Szent József templom - Miserend\r\nEND:VCALENDAR\r\n";
+
+        $this->assertSame(
+            'Szent József templom - Miserend',
+            ExternalCalendarImporter::calendarNameFromIcs($ics)
+        );
+        $this->assertNull(ExternalCalendarImporter::calendarNameFromIcs("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"));
     }
 
     public function testMissingImportCronIsRegisteredForExistingDatabases(): void

@@ -17,6 +17,8 @@ class CalMass extends CalModel
 
     protected $fillable = [
         'church_id',
+        // #157: melyik külső naptárból jött (NULL = kézzel felvitt).
+        'external_calendar_id',
         'period_id',
         'title',
         'types',
@@ -144,16 +146,39 @@ class CalMass extends CalModel
      * felülírná. A többi (kézzel felvitt) miséhez viszont hozzá KELL férni: a
      * kettő megfér egymás mellett.
      *
-     * A tulajdonos-jelölés ma az IMPORT_MARKER a comment mezőben. A frontend és a
-     * jogosultság-ellenőrzés ezen a származtatott mezőn / az importedIdsAmong()-on
-     * keresztül kérdez, hogy a jelölés módja (később: külön DB-oszlop, több naptár
-     * támogatásához) egy helyen legyen cserélhető.
+     * #157: a jelölés az `external_calendar_id` oszlop — ez a fenti megjegyzésben
+     * előre jelzett lépés („később: külön DB-oszlop, több naptár támogatásához"). A
+     * comment mező felszabadult a naptár LEÍRÁSÁNAK.
+     *
+     * A régi jelölés tartalékként megmarad: a migráció csak ott tudta visszamenőleg
+     * kitölteni az oszlopot, ahol a templomnak PONTOSAN egy naptára van. Ahol több,
+     * ott a régi sorok az első importig jelöletlenek maradnának — és addig
+     * szerkeszthetővé válnának, pedig a szinkron úgyis felülírná őket.
      */
     protected $appends = ['imported'];
 
     public function getImportedAttribute(): bool
     {
+        if ($this->getAttribute('external_calendar_id') !== null) {
+            return true;
+        }
+
         return $this->getAttribute('comment') === \ExternalCalendarImporter::IMPORT_MARKER;
+    }
+
+    /**
+     * Külső naptárból származó misék.
+     *
+     * Egyetlen helyen mondjuk meg, mitől importált egy mise — a lekérdezések, a
+     * törlés és a tesztek is innen kérdezik. Az `external_calendar_id` az elsődleges;
+     * a régi, jelöletlen sorokat a `comment` konstans viszi tovább.
+     */
+    public function scopeImported($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNotNull('external_calendar_id')
+              ->orWhere('comment', \ExternalCalendarImporter::IMPORT_MARKER);
+        });
     }
 
     /**
@@ -168,7 +193,7 @@ class CalMass extends CalModel
         }
 
         return static::whereIn('id', $ids)
-            ->where('comment', \ExternalCalendarImporter::IMPORT_MARKER)
+            ->imported()
             ->pluck('id')
             ->map('intval')
             ->all();

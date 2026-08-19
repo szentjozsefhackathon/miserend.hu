@@ -45,6 +45,7 @@
     {% if array.style %} style="{{array.style}}" {% else %} style="width:100%" {% endif %}
     {% if array.cols %} cols="{{array.cols}}" {% else %} cols="50" {% endif %}
     {% if array.rows %} rows="{{array.rows}}" {% else %} rows="10" {% endif %}
+    {% if array.placeholder %} placeholder="{{array.placeholder}}" {% endif %}
     >
     {% if array.value %}{{ array.value }}{% endif %}
     </textarea>
