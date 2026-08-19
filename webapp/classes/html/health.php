@@ -191,6 +191,25 @@ class Health extends Html {
 		 */
 		try {
 			$this->churchesMissingLocation = $elastic->churchesMissingLocation();
+
+			/*
+			 * #826: a hiányzó `location` két, teljesen különböző okból állhat elő, és
+			 * az eddigi tanács („teljes újraindexelés kell") csak az egyikre igaz.
+			 *
+			 * Élesben MIND a 15 hiányzó olyan templom volt, amelynek nincs koordinátája
+			 * az adatbázisban — azoknak a dokumentumában soha nem is lesz `location`,
+			 * akárhányszor indexeljük újra. Az ő bajuk adatbaj (#497), nem index-baj.
+			 * A lap eddig tehát olyan műveletre küldte az embert, ami nem segít.
+			 */
+			$hianyzoIds = $elastic->churchIdsMissingLocation();
+			if (is_array($hianyzoIds) && $hianyzoIds !== []) {
+				$indexelheto = \Eloquent\Church::whereIn('id', $hianyzoIds)
+						->whereNotNull('lat')->where('lat', '!=', 0)
+						->whereNotNull('lon')->where('lon', '!=', 0)
+						->count();
+				$this->churchesMissingLocation['reindexable'] = $indexelheto;
+				$this->churchesMissingLocation['no_coordinates'] = count($hianyzoIds) - $indexelheto;
+			}
 		} catch (\Throwable $e) {
 			$this->churchesMissingLocation = null;
 		}

@@ -66,6 +66,15 @@ return [
     // A teljes indexépítés akkor is hagyhat lyukat, ha közben elhasal valami; ez varrja
     // össze. Élesben 631 misézőhely maradt ki így a keresésből.
     ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'reindexMissingMasses',       'frequency' => '6 hours'],
+    /*
+     * #826: a `location` mező nélkül indexelt templomok pótlása.
+     *
+     * Ezeket a „X km-en belül" keresés NÉMÁN nem találja meg — nem hiba, csak nulla
+     * találat. Eddig a health oldal jelezte a számot (élesben 22), a javítás pedig
+     * kézi, teljes újraindexelés volt. Egy kézi deploy-lépés előbb-utóbb elmarad;
+     * célzott pótlással a hiány magától elfogy.
+     */
+    ['class' => '\ExternalApi\ElasticsearchApi',  'function' => 'reindexChurchesWithoutLocation', 'frequency' => '6 hours'],
     ['class' => '\ExternalCalendarImporter',      'function' => 'importAllExternalCalendars', 'frequency' => '1 day'],
     // #239: éles adatbázisban régóta fut (id 39), de a registryből kimaradt — egy
     // újrahúzott adatbázisban tehát soha nem jött volna létre.
