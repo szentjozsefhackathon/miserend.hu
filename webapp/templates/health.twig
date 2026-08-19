@@ -382,7 +382,31 @@
 				{% if boundariesStats.orphan_count == 0 %}
 						<span class="badge bg-success">0</span>
 				{% else %}
-						<span class="badge bg-danger">{{ boundariesStats.orphan_count }}</span>							
+						{# #825: a puszta szám alapján nem lehet eldönteni, baj-e. Az árva határ
+						   lehet ártalmatlan maradék, elrontott szinkron nyoma, vagy szabályos
+						   egyházmegye-határ templom nélkül. Ezért kilistázzuk őket. #}
+						<span class="badge bg-warning">{{ boundariesStats.orphan_count }}</span>
+						{% if boundariesStats.orphan_list|length > 0 %}
+							<details style="margin-top:6px">
+								<summary class="kicsi" style="cursor:pointer">Mik ezek?</summary>
+								<table class="table table-condensed kicsi" style="margin-top:6px">
+									<tr><th>név</th><th>típus</th><th>szint</th><th>OSM</th><th>frissítve</th></tr>
+									{% for b in boundariesStats.orphan_list %}
+										<tr>
+											<td>{{ b.name }}</td>
+											<td>{{ b.boundary }}</td>
+											<td>{{ b.admin_level }}</td>
+											<td>
+												{% if b.osmtype and b.osmid %}
+													<a href="https://www.openstreetmap.org/{{ b.osmtype }}/{{ b.osmid }}" target="_blank" rel="noopener">{{ b.osmtype }}/{{ b.osmid }}</a>
+												{% endif %}
+											</td>
+											<td>{{ b.updated_at }}</td>
+										</tr>
+									{% endfor %}
+								</table>
+							</details>
+						{% endif %}
 				{% endif %}
 			</td>
 		</tr>
