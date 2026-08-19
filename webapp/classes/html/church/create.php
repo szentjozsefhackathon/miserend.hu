@@ -30,8 +30,8 @@ class Create extends \Html\Html {
 
     function create() {
         
-        $lat = \Request::IntegerRequired('church[lat]');
-        $lon = \Request::IntegerRequired('church[lon]');
+        $lat = \Request::FloatRequired('church[lat]');
+        $lon = \Request::FloatRequired('church[lon]');
         $name = \Request::TextRequired('church[nev]');
         $osm_id = \Request::Integer('church[osmid]');
         $osm_type = \Request::InArray('church[osmtype]', ['node', 'way', 'relation']);
