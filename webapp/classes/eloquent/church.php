@@ -482,13 +482,22 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 if(!empty($massRule['rrule'])) {
                     $rrule = new \SimpleRRule($massRule['rrule']);                    
                     $massRule['rrule']['readable'] = $rrule->toText();
-                    //TODO: Itt ez hiba, mert nem egy konrkét legenerált Periodban nézünk szét, hanem csak egy általánosban
-                    // Vagyis a konkrét dátumokban keresés teljesen hülyeség.
-                    // Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon kezdődik. Azt meg megtudhatjuk máshogy is.
-                    $occ = reset($rrule->getOccurrences());
-                    if($occ) {
-                        $massRule['start_date'] = $occ->toString();                                                
-                    }
+                    /*
+                     * #832: a kezdőnap a SZABÁLYBÓL, nem legenerált előfordulásból.
+                     *
+                     * A régi jelzés helyben állt: „Itt ez hiba, mert nem egy konkrét
+                     * legenerált Periodban nézünk szét, hanem csak egy általánosban.
+                     * […] Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon
+                     * kezdődik."
+                     *
+                     * Igaza volt, és nem csak elvi kérdés: ha a szabály tartománya
+                     * szűk, a `getOccurrences()` ÜRESET ad, és akkor a `start_date`
+                     * meg sem születik. Élesben 4000 ismétlődő miséből 6 ilyen — az
+                     * `Api\ServiceTimes` náluk szó szerint „(ERROR/BUG no start_date)"
+                     * -et írt ki. A `representativeStart()` mindig ad választ, és
+                     * olcsóbb is: nem generálja le a teljes sorozatot.
+                     */
+                    $massRule['start_date'] = $rrule->representativeStart()->toDateTimeString();
                     $RRulesByPeriods[$periodId]['massrules'][] = $massRule;
                 }
             } 
@@ -1812,6 +1821,46 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         }
 
         return $misek;
+    }
+
+    /**
+     * #824: a település neve SQL-ből, tömeges lekérdezésekhez.
+     *
+     * A `locationCityName()` Eloquent-modellt kér. Több tömeges lekérdezés viszont
+     * `DB::table()`-lel dolgozik, és nyers `stdClass` sorokat kap — azokon nincs
+     * metódus. Ez már meg is bosszulta magát: a `Campaign::sendWeeklyEmail()`
+     * `$c->locationCityName()`-t hívott egy `stdClass`-on, és a heti önkéntes-levél
+     * emiatt SOHA nem ment ki („Call to undefined method stdClass::locationCityName()").
+     *
+     * A másik hiba ugyanebből a családból: a `User::sendUpdateNotification()` a
+     * `templomok.varos` oszlopra esett vissza — arra, amit a kivezetés eldobott.
+     *
+     * Ezért van egy közös definíció: aki SQL-ben kéri a települést, innen vegye.
+     *
+     * @param string $churchIdColumn a templom azonosítója a külső lekérdezésben
+     *                               (pl. `templomok.id` vagy `t.id`)
+     */
+    public static function citySubquerySql(string $churchIdColumn = 'templomok.id'): string {
+        return self::boundaryNameSubquerySql([8, 9, 10], $churchIdColumn);
+    }
+
+    /**
+     * #824: egy adminisztratív határ neve alkérdésként, szint-sorrenddel.
+     *
+     * A `FIELD()` rendezés adja a preferenciát: a felsorolás sorrendje dönt, nem a
+     * szint nagysága — így ugyanaz a szabály érvényesül, mint a modell-oldali
+     * `adminBoundaryName()`-ben.
+     *
+     * @param int[] $szintek admin_level értékek, preferencia szerint
+     */
+    public static function boundaryNameSubquerySql(array $szintek, string $churchIdColumn = 'templomok.id'): string {
+        $lista = implode(', ', array_map('intval', $szintek));
+
+        return "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = $churchIdColumn AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN ($lista)"
+            . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
     }
 
     private function adminBoundaryName(array $szintek): ?string {

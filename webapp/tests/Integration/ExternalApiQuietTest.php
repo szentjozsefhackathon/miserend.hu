@@ -48,6 +48,18 @@ final class ExternalApiQuietTest extends TestCase {
     private function unreachableOverpass(): \ExternalApi\OverpassApi {
         $api = new \ExternalApi\OverpassApi();
         $api->apiUrl = 'http://127.0.0.1:9/nincs-itt-semmi';
+        /*
+         * #824: a TARTALÉK végpontokat is le kell tiltani.
+         *
+         * A `run()` a `fallbackUrls` listát járja be, ha az nem üres — a konstruktor
+         * pedig feltölti a config valódi, publikus tükreivel. Az `apiUrl` felülírása
+         * tehát ELVESZETT: a hívás a valódi Overpass-tükrökre ment. Emiatt ez a teszt
+         * hálózatfüggő volt (a naplóban „Operation timed out after 2003 ms"), és a
+         * teljes futamban hol elbukott, hol nem. A szomszédos
+         * `testBoundaryDownloadStaysSilentOnFailure` ezt a configon már kezeli — itt
+         * kimaradt.
+         */
+        $api->fallbackUrls = ['http://127.0.0.1:9/nincs-itt-semmi'];
         $api->cache = false;
         $api->queryTimeout = 2;
         return $api;

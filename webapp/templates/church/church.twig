@@ -264,7 +264,8 @@
     {% include 'church/_panelrelationships.twig' with {
         fullNetwork: fullNetwork,
         churchType: church['church:type'],
-        city: location.city
+        city: location.city,
+        csaladUtvonal: csaladUtvonal
     } %}
     {# FAB – lebegő hívás gomb, csak ha van telefonszám, csak mobilon látható #}
     <!--

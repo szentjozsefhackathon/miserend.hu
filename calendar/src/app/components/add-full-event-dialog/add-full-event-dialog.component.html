@@ -14,6 +14,19 @@
 </div>
 <mat-dialog-content class="mat-typography">
 
+  <!-- #506: a templomválasztó a dialógus TELJES szélességét kapja (borazslo kérése).
+       Ez a legelső döntés a szerkesztésben — nem szabad egy fél oszlopba szorulnia. -->
+  @if (hasChurchChoice) {
+    <mat-form-field appearance="outline" class="church-selector">
+      <mat-label>Melyik templomban?</mat-label>
+      <mat-select [ngModel]="data.event.churchId ?? churches[0].id" (ngModelChange)="onChurchChange($event)">
+        @for (church of churches; track church.id) {
+          <mat-option [value]="church.id">{{ churchLabel(church) }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
   <mat-accordion class="example-headers-align" multi>
     <mat-expansion-panel expanded>
       <mat-expansion-panel-header>

@@ -5,6 +5,20 @@ namespace Html\Church;
 class Church extends \Html\Html {
 
     /**
+     * #830: a plébánia-család közös miserendjének útvonala.
+     *
+     * borazslo három szót vetett fel: `plebania`, `kozosseg`, `hierarchy`. A
+     * `plebania` maradt, mert a látogatók így hívják — a gyökér ugyan olykor fília
+     * vagy oldallagosan ellátott plébánia, de az URL nem adatmodell (a `/templom/:id`
+     * sem attól helyes, hogy minden misézőhely templom).
+     *
+     * EGY helyen áll, hogy a döntés megváltoztatása egyetlen sor legyen: a `Path`
+     * innen veszi az útvonalat, az Angular pedig a válaszból. A `?csalad=1` a
+     * váltás után is működik, tehát a régi linkek nem törnek el.
+     */
+    const CSALAD_UTVONAL = 'plebania';
+
+    /**
      * Hány óráig ne próbáljuk újra oldalletöltéskor a területi adat pótlását.
      * Két cron-fordulónyi (a \OSM::checkBoundaries 3 óránként fut).
      */
@@ -171,6 +185,10 @@ class Church extends \Html\Html {
         // fília eddig „nincs gondnok"-ot mutatott, pedig a plébánosa hozzáfér — a
         // felirat épp az ellenkezőjét állította annak, ami igaz.
         $this->activeHolderCount = $church->activeHolderCount();
+
+        // #830: a sablon innen tudja meg, melyik szó az útvonal — így a döntés
+        // megváltoztatása egyetlen konstans átírása marad.
+        $this->csaladUtvonal = self::CSALAD_UTVONAL;
 
         global $_tidsToWorkWith;
         if(in_array($this->id, $_tidsToWorkWith)) {

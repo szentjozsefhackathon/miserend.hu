@@ -96,6 +96,21 @@ class ExternalApi {
         return false;
     }
 
+    /**
+     * A leszármazott innen tölti fel a `$this->rawQuery`-t.
+     *
+     * A `runQuery()` mindig hívja, ha a `rawQuery` még nincs meg. Eddig itt nem volt
+     * kimondva, csak minden leszármazott véletlenül megvalósította — egy új
+     * szolgáltatás, ami elfelejti, „Call to undefined method"-dal szállt volna el, a
+     * hívási lánc túlsó végén, futásidőben. Most legalább megmondjuk, mi hiányzik.
+     *
+     * Nem `abstract`, mert az ősosztályt magát is példányosítjuk (a cache- és
+     * hibakezelő segédfüggvényei önmagukban is használhatók).
+     */
+    function buildQuery() {
+        throw new \Exception(static::class . ': nincs buildQuery(), és a rawQuery sincs beállítva.');
+    }
+
     function runQuery() {
         // Offline módban meg sem próbálkozunk: se hálózat, se cache-írás. A hívók a
         // szokásos „üres válasz" ágon mennek tovább, pontosan úgy, mintha a külső

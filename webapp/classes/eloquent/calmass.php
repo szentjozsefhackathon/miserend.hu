@@ -209,215 +209,19 @@ class CalMass extends CalModel
 
         return $merged;
     }
-    /**
-     * Generálja a miseidőpontokat adott évekre,
-     * és templomonként csoportosítva visszaadja őket.
+    /*
+     * #832: itt állt a `generateMassInstancesForYears()` — TÖRÖLVE.
      *
-     * @param array $masses
-     * @param array $years
-     * @return array [templom_id => miseidőpontok tömbje]
+     * Halott kód volt: egyetlen hívója sem akadt sem a PHP-ben, sem a naptárban,
+     * sem a cron-regiszterben, sem az éles `crons` táblában. A saját naplósora is a
+     * lenti függvény nevét írta ki — másolás nyoma.
+     *
+     * Nem csak fölösleges volt, hanem veszélyes is: szinte szó szerint ugyanazt a
+     * generálást tartalmazta, mint a lenti `generateMassPeriodInstancesForYears()`,
+     * a kettő pedig már el is csúszott egymástól. A kizárt időszakok határhibája
+     * (#832) mindkettőben megvolt, de csak az élőt javítottuk — aki legközelebb a
+     * halott példányból indul ki, a javítás előtti logikát másolja tovább.
      */
-    static function generateMassInstancesForYears($masses, array $churchTimezones, array $years): array
-    {
-        $instancesByChurch = [];
-
-        /*
-        $this::logDebug("generateMassInstancesForYears indul", [
-            'mass_count' => count($masses),
-            'years'      => $years,
-        ]);
-*/
-        if (empty($masses) || empty($years)) {
-            //$this->logDebug("Nincs mise vagy év");
-            return $instancesByChurch;
-        }
-
-        // --- 0) Ütközés elkerülés alkalmazása ---
-        $masses = self::applyCollisionAvoidance($masses);
-        /*
-        $this->logDebug("applyCollisionAvoidance lefutott", [
-            'after_count' => count($masses),
-        ]);
-*/
-
-
-        foreach ($years as $year) {
-            $globalStart = Carbon::create($year, 1, 1)->startOfDay();
-            $globalEnd = Carbon::create($year, 12, 31)->endOfDay();
-
-            foreach ($masses as $mass) {
-                /*
-                $this->logDebug("Mise feldolgozás indul", [
-                    'mass_id' => $mass->id,
-                    'title' => $mass->title,
-                    'period_id' => $mass->period_id,
-                ]);
-*/
-                if (empty($mass->period_id)) {
-                    //$this->logDebug("Egyszeri mise", ['mass_id' => $mass->id]);
-                } else if (empty($mass->rrule)) {
-                    //$this->logDebug("Nincs RRULE", ['mass_id' => $mass->id]);
-                    continue;
-                }
-                $timezone = $churchTimezones[$mass->church_id] ?? 'Europe/Budapest';
-
-                // A hossz átszámítása egy helyen él, l. durationInMinutes().
-                $durationMinutes = self::durationInMinutes($mass->duration);
-
-                // --- ha nincs period_id: egyszeri esemény ---
-                if (empty($mass->period_id)) {
-                    $startDate = Carbon::parse($mass->start_date ?? now())->setTimezone($timezone);
-                    if ($startDate->between($globalStart, $globalEnd)) {
-                        $instancesByChurch[$mass->church_id][] = [
-                            'church_id' => $mass->church_id,
-                            'mass_id' => $mass->id,
-                            'start_date' => $startDate->copy()->setTimezone('UTC')->format('c'),
-                            'start_minutes' => $startDate->copy()->setTimezone('UTC')->hour * 60 + $startDate->copy()->setTimezone('UTC')->minute,
-                            'title' => $mass->title,
-                            'types' => $mass->types,
-                            'rite' => $mass->rite,
-                            'duration_minutes' => $durationMinutes,
-                            // #431: az alkalom saját helyszíne, ha nem a templomban van.
-                            // A generált példány viszi tovább, hogy az iCal, az API és a
-                            // kereső is a valódi helyszínt tudja mutatni.
-                            'location_lat' => $mass->location_lat,
-                            'location_lon' => $mass->location_lon,
-                            'location_name' => $mass->location_name,
-                            'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
-                            'comment' => $mass->comment,
-                        ];
-                    }
-                    continue;
-                }
-
-                if (empty($mass->rrule)) {
-                    continue;
-                }
-
-                // --- RRULE feldolgozás ---
-                $rrule = $mass->rrule;
-                if (is_string($rrule)) {
-                    $decoded = json_decode($rrule, true);
-                    if (json_last_error() === JSON_ERROR_NONE) {
-                        $rrule = $decoded;
-                    }
-                }
-                if (!is_array($rrule) || empty($rrule)) {
-                    continue;
-                }
-
-                // --- kizárt dátumokkal  ---
-                $excludedDatesRaw = $mass->exdate ?? [];
-                if (is_string($excludedDatesRaw)) {
-                    $decoded = json_decode($excludedDatesRaw, true);
-                    if (json_last_error() === JSON_ERROR_NONE) {
-                        $excludedDatesRaw = $decoded;
-                    }
-                }
-                                                                    
-                // --- kizárt periódusok (auto `experiod` ∪ kézi `manual_experiod`) #428 ---
-                $excludedPeriods = self::effectiveExperiod($mass);
-
-                // --- az adott miséhez való legeneráltperiódusok betöltése ---
-                $periods = CalGeneratedPeriod::where('period_id', $mass->period_id)
-                    ->where('start_date', '<=', $globalEnd->toDateString())
-                    ->where('end_date', '>', $globalStart->toDateString())
-                    ->get();
-
-                foreach ($periods as $generatedPeriod) {
-                    $start = Carbon::parse($generatedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                    $end = Carbon::parse($generatedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
-
-                    if ($start->lt($globalStart)) $start = (clone $globalStart)->setTimezone($timezone);
-                    if ($end->gt($globalEnd))     $end   = (clone $globalEnd)->setTimezone($timezone);
-                    if ($start->gt($end)) continue;
-
-                    // Exdate feldolgozása: csak az adott időszakba eső dátumok legyenek exdate-ben
-                    $rrule['exdate'] = [];
-                    foreach($excludedDatesRaw as $exDateString) {
-                        $exDate = Carbon::parse($exDateString)->setTimezone($timezone);
-                        if($exDate->between($start,$end)) {
-                            $rrule['exdate'][] = $exDate;
-                        }
-                    }
-                    $rrule['exdate'] = collect(is_array($excludedDatesRaw) ? $excludedDatesRaw : [])
-                    ->map(fn($d) => Carbon::parse($d)->toDateString())->toArray();
-
-                    // Experiod feldolgozása: csak az adott időszakba eső periódusok érdeklnek
-                    // Aztán a beleeső napokat áttesszük exDate-be
-                    foreach($excludedPeriods as $exPeriodString) {
-                        $exGeneratedPeriods = CalGeneratedPeriod::where('period_id', $exPeriodString)
-                                            ->where('start_date', '<=', $end->toDateString())
-                                            ->where('end_date', '>', $start->toDateString())
-                                            ->get();
-                        //Nagyon nagyon furcsa lenne, ha kettő is lenne belőle, de ugye....                                            
-                        foreach($exGeneratedPeriods as $exGeneratedPeriod) {
-                            
-                            // ExGeneratedPeriod intervallum (igazítva napokra, ugyanabban a timezone-ban mint $start/$end)
-                            $exStart = Carbon::parse($exGeneratedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                            $exEnd   = Carbon::parse($exGeneratedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
-
-                            // Ha nincs átfedés, kihagyjuk
-                            if ($exEnd->lt($start) || $exStart->gt($end)) {
-                                continue;
-                            }
-
-                            // Átfedés kezdete és vége
-                            $overlapStart = $exStart->lt($start) ? $start->copy()->startOfDay() : $exStart->copy()->startOfDay();
-                            $overlapEnd   = $exEnd->gt($end)   ? $end->copy()->endOfDay()   : $exEnd->copy()->endOfDay();
-
-                            // Az átfedő napokat hozzáadjuk exdate-hez (YYYY-MM-DD formátumban)
-                            for ($d = $overlapStart->copy(); $d->lte($overlapEnd); $d->addDay()) {
-                                $rrule['exdate'][] = $d->toDateString();
-                            }
-                        }                    
-                    }
-                    // Duplikátumok eltávolítása                    
-                    $rrule['exdate'] = array_values(array_unique($rrule['exdate']));
-                    sort($rrule['exdate']);
-
-                    $recurrences = self::generateDatesFromRrule($rrule, $start, $end);
-                   /* $this->logDebug("Recurrence generálás", [
-                        'mass_id' => $mass->id,
-                        'count' => count($recurrences),
-                    ]); */
-
-                    foreach ($recurrences as $date) {
-                        /*$this->logDebug("Generált dátum", [
-                            'mass_id' => $mass->id,
-                            'date' => $date->toIso8601String(),
-                        ]); */                        
-                       
-                        $startUTC = $date->copy()->setTimezone('UTC');
-                        $instancesByChurch[$mass->church_id][] = [
-                            'church_id' => $mass->church_id,
-                            'mass_id' => $mass->id,
-                            'start_date' => $startUTC->format('c'),
-                            'start_minutes' => $startUTC->hour * 60 + $startUTC->minute,
-                            'title' => $mass->title,
-                            'types' => $mass->types,
-                            'rite' => $mass->rite,
-                            'duration_minutes' => $durationMinutes,
-                            'location_lat' => $mass->location_lat,
-                            'location_lon' => $mass->location_lon,
-                            'location_name' => $mass->location_name,
-                            'lang' => $mass->langs, // #334: lista, mert egy mise több nyelvű is lehet
-                            'comment' => $mass->comment,
-                        ];
-                    }
-                }
-            }
-        }
-
-        // Rendezés start_date szerint (növekvő)
-        foreach($instancesByChurch as $churchId => &$recurrences) {            
-            usort($recurrences, function($a, $b) {
-                return $a['start_date'] <=> $b['start_date'];
-            });
-        }
-
-        return $instancesByChurch;
-    }
 
     /**
      
@@ -427,7 +231,7 @@ class CalMass extends CalModel
         $massPeriods = [];
 
         /*
-        $this::logDebug("generateMassInstancesForYears indul", [
+        $this::logDebug("generateMassPeriodInstancesForYears indul", [
             'mass_count' => count($masses),
             'years'      => $years,
         ]);
@@ -598,9 +402,10 @@ class CalMass extends CalModel
                 }
                 foreach ($periods as $generatedPeriod) {
                     $start = Carbon::parse($generatedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                    // TODO / FIXME: valamiért itt volt egy subDay. Talán mert az alap periods-nak van inclusive beállítása. 
-                    // Passz. Az egy napo hossszú periódusoknál biztos nem kel subDay(). Majd meglátjuk a töbi határnál mi a helyzet.
-                    // $end = Carbon::parse($generatedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
+                    // #832: az `end_date` BELEÉRTENDŐ — a nap végéig tart az időszak.
+                    // A régi jegyzet („valamiért itt volt egy subDay […] Passz.")
+                    // bizonytalan volt; a kizárás ága mostantól ugyanezt a szabályt
+                    // követi, tehát a két olvasat nem tér el egymástól.
                     $end = Carbon::parse($generatedPeriod->end_date)->endOfDay()->setTimezone($timezone);
 
                     /*
@@ -623,17 +428,40 @@ class CalMass extends CalModel
 
                     // Experiod feldolgozása: csak az adott időszakba eső periódusok érdeklnek
                     // Aztán a beleeső napokat áttesszük exDate-be
-                    foreach($excludedPeriods as $exPeriodString) { //TODO és FIXME az átfedésre nem biztos hogy ez jó!
+                    /*
+                     * #832: a kizárt időszak UTOLSÓ NAPJA is kizárt.
+                     *
+                     * A régi jelzés itt állt: „az átfedésre nem biztos hogy ez jó!" —
+                     * és tényleg nem volt jó. Ugyanezt az `end_date` oszlopot a
+                     * függvény KÉTFÉLEKÉPPEN olvasta: a mise saját időszakánál
+                     * `endOfDay()` (a nap beleértve), a kizárt időszaknál viszont
+                     * `subDay()->endOfDay()`, vagyis egy nappal korábban.
+                     *
+                     * Megmérve: egy 06-01..06-10 kizárt időszak csak 06-09-ig zárt ki,
+                     * tehát a mise a kizárás UTOLSÓ NAPJÁN megjelent. Élesben ez azt
+                     * jelenti, hogy pl. a nyári szünet záró napján a tanévi miserend is
+                     * kiírásra került — és senki nem szólt érte, mert nem hiba, csak
+                     * egy fölösleges sor a listában.
+                     *
+                     * Az `end_date` a rendszerben beleértendő (a „Nyári szünet
+                     * 06-16..08-31" utolsó napja is szünet), tehát a `subDay()` volt a
+                     * hibás. A lekérdezés `>` feltétele ugyanez az elcsúszás: ha a
+                     * kizárt időszak épp a mise időszakának első napján ér véget, az
+                     * még átfedés.
+                     */
+                    foreach($excludedPeriods as $exPeriodString) {
                         $exGeneratedPeriods = CalGeneratedPeriod::where('period_id', $exPeriodString)
                                             ->where('start_date', '<=', $end->toDateString())
-                                            ->where('end_date', '>', $start->toDateString())
+                                            ->where('end_date', '>=', $start->toDateString())
                                             ->get();
                         //Nagyon nagyon furcsa lenne, ha kettő is lenne belőle, de ugye....                                            
                         foreach($exGeneratedPeriods as $exGeneratedPeriod) {
                             
                             // ExGeneratedPeriod intervallum (igazítva napokra, ugyanabban a timezone-ban mint $start/$end)
                             $exStart = Carbon::parse($exGeneratedPeriod->start_date)->startOfDay()->setTimezone($timezone);
-                            $exEnd   = Carbon::parse($exGeneratedPeriod->end_date)->subDay()->endOfDay()->setTimezone($timezone);
+                            // #832: nincs `subDay()` — az `end_date` beleértendő, ahogy a
+                            // mise saját időszakánál is.
+                            $exEnd   = Carbon::parse($exGeneratedPeriod->end_date)->endOfDay()->setTimezone($timezone);
 
                             // Ha nincs átfedés, kihagyjuk
                             if ($exEnd->lt($start) || $exStart->gt($end)) {

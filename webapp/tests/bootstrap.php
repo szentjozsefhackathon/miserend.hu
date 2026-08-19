@@ -62,6 +62,19 @@ if (!function_exists('t')) {
     }
 }
 
+/*
+ * #824: a globális `$user`-t a load.php állítja be a munkamenetből, a tesztek viszont
+ * nem azt töltik be. Enélkül minden jogosultság-vizsgálat „Call to a member function
+ * checkRole() on null"-lal hasal el — a `ChurchPrintableScheduleTest` például külön
+ * futtatva 12-ből 9 hibával állt meg, a teljes futamban viszont zöld volt, mert egy
+ * korábbi teszt véletlenül beállította. Az ilyen sorrendfüggés a legrosszabb fajta
+ * hiba: nem a kód romlik el tőle, hanem a mérés hitele.
+ *
+ * VENDÉG felhasználót adunk, mert az a nyilvános alapállapot: aki bejelentkezettet
+ * akar mérni, az állítsa be magának a saját tesztjében.
+ */
+$GLOBALS['user'] = new \User();
+
 // A levélküldés Twig-sablonból áll elő (\Eloquent\Email::render()), így $twig nélkül
 // egyetlen email-út sem tesztelhető. Ugyanaz a környezet, mint amit a load.php épít.
 //
@@ -70,3 +83,40 @@ if (!function_exists('t')) {
 // továbbra is null-t kapna.
 $GLOBALS['twig'] = buildTwigEnvironment();
 
+
+/**
+ * Olyan templom-azonosítót ad, amire SEMMI nem hivatkozik.
+ *
+ * A tesztek eddig `MAX(templomok.id) + 1`-et használtak. Ez akkor romlik el, ha egy
+ * korábbi futás után maradt árva sor egy hivatkozó táblában: az új templom megörökli
+ * az idegen maradványt. Nálam ez úgy jött ki, hogy a `LocationNamesFromBoundariesTest`
+ * magyar határláncot épített, de „Deutschland"-ot kapott vissza — egy régebbi futás
+ * `lookup_boundary_church` sorai ugyanerre az id-re mutattak.
+ *
+ * A CI-n ez sosem látszik, mert ott minden futás üres adatbázison indul. Helyben
+ * viszont — ahol a fejlesztés zajlik — hamis, félrevezető bukást ad.
+ *
+ * Ezért az összes templomra hivatkozó oszlopot is megnézzük, nem csak a `templomok`-at.
+ */
+function szabadTemplomId(): int {
+    static $kovetkezo = null;
+
+    if ($kovetkezo === null) {
+        $db = \Illuminate\Database\Capsule\Manager::connection()->getDatabaseName();
+        $hivatkozok = \Illuminate\Database\Capsule\Manager::select(
+            'SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.columns
+             WHERE TABLE_SCHEMA = ? AND COLUMN_NAME IN (?, ?, ?)',
+            [$db, 'church_id', 'templom_id', 'tid']
+        );
+
+        $max = (int) \Illuminate\Database\Capsule\Manager::table('templomok')->max('id');
+        foreach ($hivatkozok as $oszlop) {
+            $ertek = \Illuminate\Database\Capsule\Manager::table($oszlop->t)->max($oszlop->c);
+            $max = max($max, (int) $ertek);
+        }
+        $kovetkezo = $max + 1;
+    }
+
+    // Egy futáson belül több teszt is kérhet — ne kapják ugyanazt.
+    return $kovetkezo++;
+}

@@ -198,7 +198,8 @@ class Edit extends \Html\Html {
         $this->derivedHolders = $this->church->derivedHolders();
    
 
-        $this->addFormAdministrative();
+        // #833: az `addFormAdministrative()` a kaszkádos helyválasztót építette; a
+        // kivezetés után nem maradt benne semmi, ezért megszűnt.
         $this->addFormReligiousAdministration();
         $this->addFormParentChurch();
 
@@ -286,21 +287,24 @@ class Edit extends \Html\Html {
             ->first();
     }
     
-    function addFormAdministrative() {
-        $options = [0 => 'Válassz/Nem tudom'];
-        /*
-         * #496 / #497 / #498: itt épült a kaszkádos ország -> megye -> város választó
-         * az `orszagok`, `megye` és `varosok` táblákból (75 sor, három egymásba ágyazott
-         * ciklussal, ami országonként és megyénként külön <select>-et gyártott, majd
-         * CSS-sel rejtette el a nem aktuálisakat).
-         *
-         * A hely mostantól a koordinátából és az OSM-határokból jön, tehát nincs mit
-         * választani: a `church/edit.twig` a származtatott elhelyezkedést írja ki.
-         * A választó amúgy is csak azoknál a templomoknál jelent meg, amiknek nem volt
-         * `varos` értékük (`{% if not church.varos %}`), tehát a szerkesztők többsége
-         * sosem találkozott vele.
-         */
-
+    /**
+     * #833: az egyházmegye/esperesi kerület választó.
+     *
+     * A #496/#497/#498 kivezette innen a kaszkádos ország -> megye -> város választót
+     * (75 sor, három egymásba ágyazott ciklussal). A hely azóta a koordinátából és az
+     * OSM-határokból jön: a `church/edit.twig` a származtatott elhelyezkedést írja ki.
+     *
+     * A törlés viszont az `addFormReligiousAdministration()` FEJLÉCÉT is elvitte, a
+     * TÖRZSÉT nem — az beolvadt az akkori `addFormAdministrative()`-be, a rá mutató
+     * hívás pedig ottmaradt. A fájl így is értelmezhető maradt (a `php -l` nem szólt),
+     * de a szerkesztő oldal minden jogosult felhasználónak végzetes hibával elszállt:
+     *
+     *     Call to undefined method Html\Church\Edit::addFormReligiousAdministration()
+     *
+     * Az egyházmegye MARAD választható: az nem OSM-adat, a koordinátából nem
+     * származtatható — épp ezért nem is került a kivezetés hatálya alá.
+     */
+    function addFormReligiousAdministration() {
         $selected = ['diocese' => $this->church->egyhazmegye, 'deanery' => $this->church->espereskerulet];
         $selectReligiousAdministration = \Form::religiousAdministrationSelection($selected);
         $this->form['dioceses'] = $selectReligiousAdministration['dioceses'];

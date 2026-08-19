@@ -17,7 +17,6 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class HideChurchesWithoutCoordinatesTest extends TestCase {
 
-    private int $sorszam = 0;
 
     protected function setUp(): void {
         parent::setUp();
@@ -32,7 +31,7 @@ class HideChurchesWithoutCoordinatesTest extends TestCase {
     /** @param array<string,mixed> $mezok felülírandó oszlopok */
     private function templom(array $mezok): int {
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1 + $this->sorszam++;
+        $id = szabadTemplomId();
 
         DB::table('templomok')->insert(array_merge($minta, $mezok, ['id' => $id]));
         return $id;
