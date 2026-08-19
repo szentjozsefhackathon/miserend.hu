@@ -334,6 +334,32 @@
 				{% endif %}
 			</td>
 		</tr>
+		{#
+			#827: külön sor a KÖZIGAZGATÁSI határnak.
+			A fenti sor bármilyen kapcsolatot beszámít — az OSM sokféle határt ad
+			(postal_code, judicial, wine_community…), a religious_administration
+			határokat pedig MI hozzuk létre minden templomhoz. A HELYNEVEK viszont
+			kizárólag közigazgatási határból jönnek, és ez a szám dönti el, hány
+			templom maradna helynév nélkül a `templomok.varos` eldobása után.
+		#}
+		<tr>
+			<td><strong>Van közigazgatási határa</strong> <small class="text-muted">(a helynevek ebből jönnek)</small></td>
+			<td>
+				{% set osszes = boundariesStats.with_osm.count %}
+				{% set adminnal = boundariesStats.with_osm.with_admin_boundary_count %}
+				{% if osszes > 0 and adminnal >= osszes %}
+					<span class="badge bg-success">{{ adminnal }}</span> / {{ osszes }} (100%)
+				{% else %}
+					<span class="badge bg-warning">{{ adminnal }}</span> / {{ osszes }}
+					<div class="alert alert-warning" style="margin-top:6px">
+						<strong>{{ boundariesStats.with_osm.without_admin_boundary_count }}</strong> misézőhelynek
+						nincs közigazgatási határa. Ők a <code>templomok.varos</code> oszlop eldobása után
+						(#496/#497/#498) <strong>helynév nélkül maradnának</strong> — a kivezetés előtt
+						ezt érdemes lenullázni.
+					</div>
+				{% endif %}
+			</td>
+		</tr>
 		<tr>
 			<td><strong>Misézőhelyek amiknek nem kerestük még soha</strong> </td>
 			<td>
