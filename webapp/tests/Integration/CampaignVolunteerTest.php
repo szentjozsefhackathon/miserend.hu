@@ -74,7 +74,7 @@ class CampaignVolunteerTest extends TestCase {
     private function makeStaleChurch(): int {
         // #496: a `where('orszag', 12)` szűrő megszűnt az oszloppal együtt.
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1;
+        $id = szabadTemplomId();
 
         $minta['id'] = $id;
         $minta['nev'] = 'Teszt templom ' . $id;

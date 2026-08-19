@@ -23,7 +23,7 @@ class LocationNamesFromBoundariesTest extends TestCase {
         DB::beginTransaction();
 
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $this->churchId = (int) DB::table('templomok')->max('id') + 1;
+        $this->churchId = szabadTemplomId();
         $minta['id'] = $this->churchId;
         $minta['nev'] = 'Helynév Teszt';
         $minta['ok'] = 'i';
