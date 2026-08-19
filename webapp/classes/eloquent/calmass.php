@@ -266,8 +266,14 @@ class CalMass extends CalModel
             return $massPeriods;
         }
 
-        // --- 0) Ütközés elkerülés alkalmazása ---
-        $masses = self::applyCollisionAvoidance($masses);
+        // --- 0) Ütközés elkerülés: ÉVENKÉNT (#747) ---
+        //
+        // Korábban itt, a ciklus előtt futott egyszer. A lefedés viszont évente
+        // változik (a Nagyböjt csak 2026-ban fedi le teljesen a Márciust), ezért a
+        // döntést évenként kell meghozni. A függvény az `experiod`-ot csak a
+        // memóriában állítja, tehát ez nem jár adatbázis-írással — a snapshot pedig
+        // biztosítja, hogy minden év tiszta lapról induljon.
+        self::resetComputedExperiods($masses);
         /*
         $this->logDebug("applyCollisionAvoidance lefutott", [
             'after_count' => count($masses),
@@ -276,6 +282,9 @@ class CalMass extends CalModel
 
 
         foreach ($years as $year) {
+            self::resetComputedExperiods($masses);
+            $masses = self::applyCollisionAvoidance($masses, (int) $year);
+
             $globalStart = Carbon::create($year, 1, 1)->startOfDay();
             $globalEnd = Carbon::create($year, 12, 31)->endOfDay();
             $massesFromImport = [];
@@ -698,12 +707,134 @@ class CalMass extends CalModel
         }
     }
 
-    static private function applyCollisionAvoidance(array $masses): array
+    /**
+     * #747: lefedi-e a `$coverId` időszak a `$innerId`-ét ABBAN AZ ÉVBEN?
+     *
+     * A lefedés évente változik: a Nagyböjt csak 2026-ban fedi le teljesen a
+     * Márciust (2025-ben márc. 1-4, 2027-ben márc. 25-31 kimarad). Ezért a kérdést
+     * évre kell feltenni — a hívó az adott év generálásakor kérdez.
+     *
+     * Igaz, ha az inner ADOTT ÉVI tartományait mind tartalmazza egy cover-tartomány,
+     * ÉS a viszony nem kölcsönös. Ha bármelyik oldalnak nincs abban az évben
+     * tartománya, vagy a két időszak ugyanaz, false — marad a súly szerinti viselkedés.
+     *
+     * A kölcsönösség kizárása az AZONOS tartományok miatt kell. A tartalmazás nem
+     * szigorú (`<=` / `>=`), tehát két egyforma tartomány kölcsönösen lefedi egymást —
+     * ott viszont egyik sem „a szűkebb", tehát nincs mit specifikusabbnak tekinteni.
+     * Enélkül a nagyobb súlyú időszak veszítene a vele azonos tartományú kisebbel
+     * szemben, ami pont a súlyozás értelmét fordítaná meg.
+     */
+    static private function periodCoversInYear($calGeneratedPeriods, $coverId, $innerId, int $year): bool
     {
-        // Kevés CalPeriod van, és minden misénél kell, ezért inkább előre egyszer töltjük be mindet.
-        $calPeriods = CalPeriod::all()->keyBy('id');        
-        // Aránylag kevés (kb 100) CalGeneratedPeriod van, ezért ezeket is betöltjük egyszerre.
-        $calGeneratedPeriods = CalGeneratedPeriod::all()->groupBy('period_id');
+        if (empty($coverId) || empty($innerId) || $coverId == $innerId) {
+            return false;
+        }
+
+        return self::rangesContainInYear($calGeneratedPeriods, $coverId, $innerId, $year)
+            && !self::rangesContainInYear($calGeneratedPeriods, $innerId, $coverId, $year);
+    }
+
+    /**
+     * #747: tisztán tartalmazás-vizsgálat, a kölcsönösség kérdése nélkül.
+     *
+     * Ez a `periodCoversInYear()` építőköve; külön azért, mert az a szigorúbb
+     * viszonyhoz mindkét irányban megkérdezi.
+     */
+    static private function rangesContainInYear($calGeneratedPeriods, $coverId, $innerId, int $year): bool
+    {
+
+        $inYear = static function ($ranges) use ($year) {
+            $out = [];
+            foreach ($ranges ?? [] as $r) {
+                // Az évhatáron átnyúló időszak (pl. Advent->Karácsony) a KEZDETE
+                // szerinti évhez tartozik, ahogy a generálás is aszerint sorolja be.
+                if ((int) substr((string) $r->start_date, 0, 4) === $year) {
+                    $out[] = $r;
+                }
+            }
+            return $out;
+        };
+
+        $cover = $inYear($calGeneratedPeriods[$coverId] ?? []);
+        $inner = $inYear($calGeneratedPeriods[$innerId] ?? []);
+        if ($cover === [] || $inner === []) {
+            return false;
+        }
+
+        foreach ($inner as $i) {
+            $covered = false;
+            foreach ($cover as $c) {
+                if ($c->start_date <= $i->start_date && $c->end_date >= $i->end_date) {
+                    $covered = true;
+                    break;
+                }
+            }
+            if (!$covered) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * #747: az AUTOMATIKUS kizárások nullázása a számolás előtt.
+     *
+     * Két okból kell:
+     *
+     *  1. Az `applyCollisionAvoidance()` ÉVENKÉNT fut, és csak hozzáad. Nullázás nélkül
+     *     az előző év eredménye átszivárogna a következőbe, és a kizárások monoton nőnének.
+     *
+     *  2. Az `experiod` oszlopban TÁROLT érték egy régi implementáció maradéka — ma
+     *     semmi nem számítja, csak az `optimizeExperiods()` takarítja belőle a megszűnt
+     *     időszakokat. Ha a számolás erre épülne rá, a #747 javítása élesben HATÁSTALAN
+     *     maradna: a lefedett misén ottmaradna a régi, kiürítő kizárás, és a mise
+     *     továbbra sem látszana. Pontosan ez az érintett két templom helyzete
+     *     (#2439 Olaszfa, #2538 Csopak): a tárolt érték [7, 8].
+     *
+     * A kézi kizárásokhoz (`manual_experiod`, #428) nem nyúlunk: az a felhasználó
+     * akarata, nem számolt érték — az `effectiveExperiod()` a kettő unióját adja.
+     *
+     * Éles adaton megmérve: 7268 tárolt experiod-os miséből 7255 pontosan ugyanazt az
+     * értéket kapja újraszámolva, tehát a tárolt oszlop valóban származtatott. A 13
+     * eltérésből 7 a fenti két templom (maga a #747 esete), 6 pedig egy olyan templomé,
+     * amelyik a kizárt időszakot nem is használja, és annak tartománya nem is metszi a
+     * miséét — ott tehát egyetlen nap sem változik.
+     */
+    static private function resetComputedExperiods(array $masses): void
+    {
+        foreach ($masses as $mass) {
+            $mass->experiod = [];
+        }
+    }
+
+    /**
+     * #747: az időszak-táblák kérésen belüli gyorsítótára.
+     *
+     * Az `applyCollisionAvoidance()` mostantól évenként fut, tehát a két `::all()`
+     * hívás évszám-szor annyiszor menne le. Az időszakok egy generálás alatt nem
+     * változnak, így elég egyszer beolvasni.
+     */
+    static private $calPeriodCache = null;
+    static private $calGeneratedPeriodCache = null;
+
+    /** Teszthez / hosszan futó folyamathoz: felejtsük el a betöltött időszakokat. */
+    public static function forgetPeriodCache(): void
+    {
+        self::$calPeriodCache = null;
+        self::$calGeneratedPeriodCache = null;
+    }
+
+    static private function applyCollisionAvoidance(array $masses, ?int $year = null): array
+    {
+        if (self::$calPeriodCache === null) {
+            self::$calPeriodCache = CalPeriod::all()->keyBy('id');
+        }
+        if (self::$calGeneratedPeriodCache === null) {
+            self::$calGeneratedPeriodCache = CalGeneratedPeriod::all()->groupBy('period_id');
+        }
+        $calPeriods = self::$calPeriodCache;
+        $calGeneratedPeriods = self::$calGeneratedPeriodCache;
         
         // Amikor nagyon sok misét kell egyszerre kezelni, akkor végtelenbe lelassulunk,
         // ezért inkább csak templomonként nézzük meg
@@ -743,6 +874,27 @@ class CalMass extends CalModel
                         foreach ($currentMasses as $higherMass) {
                             $mPeriodExists = $calGeneratedPeriods[$lowerMass->period_id] ?? false;
                             if ($mPeriodExists) {
+                                // #747: a súly önmagában nem elég. Ha a nagyobb súlyú időszak
+                                // tartománya TELJESEN LEFEDI a kisebbét, akkor a kizárás nem
+                                // "felülírás", hanem kiürítés: a kisebb súlyú mise sehol nem
+                                // marad látható. Élő adattal ez a Nyári szünet (súly 3,
+                                // 06-30–09-01) és a Nyári időszámítás (súly 5, 03-30–10-26)
+                                // párosa — aki átmásolta a miséit, annak az eredeti némán
+                                // eltűnt a naptárból.
+                                //
+                                // Ilyenkor a SZŰKEBB időszak a valóban specifikusabb, tehát
+                                // a saját tartományában ő nyer: nem őt zárjuk ki, hanem
+                                // fordítva. A súly csak akkor dönt, ha egyik tartomány sem
+                                // tartalmazza a másikat.
+                                if ($year !== null && self::periodCoversInYear($calGeneratedPeriods, $higherMass->period_id, $lowerMass->period_id, $year)) {
+                                    $experiod = $higherMass->experiod ?? [];
+                                    if (!in_array($lowerMass->period_id, $experiod)) {
+                                        $experiod[] = $lowerMass->period_id;
+                                        $higherMass->experiod = $experiod; // csak a tömbben frissítjük
+                                    }
+                                    continue;
+                                }
+
                                 $experiod = $lowerMass->experiod ?? [];
                                 if (!in_array($higherMass->period_id, $experiod)) {
                                     $experiod[] = $higherMass->period_id;
@@ -750,7 +902,7 @@ class CalMass extends CalModel
                                 }
                             }
                         }
-                    } 
+                    }
                 }
             }
             
