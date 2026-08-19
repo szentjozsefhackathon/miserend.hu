@@ -1794,6 +1794,46 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $misek;
     }
 
+    /**
+     * #824: a település neve SQL-ből, tömeges lekérdezésekhez.
+     *
+     * A `locationCityName()` Eloquent-modellt kér. Több tömeges lekérdezés viszont
+     * `DB::table()`-lel dolgozik, és nyers `stdClass` sorokat kap — azokon nincs
+     * metódus. Ez már meg is bosszulta magát: a `Campaign::sendWeeklyEmail()`
+     * `$c->locationCityName()`-t hívott egy `stdClass`-on, és a heti önkéntes-levél
+     * emiatt SOHA nem ment ki („Call to undefined method stdClass::locationCityName()").
+     *
+     * A másik hiba ugyanebből a családból: a `User::sendUpdateNotification()` a
+     * `templomok.varos` oszlopra esett vissza — arra, amit a kivezetés eldobott.
+     *
+     * Ezért van egy közös definíció: aki SQL-ben kéri a települést, innen vegye.
+     *
+     * @param string $churchIdColumn a templom azonosítója a külső lekérdezésben
+     *                               (pl. `templomok.id` vagy `t.id`)
+     */
+    public static function citySubquerySql(string $churchIdColumn = 'templomok.id'): string {
+        return self::boundaryNameSubquerySql([8, 9, 10], $churchIdColumn);
+    }
+
+    /**
+     * #824: egy adminisztratív határ neve alkérdésként, szint-sorrenddel.
+     *
+     * A `FIELD()` rendezés adja a preferenciát: a felsorolás sorrendje dönt, nem a
+     * szint nagysága — így ugyanaz a szabály érvényesül, mint a modell-oldali
+     * `adminBoundaryName()`-ben.
+     *
+     * @param int[] $szintek admin_level értékek, preferencia szerint
+     */
+    public static function boundaryNameSubquerySql(array $szintek, string $churchIdColumn = 'templomok.id'): string {
+        $lista = implode(', ', array_map('intval', $szintek));
+
+        return "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = $churchIdColumn AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN ($lista)"
+            . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
+    }
+
     private function adminBoundaryName(array $szintek): ?string {
         $talalat = $this->boundaries()
                 ->where('boundary', 'administrative')
