@@ -79,6 +79,24 @@ class RequestTest extends TestCase {
         \Request::IntegerwDefault('test', 100);
     }
 
+    // FloatRequired() tests
+    public function testFloatRequired() {
+        $_REQUEST['test'] = 32.456;
+        $this->assertEquals(32.456, \Request::FloatRequired('test'));
+    }
+
+    public function testFloatRequiredInvalid() {
+        $_REQUEST['test'] = 'invalid';
+        $this->expectException(Exception::class);
+        \Request::FloatRequired('test');
+    }
+
+    public function testFloatRequiredNotSet() {
+        unset($_REQUEST['test']);
+        $this->expectException(Exception::class);
+        \Request::FloatRequired('test');
+    }
+
     // Text() tests
     public function testText() {
         $_REQUEST['test'] = 'Hello World';

@@ -29,6 +29,14 @@ class Request {
         return $value;
     }
 
+    static function FloatRequired($name) {
+        $value = self::getRequired($name);
+        if (\Validate::floatError($value) !== null) {
+            throw new Exception("Required '$name' is not a Float.");
+        }
+        return $value;
+    }
+
     static function Text($name) {
         $value = self::get($name);
         $value = sanitize($value);

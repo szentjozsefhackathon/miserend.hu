@@ -269,7 +269,8 @@ class EditOsm extends \Html\Html {
 			'inputs' => [
 				'name' => [
 					'title' => 'Név (a helyi nyelven)',
-					'wiki_hu' => true
+					'wiki_hu' => true,
+					'highlighted' => true
 				],
 				'name:hu' => [
 					'title' => 'Név magyarul (ha a helyi nyelv nem magyar)',
@@ -309,7 +310,8 @@ class EditOsm extends \Html\Html {
 						'yes' => 'Akadálymentes',
 						'limited' => 'Részben akadálymentes',
 						'no' => 'Egyáltalán nem akadálymentes'
-					)
+					),
+					'highlighted' => true
 				],
 				'wheelchair:description' => [
 					'title' => 'Kiegészítés, ha szükséges',
@@ -427,7 +429,8 @@ class EditOsm extends \Html\Html {
 						'filial' => 'fília',
 						'rectoral' => 'templomigazgatóság',
 						'' => 'nincs információ / egyszerű misézőhely'
-					]
+					],
+					'highlighted' => true
 				],
 				'operator' => [
 					'title' => 'Üzemeltető (szerzetesrend)',
@@ -562,6 +565,10 @@ class EditOsm extends \Html\Html {
 					// legördülője és a templomlap nyilvános mondata ugyanaz legyen.
 					'options' => \Eloquent\Church::CARD_DONATION_OPTIONS,
 					'help' => 'Egyre több helyen elérhető bankkártyás fizetési vagy külön adományozó terminál, mely első változatás a jezsuiták AutoMáténak neveztek el.'
+				],
+				'patron_day'=>[
+					'title' => 'Búcsú napja',
+					'wiki_hu' => false					
 				]
 		
 			]
