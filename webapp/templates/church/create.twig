@@ -165,7 +165,7 @@
             `;
 
             $.ajax({
-                url: 'https://overpass-api.de/api/interpreter',
+                url: '{{ overpass_api_url }}',
                 type: 'POST',
                 data: { data: query },
                 success: function (response) {

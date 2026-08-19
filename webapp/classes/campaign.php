@@ -1,344 +1,303 @@
 <?php
 
-/*
- * Heti hét templom frissítését vállalhatták embereek.
- * Jelenleg nem üzemel és ez a kód már erőst elavilt.
- * Az egész rész újraírandó, amikor újra élesztjük
+/**
+ * #315: heti hét templom önkéntesség feltámasztása.
+ *
+ * Az eredeti `Campaign` osztály (2014-2019) `mysql_*` API-t használt — ami a PHP 7
+ * óta törölve van. Ezért az `assignUpdates()` és `clearoutVolunteers()` évek óta
+ * NEM futtak. A `user.volunteer` mező és a `updates` tábla viszont megmaradt;
+ * a profil-oldalon a checkbox is működik a opt-in-hez.
+ *
+ * Ez az újraírás:
+ *   - DB-hozzáférés: Illuminate\Database\Capsule (Eloquent)
+ *   - Email-küldés: \Eloquent\Email + Twig template
+ *
+ * Üzemmódok (statikus belépők):
+ *   Campaign::assignUpdates()       — hetente egyszer: templom-csomag kiosztás + email
+ *   Campaign::clearoutVolunteers()  — havonta egyszer: inaktív önkéntesek visszafogása
+ *
+ * Mindkettőt a rendes cron-futtató indítja (webapp/fajlok/crons.php registry), kézzel
+ * pedig a cron-oldalról futtatható:
+ *
+ *     docker compose exec miserend php index.php 'q=cron&cron_id=<id>'
+ *
+ * Volt hozzá külön CLI-fájl is (webapp/cron/weekly-volunteers.php), de az egyetlen
+ * többlete a statisztika kiírása volt — az azóta itt van, tehát mindkét úton látszik.
  */
+
+use Illuminate\Database\Capsule\Manager as DB;
+
 class Campaign {
-    
-    
-    
-    function assignUpdates() {
-        global $config;
 
-        $limit = 7;
+    /** A heti kvóta felhasználónként (templom-szám). */
+    private const WEEKLY_LIMIT = 7;
+    /** Az „aktív" timeframe órákban (160h ~ kb. 1 hét). */
+    private const RECENT_HOURS = 160;
+    /** Honnan számít „régen frissített" a templom (months). */
+    private const STALE_MONTHS = 24;
+    /** Egy kiosztás bemutatandó találatok cutoff-ja (months). */
+    private const SKIP_RECENT_REMARK_MONTHS = 2;
 
-        $numbers = array('nulla', 'egy', 'kettő', 'három', 'négy', 'öt', 'hat', 'hét', 'nyolc', 'kilenc', 'tiz');
+    /**
+     * #315: a fő hetenkénti munka. Az önkénteseknek kioszt egy adag templomot
+     * (max WEEKLY_LIMIT / user), elmenti az `updates` táblába és értesítő emailt
+     * küld. Idempotens: ha a felhasználó már megkapott ennyi templomot ebben a héten,
+     * NEM kap újabb adagot.
+     */
+    public static function assignUpdates(): array {
+        $stats = [
+            'users_processed' => 0,
+            'churches_assigned' => 0,
+            'emails_sent' => 0,
+            'errors' => [],
+        ];
 
+        // 1. Aktív önkéntesek listája — akinek `volunteer=1` és az utóbbi heti adagját
+        //    még NEM kapta meg (kevesebb mint WEEKLY_LIMIT update sorral).
+        $cutoff = (new DateTime())->modify('-' . self::RECENT_HOURS . ' hours')->format('Y-m-d H:i:s');
+        $eligibleUsers = DB::table('user')
+            ->select('user.uid', 'user.login', 'user.email', 'user.becenev', 'user.nev')
+            ->selectRaw('COALESCE(u.cnt, 0) AS recent_count')
+            ->leftJoinSub(
+                DB::table('updates')->selectRaw('uid, COUNT(*) AS cnt')
+                    ->where('timestamp', '>', $cutoff)
+                    ->groupBy('uid'),
+                'u',
+                'u.uid', '=', 'user.uid'
+            )
+            ->where('user.volunteer', 1)
+            ->where(function ($q) {
+                $q->whereNull('u.cnt')->orWhere('u.cnt', '<', self::WEEKLY_LIMIT);
+            })
+            ->get();
 
-        //users
-        $query = "
-            SELECT user.uid,login,email,becenev,nev,c FROM user 
-            LEFT JOIN (
-                SELECT count(*) as c, uid FROM updates
-                WHERE timestamp > '" . date('Y-m-d H:i:s', strtotime("-160 hours")) . "' 
-                GROUP BY uid 
-                ORDER BY timestamp DESC
-            ) u ON u.uid = user.uid 
-            WHERE volunteer = 1 AND (c < " . $limit . " OR c IS NULL)
-        ;";
-        $result = mysql_query($query);
-        $users = array();
-        while ($user = mysql_fetch_assoc($result)) {
-            $users[$user['uid']] = $user;
+        if ($eligibleUsers->isEmpty()) {
+            self::report('assignUpdates', $stats);
+            return $stats;
         }
-        $cUsers = mysql_num_rows($result);
 
-        //templomok
-        // FIXME for Issue #257
-        $query = "
-            SELECT t.id,t.nev,t.ismertnev,t.varos,t.nev,t.frissites,u.uid, u.timestamp 
-            FROM templomok  t
-                LEFT JOIN (
-                    SELECT * FROM updates
-                    WHERE timestamp > '" . date('Y-m-d', strtotime("-2 months")) . "' 
-                    ORDER BY timestamp DESC
-                ) u ON u.tid = t.id  
-                LEFT JOIN (
-                    SELECT * FROM eszrevetelek
-                    WHERE allapot = 'u' or allapot = 'f' 
-                    GROUP BY hol_id
-                    ORDER BY datum
-                ) e ON e.hol_id = t.id
-            WHERE 
-                ok = 'i' 
-                AND orszag = 12
-                AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-                AND frissites < '" . date('Y-m-d', strtotime("-2 years")) . "' 
-                AND u.timestamp IS NULL
-                AND e.allapot IS NULL                
-            GROUP BY t.id
-            ORDER BY frissites, t.id ";
-        //$query .= " LIMIT ".( $limit * $cUsers );
+        // 2. Kiosztható templomok — ok=i, magyar, „templom"-jellegű név,
+        //    régen frissített (>2 év), nincs aktuális update / észrevétel.
+        $staleDate = (new DateTime())->modify('-' . self::STALE_MONTHS . ' months')->format('Y-m-d');
+        $assignableChurches = DB::table('templomok AS t')
+            ->select('t.id', 't.nev', 't.ismertnev', 't.frissites')
+            /*
+             * #824: a település a levélhez. Itt `DB::table()` fut, tehát nyers
+             * `stdClass` sorok jönnek — azokon a `locationCityName()` nem létezik, és
+             * a heti önkéntes-levél emiatt SOHA nem ment ki:
+             *   „Call to undefined method stdClass::locationCityName()"
+             * A templomok addigra már ki voltak osztva (az `updates` sorok bementek),
+             * tehát az önkéntes nem is értesült a munkájáról, a templom viszont
+             * hónapokra kiesett az újraosztásból.
+             */
+            ->selectRaw(\Eloquent\Church::citySubquerySql('t.id') . ' AS varos')
+            ->where('t.ok', 'i')
+            // #498: a `t.orszag = 12` helyett országhatár. Névre és ISO-kódra is
+            // illesztünk, mert az ISO ma még alig van kitöltve.
+            ->whereIn('t.id', function ($sub) {
+                $sub->select('lookup_boundary_church.church_id')
+                    ->from('lookup_boundary_church')
+                    ->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+                    ->where('boundaries.admin_level', 2)
+                    ->where(function ($w) {
+                        $w->where('boundaries.iso3166_1', 'HU')
+                          ->orWhere('boundaries.name', 'Magyarország');
+                    });
+            })
+            ->where(function ($q) {
+                $q->where('t.nev', 'LIKE', '%templom%')
+                  ->orWhere('t.nev', 'LIKE', '%bazilika%')
+                  ->orWhere('t.nev', 'LIKE', '%székesegyház%');
+            })
+            ->where('t.frissites', '<', $staleDate)
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                  ->from('updates')
+                  ->whereColumn('updates.tid', 't.id')
+                  ->where('timestamp', '>', (new DateTime())->modify('-' . self::SKIP_RECENT_REMARK_MONTHS . ' months')->format('Y-m-d H:i:s'));
+            })
+            // #315: ne osszunk ki olyan templomot, amelynek NYITOTT észrevétele van
+            // (allapot u=új, f=folyamatban; j=megoldott). A rewrite-ban ez a kizárás
+            // kimaradt - a komment ígéri ("nincs update / észrevétel"), de a kód csak
+            // az updates-et nézte. A régi tábla `eszrevetelek`/`hol_id`, az új `remarks`/`church_id`.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                  ->from('remarks')
+                  ->whereColumn('remarks.church_id', 't.id')
+                  ->whereIn('remarks.allapot', ['u', 'f']);
+            })
+            // Ugyanez a javaslatokra: egy függő (PENDING) csomag ugyanúgy folyamatban
+            // lévő munka, mint egy nyitott észrevétel — aki azt feldolgozza, annak ne
+            // dolgozzon rá az önkéntes. Az észrevételek mellett ez a másik beküldési
+            // csatorna, és remélhetőleg innen jön majd a több.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                  ->from('cal_suggestion_packages')
+                  ->whereColumn('cal_suggestion_packages.church_id', 't.id')
+                  ->where('cal_suggestion_packages.state', 'PENDING');
+            })
+            ->orderBy('t.frissites')
+            ->orderBy('t.id')
+            ->limit($eligibleUsers->count() * self::WEEKLY_LIMIT)
+            ->get();
 
-        $result = mysql_query($query);
-        $templomok = array();
-        while ($templom = mysql_fetch_assoc($result)) {
-            $templomokFull[$templom['id']] = $templom;
+        if ($assignableChurches->isEmpty()) {
+            $stats['errors'][] = 'Nincs kiosztható templom (mind friss, vagy van nyitott észrevétele/javaslata).';
+            self::report('assignUpdates', $stats);
+            return $stats;
         }
-        $cKioszthato = mysql_num_rows($result);
-        //echo "Kiosztható: ".$cKioszthato;
-        //echo $cUsers * $limit;
-        if (($cUsers * $limit) > $cKioszthato) {
-            $mail = new \Eloquent\Email();
-            $mail->subject = "Miserend.hu - Önkéntes FIGYELMEZTETÉS!";
-            $mail->body = "Itt a vége?\n\n" . $cUsers . " önkéntesünk van. Nekik kéne kiosztani " . ( $cUsers * $limit ) . " templomot, de csak " . $cKioszthato . " templom van a raktáron.";
-            if ($cKioszthato > 0) {
-                $limit = ceil($cKioszthato / $cUsers);
-                $mail->body.= "\nÚgy határoztunk hát, hogy csak " . $limit . " templomot osztunk ki fejenként.";
+
+        // 3. Felhasználónként WEEKLY_LIMIT templomot oszt ki — INSERT updates + email.
+        $churchOffset = 0;
+        foreach ($eligibleUsers as $user) {
+            $remaining = (int) (self::WEEKLY_LIMIT - $user->recent_count);
+            $batch = array_slice($assignableChurches->all(), $churchOffset, $remaining);
+            if (empty($batch)) {
+                break;
             }
-            $mail->Send($config['mail']['debugger']);
+            $churchOffset += count($batch);
+
+            try {
+                foreach ($batch as $church) {
+                    DB::table('updates')->insert([
+                        'uid' => $user->uid,
+                        'tid' => $church->id,
+                    ]);
+                }
+                self::sendWeeklyEmail($user, $batch);
+                $stats['users_processed']++;
+                $stats['churches_assigned'] += count($batch);
+                $stats['emails_sent']++;
+            } catch (\Throwable $e) {
+                $stats['errors'][] = "user {$user->uid}: " . $e->getMessage();
+            }
         }
 
-        //változók a levélhez
-        $query = "
-            SELECT count(*),t.nev FROM eszrevetelek
-                    RIGHT JOIN templomok t ON t.id = eszrevetelek.hol_id
-                WHERE datum > '" . date('Y-m-d H:i:s', strtotime("-1 week")) . "' 
-                    AND ok = 'i' 
-                    AND orszag = 12
-                    AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-                GROUP BY hol_id
-        ;";
-        $result = mysql_query($query);
-        $M = mysql_num_rows($result);
+        self::report('assignUpdates', $stats);
+        return $stats;
+    }
 
-
-        $query = "
-            SELECT count(*) FROM templomok t
-                WHERE frissites > '" . date('Y-m-d', strtotime("-6 months")) . "' 
-                    AND ok = 'i' 
-                    AND orszag = 12
-                    AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-        ;";
-        $result = mysql_query($query);
-        $tmp = mysql_fetch_row($result);
-        $L = $tmp[0];
-
-        $query = "
-            SELECT count(*) FROM templomok t
-                WHERE frissites < '" . date('Y-m-d', strtotime("-2 years")) . "' 
-                    AND ok = 'i' 
-                    AND orszag = 12
-                    AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-        ;";
-        $result = mysql_query($query);
-        $tmp = mysql_fetch_row($result);
-        $O = $tmp[0];
-
-
-
-        //minden felhasználó egyesével
-        $c = 0;
-        foreach ($users as $uid => $user) {
-
-            $templomok = array_slice($templomokFull, $c * $limit, $limit, true);
-            $c++;
-
-            $list = "<ul>";
-            foreach ($templomok as $tid => $templom) {
-                $query = "INSERT INTO updates (uid,tid) VALUES (" . $uid . "," . $tid . ");";
-                if ($config['debug'] < 1)
-                    mysql_query($query);
-                else
-                    echo $query . "\n<br/>";
-                // FIXME for Issue #257
-                $list .= "<li><a href='http://miserend.hu/templom/" . $templom['id'] . "'>" . $templom['nev'] . "</a>";
-                if ($templom['ismertnev'] != '')
-                    $list .= " (" . $templom['ismertnev'] . ")";
-                $list .= ", " . $templom['varos'];
-                $list .= " <font size='-1'>- utolsó frissítés: " . preg_replace('/-/', '. ', $templom['frissites']) . ".</font>";
-                $list .="</li>";
+    /**
+     * A futás összegzése a kimenetre.
+     *
+     * A cron-futtató eldobja a visszatérési értéket, tehát enélkül sem a cron-oldalon,
+     * sem a `docker logs`-ban nem látszott, csinált-e egyáltalán valamit a munka.
+     */
+    private static function report(string $what, array $stats): void {
+        $parts = [];
+        foreach ($stats as $key => $value) {
+            if ($key === 'errors') {
+                continue;
             }
-            $list .= "</ul>";
+            $parts[] = $key . '=' . $value;
+        }
+        echo 'Campaign::' . $what . '(): ' . implode(', ', $parts)
+            . ', errors=' . count($stats['errors']) . "\n";
 
-            //változók a levélhez
-
-            if ($user['becenev'] != '')
-                $nev = $user['becenev'];
-            elseif ($user['nev'] != '')
-                $nev = $user['nev'];
-            else
-                $nev = $user['login'];
-
-            $query = "
-                SELECT count(*),t.nev FROM eszrevetelek e
-                        RIGHT JOIN templomok t ON t.id = e.hol_id
-                    WHERE datum > '" . date('Y-m-d H:i:s', strtotime("-1 week")) . "' 
-                        AND e.login = '" . $user['login'] . "' OR e.email = '" . $user['email'] . "' 
-                        AND ok = 'i' 
-                        AND orszag = 12
-                        AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-                    GROUP BY hol_id
-            ;";
-            $result = mysql_query($query);
-            $N = mysql_num_rows($result);
-
-
-            if ($O > $L)
-                $ol = "de még";
-            else
-                $ol = "és már csak";
-
-            $mail = new \Eloquent\Email();
-
-            $mail->subject = "Miserend frissítése, " . date('W') . ". hét";
-            $text = "
-                <strong>Kedves $nev!</strong>\n
-                <p>A <a href='http://miserend.hu'>miserend.hu</a>-n a múlt héten $M magyarországi templomhoz kaptunk észrevételt. ";
-            if ($N == 0)
-                $text .= "Reméljük, a héten te is tudsz küldeni helyesbítést.";
-            elseif ($N * 5 < $M)
-                $text .= "Te $N észrevételt küldtél be. És pont az ilyen sok kicsi ment ilyen sokra. ";
-            else
-                $text .= "Ebből $N templomhoz te küldtél be helyesbítést. Nagyon köszönjük! ";
-            $text .= "
-                Összesen már $L templomnak vannak fél évnél frissebb adatai, $ol $O nagyon régen frissített magyarországi templom van az adatbázisunkban.</p>\n
-                <p>A következő héten a következő " . $numbers[count($templomok)] . " templom miserendjének frissítésében kérjük a te segítségedet:\n
-                " . $list;
-
-            $text .= <<<EOT
-                <p>Amire érdemes figyelni információ kereséskor:</p>
-                <ul>
-                    <li>Nem csak azktuális miserendre szükséges rákérdezni, hanem minden más időszak miserendjére is. Pl. téli/nyári miserend, adventi idő, hétköznapra eső ünnepek. (Bármilyen egyéb időszak is felvihető a rendszerünkbe.)</li>
-                    <li>Fontos megtudni, hogy mikor van a téli/nyári időszak határa (és minden más időszak határa). A tanévvel van összehangolva? Vagy a napfordulóval? Esetleg egy konkrét ünneppel?</li>
-                    <li>A legbiztosabb információt közvetlen az atyától, sekrestyéstől vagy titkártól lehet kapni. A plébániai honlapok nagyon sokszor teljesen elavultak és amúgy is csak az aktuális miserendet tartalmazzák.</li>
-                    <li>Ha a plébániához nincs megfelelő elérhetőség, akkor az egyházmegyei honlapot ill. annak használhatatlansága esetén az egyházmegyei titkárságot érdemes megkeresni. Ha sikerül élő elérhetőséget szerezni a plébániához, akkor azt is küldjük be a miseadatokkal. (Személyes mobilszámokat csak akkor adjunk meg, ha a tulajdonos hozzájárult, hogy megjelenjen a honlapon.)</li>
-                    <li>Egy-egy plébániához/paphoz általában több templom is tartozik. Ha már sikerült felvenni egy illetékessel a kapcsolatot, akkor érdemes a fíliák és kapcsolódó templomok adatait is megtudni.</li>
-                    <li>Ha hiába régen volt már frissítés, mégis minden adat stimmel a honlapunkon, akkor is kérünk visszajelzést, hogy tudjuk, nem kell újra ellenőrizni.</li>
-                    <li><strong>A visszajelzéseket lehetőség szerint a templom oldalán az észrevétel beküldésénkeresztül kérjük feltölteni.</strong> Segít, ha be vagy jelentkezve, így tudjuk, hogy mebízható forrásból származik az információ. </li>
-                </ul>
-
-    EOT;
-            $text .= "<p><strong>Segítségedet nagyon köszönjük!</strong></p><p>&nbsp;&nbsp;A miserend.hu önkéntes csapata</p>\n
-                <p><font size='-1'>Ezt a levelet azért kaptad, mert a <a href='http://misrend.hu'>miserend.hu</a> honlapon egyszer jelentkeztél önkéntes frissítőnék. Vállalásodat bármikor visszavonhatod a <a href='http://miserend.hu/?m_id=28&m_op=add'>személyes beállításadinál</a>, vagy írhatsz az <a href='mailto:eleklaszlosj@gmail.com'>eleklaszlosj@gmail.com</a> címre. Technikai segítség szintén az <a href='mailto:eleklaszlosj@gmail.com'>eleklaszlosj@gmail.com</a> címen kérhető.</font></p>
-            ";
-            $mail->type = "heti7templom_hetiadag";
-            $mail->body = $text;
-            $mail->Send($user['email']);
-            /* */
+        foreach ($stats['errors'] as $error) {
+            echo '  HIBA: ' . $error . "\n";
         }
     }
 
-    function clearoutVolunteers() {
-        $query = "
-        SELECT user.uid,
-            (IF (login.count IS NULL,0,login.count) + IF (email.count IS NULL,0,email.count)) as eszrevetelek,
-            IF (updates.count IS NULL,0,updates.count) as updates
-        FROM user 
-        LEFT JOIN (
-            SELECT count(*) as count,login 
-            FROM eszrevetelek 
-            WHERE datum > '" . date('Y-m-d H:i:s', strtotime("-1 month")) . "' 
-            GROUP BY login
-            ) login 
-            ON login.login = user.login
-        LEFT JOIN (
-            SELECT count(*) as count,email 
-            FROM eszrevetelek 
-            WHERE datum > '" . date('Y-m-d H:i:s', strtotime("-1 month")) . "'
-                AND login like '*vendeg*' GROUP BY email 
-            ) email 
-            ON email.email = user.email
-        LEFT JOIN (
-            SELECT count(*) as count,uid
-            FROM updates 
-            WHERE timestamp > '" . date('Y-m-d H:i:s', strtotime("-1 month")) . "'
-            GROUP BY uid
-            ) updates 
-            ON updates.uid = user.uid    
+    /**
+     * #315: inaktív önkéntesek visszafogása. Akitől az utóbbi hónapban SEMMI nem
+     * érkezett be, annak a `volunteer` flagjét kivesszük. Email-figyelmeztetés is megy.
+     *
+     * A feltétel korábban az `updates` táblát is nézte („aki nem hozott be updates
+     * sort"), és ez félreértés volt. Az `updates`-be egyedül az assignUpdates() ír,
+     * amikor KIOSZTJA a templomokat — tehát az a kiosztás naplója, nem a munkáé.
+     * Minden önkéntes hetente kap hét sort, így a feltétel gyakorlatilag soha nem
+     * teljesült: a takarítás sosem fogott meg senkit. Fordítva pedig igazságtalan
+     * volt: aki azért nem kapott kiosztást, mert épp nem akadt kiosztható templom,
+     * az inaktívnak látszott.
+     *
+     * Tevékenységnek ezért azt tekintjük, amit a felhasználó BEKÜLDÖTT: észrevétel
+     * vagy javaslat-csomag. Amíg a `updates` tábla nem jelzi a munka elvégzését,
+     * addig nem is használható erre.
+     */
+    public static function clearoutVolunteers(): array {
+        $stats = ['cleared' => 0, 'errors' => []];
+        $monthAgo = (new DateTime())->modify('-1 month')->format('Y-m-d H:i:s');
 
-        WHERE volunteer = 1;";
+        $inactives = DB::table('user')
+            ->select('user.uid', 'user.login', 'user.email', 'user.nev', 'user.becenev')
+            ->where('user.volunteer', 1)
+            ->whereNotExists(function ($q) use ($monthAgo) {
+                // #315: a tábla `eszrevetelek` -> `remarks`, a submission-dátum
+                // `datum` -> `created_at` (a `login` oszlop megmaradt).
+                $q->select(DB::raw(1))->from('remarks')
+                  ->whereColumn('remarks.login', 'user.login')
+                  ->where('remarks.created_at', '>', $monthAgo);
+            })
+            ->whereNotExists(function ($q) use ($monthAgo) {
+                // A javaslat-csomag ugyanúgy beküldött munka, mint az észrevétel —
+                // az állapota itt mindegy, a beküldés ténye számít.
+                $q->select(DB::raw(1))->from('cal_suggestion_packages')
+                  ->whereColumn('cal_suggestion_packages.sender_user_id', 'user.uid')
+                  ->where('cal_suggestion_packages.created_at', '>', $monthAgo);
+            })
+            ->get();
 
-        $limit = 10;
-        $c = 1;
-        $result = mysql_query($query);
-        $volunteer = array();
-        while ($volunteer = mysql_fetch_assoc($result)) {
-            if ($volunteer['updates'] > 0 AND $volunteer['eszrevetelek'] == 0) {
-
-                $user = new User($volunteer['uid']);
-                if ($user->nickname != '')
-                    $nev = $user->nickname;
-                elseif ($user->name != '')
-                    $nev = $user->name;
-                else
-                    $nev = $user->username;
-
-
-                $mail = new \Eloquent\Email();
-
-                $mail->subject = "Miserend önkéntesség";
-
-                $text = <<<EOD
-                <strong>Kedves $nev!</strong>\n
-                <p>Templomaink miserendjének frissentartása elképzelhetetlen lenne önkéntesek segítsége nélkül. Sajnáljuk, hogy az elmúlt hónapban nem állt módodban teljesíteni vállalásodat. Ezért, hogy aktív önkénteseinknek biztosan jusson elég frissítendő adat, feloldunk önkéntes vállalásod alól. A továbbiakban nem küldünk neked frissítendő templomokat emailben.</p>\n
-                <p>Észrevételeidet, helyesbítéseidet továbbra is köszönettel várjuk a honlapon keresztül. Valamint, ha mégis tudod vállalni újra heti hét templom frissítését, a honlapon a <a href='http://miserend.hu/?m_id=28&m_op=add'>személyes beállításadinál</a> vállalásodat megteheted.</p>\n
-                <p><strong>Köszönjük korábbi és majdani minden helyesbítésedet!</strong></p>
-                <p>&nbsp;&nbsp;A miserend.hu önkéntes csapata</p>\n
-    EOD;
-                $text .= "<p><font size='-1'>Ezt a levelet azért kaptad, mert a <a href='http://misrend.hu'>miserend.hu</a> honlapon egyszer jelentkeztél önkéntes frissítőnék. Vállalásodat bármikor módosíthatod a <a href='http://miserend.hu/?m_id=28&m_op=add'>személyes beállításadinál</a>, vagy írhatsz az <a href='mailto:eleklaszlosj@gmail.com'>eleklaszlosj@gmail.com</a> címre. Technikai segítség szintén az <a href='mailto:eleklaszlosj@gmail.com'>eleklaszlosj@gmail.com</a> címen kérhető.</font></p>
-            ";
-                $mail->body = $text;
-                $mail->type = "heti7templom_lemondas";
-                $mail->Send($user->email);
-                $user->presave('volunteer', 0);
-                $user->save();
-                $c++;
-                if ($c > $limit)
-                    return true;
+        foreach ($inactives as $user) {
+            try {
+                DB::table('user')->where('uid', $user->uid)->update(['volunteer' => 0]);
+                $stats['cleared']++;
+                // Mint a régi Campaign-ben: udvariasan értesítjük is őket, hogy ne
+                // egy „hirtelen elhalkulás" legyen — kérdés nélkül vissza tudják állítani.
+                try {
+                    self::sendOptOutEmail($user);
+                } catch (\Throwable $mailErr) {
+                    $stats['errors'][] = "opt-out mail user {$user->uid}: " . $mailErr->getMessage();
+                }
+            } catch (\Throwable $e) {
+                $stats['errors'][] = "user {$user->uid}: " . $e->getMessage();
             }
         }
-        return true;
+
+        self::report('clearoutVolunteers', $stats);
+        return $stats;
     }
 
-    function updatesCampaign() {
-        global $twig, $user;
-
-        $query = "SELECT count(*) FROM user WHERE ok = 'i'  AND volunteer = 1;";
-        $result = mysql_query($query);
-        $tmp = mysql_fetch_row($result);
-        $C = $tmp[0];
-
-        $query = "
-                SELECT count(*) FROM templomok t
-                    WHERE frissites < '" . date('Y-m-d', strtotime("2015-12-24 -2 years")) . "' 
-                        AND ok = 'i' 
-                        AND orszag = 12
-                        AND ( t.nev LIKE '%templom%' OR t.nev LIKE '%bazilika%' OR t.nev LIKE '%székesegyház%')
-            ;";
-        $result = mysql_query($query);
-        $tmp = mysql_fetch_row($result);
-        $O = $tmp[0];
-
-        $W = date('W', strtotime('2015-12-24')) - date('W');
-
-        $S = (int) ( $O / $W / 7 ) + 1;
-
-        if ($O > $L)
-            $ol = "de még";
-        else
-            $ol = "és már csak";
-
-        $dobozszoveg = "<span class='alap'>Alig $S önkéntes heti hét templom miserendjének frissítésével karácsonyra naprakésszé teheti az összes magyarországi templomot. <strong>Már $C ember segít nekünk";
-
-        if ($C >= $S)
-            $dobozszoveg .= ", de segítő kézre még szükségünk van. ";
-        else
-            $dobozszoveg .= ". ";
-        if ($user->volunteer == 1)
-            $dobozszoveg .= "Köszönjük, hogy te is köztük vagy!";
-        else
-            $dobozszoveg .= "<a href='mailto:eleklaszlosj@gmail.com?subject=Önkéntesnek jelentkezem'>Jelentkezz te is!</a>";
-
-        $dobozszoveg .= "</strong></span>";
-
-        $variables = array(
-            'header' => array('content' => 'Hét nap, hét frissítés'),
-            'content' => nl2br($dobozszoveg),
-            'settings' => array('width=100%', 'align=center', 'style="padding:1px"'),
-        );
-
-        if ($C >= ( $S * 2 )) {
-            return false;
-        }
-
-        return array(
-            'title' => 'Hét nap, hét frissítése',
-            'content' => nl2br($dobozszoveg)
-        );
+    /**
+     * #315: opt-out értesítés az inaktívvá tett önkéntesnek.
+     * A régi Campaign-ben is ment ilyen email — most külön Twig template-tel,
+     * udvarias hangnemmel, link a profil-oldalra.
+     */
+    private static function sendOptOutEmail($user): void {
+        $name = $user->becenev ?: ($user->nev ?: $user->login);
+        $mail = new \Eloquent\Email();
+        $mail->render('volunteer_optout', [
+            'name' => $name,
+            'addressee' => $user,
+        ]);
+        $mail->send($user->email);
     }
 
-    
+    /**
+     * #315: a heti email-küldés segédje. A Twig template-tel rendereljük,
+     * az Email osztály SMTP-vel küldi (a `notifications` flag-et az önkéntes-
+     * választás explicit felülírja, mert az opt-in egy másik, saját akarat).
+     */
+    private static function sendWeeklyEmail($user, array $churches): void {
+        $name = $user->becenev ?: ($user->nev ?: $user->login);
+        $week = (int) date('W');
+
+        $mail = new \Eloquent\Email();
+        $mail->render('volunteer_weekly', [
+            'name' => $name,
+            'week_number' => $week,
+            'churches' => array_map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'nev' => $c->nev,
+                    'ismertnev' => $c->ismertnev,
+                    // #497/#824: a település a boundary-ból, a lekérdezés alkérdésével.
+                    'varos' => $c->varos ?? '',
+                    'frissites' => $c->frissites,
+                ];
+            }, $churches),
+            'addressee' => $user,
+        ]);
+        $mail->send($user->email);
+    }
 }

@@ -15,8 +15,7 @@
     "leaflet": "1.9.*",
     "leaflet-polylinedecorator": "1.6.*",
     "leaflet-textpath": "1.2.*",
-    "lightbox2": "2.*",
-    "requirejs": "2.1.11"
+    "lightbox2": "2.*"
   },
   "config": {
     "unsafe-perm": true

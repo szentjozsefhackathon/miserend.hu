@@ -1,0 +1,11 @@
+{#
+    #809: a megszólítás egy helyen.
+
+    borazslo észrevétele: „A twig levél template címzésében az emberünk neve egy hosszú
+    sor sok-sok if-el. De nem szoktuk ilyen hosszan írni, nem?"
+
+    Igaza van, csak ez nem az én találmányom volt: ugyanez a sor szó szerint hét
+    levélsablonban szerepelt. Így egy helyen áll, és ha valaha változik a sorrend
+    (becenév -> név -> belépőnév), nem kell hét fájlt átírni.
+#}
+{%- if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif -%}

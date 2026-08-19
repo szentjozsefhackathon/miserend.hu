@@ -62,28 +62,30 @@
                 <td></td>
             </tr>
            
-            {% if not church.varos %}
+            {#
+                #496 / #497 / #498: itt állt a kaszkádos ország -> megye -> város
+                választó. A hely mostantól a koordinátából és az OSM-határokból jön,
+                tehát nincs mit választani — csak megmutatjuk, mi jött ki belőle.
+                A közterület (`cim`) marad szerkeszthető: az nincs a határokban.
+            #}
             <tr>
                 <td class=kiscim align=right>Elhelyezkedés:</td>
                 <td>
-                    {% if church.osm.administrative %}
-                        OSM 
-                        {% for key,administraion in church.osm.administrative %}
-                            > {{ administraion.name }}
-                        {% endfor %}   
+                    {% if church.location.country or church.location.city %}
+                        <span class="alap">
+                            {{ church.location.country.name }}{% if church.location.county %} &gt; {{ church.location.county.name }}{% endif %}{% if church.location.city %} &gt; {{ church.location.city.name }}{% endif %}{% if church.location.district %} &gt; {{ church.location.district.name }}{% endif %}
+                        </span>
+                        <small class="text-muted d-block">Az OSM-határokból, a térképi elhelyezés alapján.</small>
+                    {% else %}
+                        <small class="text-muted d-block">
+                            Nincs OSM-határ ehhez a templomhoz. Az elhelyezkedés a koordináta
+                            megadása után, a határok szinkronizálásakor jelenik meg.
+                        </small>
                     {% endif %}
-                    {{ forms.select(form.country) }}
-                    {% for county in form.counties %}
-                        {{ forms.select(county) }}
-                    {% endfor %}
-                    {% for city in form.cities %}
-                        {{ forms.select(city) }}
-                    {% endfor %}
-                    <input type=text name=church[cim] value="{{ church.cim }}" class=form-control  placeholder="Utca házszám">                                                    
+                    <input type=text name=church[cim] value="{{ church.cim }}" class=form-control  placeholder="Utca házszám">
                 </td>
                 <td></td>
             </tr>
-            {%  endif %}
             {% if church.location.osm %}
                 <tr>
                     <td class=kiscim align=right>OSM azonosító:</td>

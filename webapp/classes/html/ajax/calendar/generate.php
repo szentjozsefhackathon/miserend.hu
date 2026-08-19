@@ -129,24 +129,6 @@ class Generate extends \Html\Ajax\Calendar\CalendarApi {
     }
 
     
-    private function convertRangeToUtc(?int $min, ?int $max, Carbon $date): array
-    {
-        $range = [];
-
-        if ($min !== null) {
-            $local = $date->copy()->setTime(floor($min / 60), $min % 60);
-            $utc   = $local->copy()->setTimezone('UTC');
-            $range['gte'] = $utc->hour * 60 + $utc->minute;
-        }
-
-        if ($max !== null) {
-            $local = $date->copy()->setTime(floor($max / 60), $max % 60);
-            $utc   = $local->copy()->setTimezone('UTC');
-            $range['lte'] = $utc->hour * 60 + $utc->minute;
-        }
-
-        return $range;
-    }
 
   
     

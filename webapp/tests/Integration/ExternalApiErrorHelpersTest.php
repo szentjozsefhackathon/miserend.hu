@@ -83,7 +83,41 @@ class ExternalApiErrorHelpersTest extends TestCase {
         $api = new ExternalApi();
         $api->error = "some error";
         $html = $api->getErrorMessageHtml('Az Overpass API nem elérhető');
-        
+
         $this->assertStringContainsString('Az Overpass API nem elérhető', $html);
+    }
+
+    // ── buildQuery() ────────────────────────────────────────────
+
+    /**
+     * #833: a `runQuery()` mindig hívja a `buildQuery()`-t, ha a `rawQuery` még
+     * nincs meg — de az ősosztály eddig nem mondta ki, hogy ez a szerződés része.
+     * Minden leszármazott véletlenül megvalósította; egy új szolgáltatás, ami
+     * elfelejti, „Call to undefined method"-dal szállt volna el.
+     */
+    public function testBuildQueryMegmondjaMiHianyzik(): void {
+        $api = new ExternalApi();
+
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('nincs buildQuery()');
+
+        $api->buildQuery();
+    }
+
+    /** A meglévő leszármazottak mind megvalósítják — ezt is rögzítem. */
+    public function testMindenLeszarmazottnakVanBuildQueryje(): void {
+        $hianyzik = [];
+
+        foreach (glob(PATH . 'classes/externalapi/*.php') as $fajl) {
+            $osztaly = 'ExternalApi\\' . basename($fajl, '.php');
+            if (!class_exists($osztaly) || !is_subclass_of($osztaly, ExternalApi::class)) {
+                continue;
+            }
+            if ((new \ReflectionMethod($osztaly, 'buildQuery'))->getDeclaringClass()->getName() === ExternalApi::class) {
+                $hianyzik[] = $osztaly;
+            }
+        }
+
+        $this->assertSame([], $hianyzik, 'ezek az ősosztály hibát dobó buildQuery()-jét öröklik');
     }
 }

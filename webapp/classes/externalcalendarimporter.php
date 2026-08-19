@@ -1,61 +1,6 @@
 <?php
 
-/**
- * Detect and convert content to UTF-8
- * Handles charset from headers and validates UTF-8
- *
- * @param string $content Raw content from download
- * @param string $contentType HTTP Content-Type header (optional)
- * @return string UTF-8 encoded content
- * @throws \Exception
- */
-function ensureUtf8($content, $contentType = '') {
-    // 1. Extract charset from Content-Type header if provided
-    $charset = 'UTF-8';
-    if (!empty($contentType) && preg_match('/charset\s*=\s*([^\s;]+)/i', $contentType, $matches)) {
-        $charset = strtoupper(trim($matches[1], '"\''));
-    }
-    
-    // 2. Remove UTF-8 BOM if present
-    if (substr($content, 0, 3) === "\xEF\xBB\xBF") {
-        $content = substr($content, 3);
-    }
-    
-    // 3. Convert to UTF-8 if not already
-    if ($charset !== 'UTF-8' && $charset !== 'UTF8') {
-        $content = iconv($charset, 'UTF-8//IGNORE', $content);
-        if ($content === false) {
-            throw new \Exception("Failed to convert charset from $charset to UTF-8");
-        }
-    }
-    
-    // 4. Validate and sanitize UTF-8
-    if (!mb_check_encoding($content, 'UTF-8')) {
-        // Remove invalid UTF-8 sequences
-        $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
-    }
-    
-    return $content;
-}
 
-/**
- * Sanitize string for database storage
- * Ensures valid UTF-8 encoding without null bytes or control characters
- *
- * @param string $text
- * @return string
- */
-function sanitizeUtf8($text) {
-    // Remove null bytes
-    $text = str_replace("\0", '', $text);
-    
-    // Validate/fix UTF-8
-    if (!mb_check_encoding($text, 'UTF-8')) {
-        $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
-    }
-    
-    return trim($text);
-}
 
 /**
  * External Calendar Importer
@@ -453,6 +398,54 @@ class ExternalCalendarImporter {
     }
 
     /**
+     * #765: az RRULE `BYDAY` értékének feldolgozása (RFC 5545).
+     *
+     * Alakja vesszős lista, elemenként opcionális előjeles sorszámmal:
+     *   `SU,MO`      → minden vasárnap és hétfő
+     *   `2SU`        → minden hónap 2. vasárnapja
+     *   `-1FR`       → a hónap utolsó péntekje
+     *
+     * A `byweekday` MINDIG tömb — ez volt a hiba forrása: a sorszámos ág korábban
+     * stringet adott, és a SimpleRRule típus-kikötése elhasalt rajta.
+     *
+     * A sorszám a `bysetpos`-ba megy. Több, KÜLÖNBÖZŐ sorszámot (pl. `1SU,3SU`) nem
+     * tudunk leképezni erre az egy mezőre, ezért azt inkább elutasítjuk — a néma,
+     * fél-jó ismétlődés rosszabb, mint a kihagyott szabály.
+     *
+     * @return array{byweekday: string[], bysetpos: int|null}|null null: nem értelmezhető
+     */
+    public static function parseByDay(string $value): ?array
+    {
+        $napok = [];
+        $sorszamok = [];
+
+        foreach (explode(',', $value) as $elem) {
+            $elem = trim($elem);
+            if ($elem === '' || !preg_match('/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/i', $elem, $m)) {
+                return null;
+            }
+            $napok[] = strtoupper($m[2]);
+            if (($m[1] ?? '') !== '') {
+                $sorszamok[] = (int) $m[1];
+            }
+        }
+
+        if ($napok === []) {
+            return null;
+        }
+
+        $sorszamok = array_values(array_unique($sorszamok));
+        if (count($sorszamok) > 1) {
+            return null;
+        }
+
+        return [
+            'byweekday' => $napok,
+            'bysetpos' => $sorszamok === [] ? null : $sorszamok[0],
+        ];
+    }
+
+    /**
      * #756: a `cal_masses.title` varchar(255) — a hosszabb SUMMARY-tól az import
      * elhasalt („Data too long"). Élő eset a templom/282 gyászmise-bejegyzése, ami a
      * teljes gyászjelentést beleírta a címbe (~430 karakter).
@@ -660,18 +653,32 @@ class ExternalCalendarImporter {
                 if ($value) {
                     if($key == 'FREQ') $value = strtolower($value);
                     
-                    if($key == 'BYDAY' AND preg_match('/^(SU|MO|TU|WE|TH|FR|SA)(,(SU|MO|TU|WE|TH|FR|SA))*$/', $value)) {
-                        // Convert BYDAY=SU,MO to ["SU", "MO"]                        
-                        $ruleArray["byweekday"] = explode(',', $value);
-                    }
-
-                    else if($key === 'BYDAY' AND preg_match('/^(1|2|3|4|5|-1)(SU|MO|TU|WE|TH|FR|SA)*$/', $value, $match)) {
-                        $ruleArray["bysetpos"] = (int)$match[1];
-                        $ruleArray["byweekday"] = $match[2];                        
+                    if ($key === 'BYDAY') {
+                        /*
+                         * #765: a BYDAY kétféle alakja eddig KÉTFÉLE TÍPUST adott:
+                         * a `SU,MO` tömböt, a `2SU` viszont sima stringet. A SimpleRRule
+                         * tömböt vár, ezért a második alak TypeError-ral megölte az egész
+                         * import futását (templom/281).
+                         *
+                         * A régi minta ráadásul némán veszített adatot: a
+                         * `(SU|MO|…)*` ismétlődő csoportból csak az UTOLSÓ találat
+                         * maradt meg, tehát egy `2SU,2MO` alakból a vasárnap eltűnt.
+                         *
+                         * Most az RFC 5545 szerint bontunk: vesszős lista, elemenként
+                         * opcionális előjeles sorszámmal.
+                         */
+                        $parsed = self::parseByDay($value);
+                        if ($parsed === null) {
+                            throw new \Exception("Unsupported RRULE parameter: $key - skipping RRULE: ". $rrule);
+                        }
+                        $ruleArray['byweekday'] = $parsed['byweekday'];
+                        if ($parsed['bysetpos'] !== null) {
+                            $ruleArray['bysetpos'] = $parsed['bysetpos'];
+                        }
                     }
                     else {
                         
-                        if($key == "BYDAY" OR $key == "BYMONTHDAY") {
+                        if($key == "BYMONTHDAY") {
                         throw new \Exception("Unsupported RRULE parameter: $key - skipping RRULE: ". $rrule);
                         }
 

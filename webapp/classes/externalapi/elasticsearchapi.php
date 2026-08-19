@@ -206,19 +206,6 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		return $this->responseCode == 200;
 	}
 
-	function deleteIndex($name) {
-
-		$this->curl_setopt(CURLOPT_CUSTOMREQUEST ,"DELETE");
-		$this->buildQuery($name);
-		$this->run();
-
-		if($this->responseCode != 200)
-			return false;
-		if(!isset($this->jsonData->acknowledged) OR $this->jsonData->acknowledged != 1)
-			return false;
-		
-		return true;
-	}
 	
 	/**
 	 * #374: Az ES _bulk NDJSON-payload összeállítása. Tömb-elemeket json_encode-ol,
@@ -1028,6 +1015,123 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		}
 
 		return $failedChurches;
+	}
+
+	/**
+	 * #826: MELYIK indexelt templomnak hiányzik a `location` mezője?
+	 *
+	 * A `churchesMissingLocation()` csak a darabszámot mondja meg, és a health oldal
+	 * ezért teljes újraindexelést javasol — kézzel, deploy után. Egy kézi lépés
+	 * viszont előbb-utóbb elmarad: élesben 22 templom állt így, és a „X km-en belül"
+	 * keresés NÉMÁN nem találta meg őket (nem hiba, csak nulla találat, amit a
+	 * látogató „nincs ilyen templom"-nak olvas).
+	 *
+	 * Az azonosítók ismeretében a pótlás célzott: nem kell mind az 5000 templomot
+	 * újraépíteni azért, mert huszonkettőből hiányzik egy mező.
+	 *
+	 * @return int[]|null null, ha az index nem kérdezhető
+	 */
+	function churchIdsMissingLocation(int $limit = 1000): ?array {
+		$this->curl_setopt(CURLOPT_CUSTOMREQUEST, "GET");
+		$this->buildQuery('churches/_search', json_encode([
+			'size' => $limit,
+			'_source' => false,
+			'query' => ['bool' => ['must_not' => [['exists' => ['field' => 'location']]]]],
+			/*
+			 * Rendezés nélkül az Elasticsearch nem ígér stabil sorrendet, tehát két
+			 * egymás utáni lekérdezés MÁS ezret adhatna vissza ugyanabból az ötezerből.
+			 * A `_doc` a legolcsóbb determinisztikus rendezés — így a pótlás
+			 * kiszámítható darabokban halad előre, nem ugrál összevissza.
+			 */
+			'sort' => ['_doc'],
+		]));
+		$this->run();
+
+		if ($this->responseCode != 200 || !isset($this->jsonData->hits->hits)) {
+			return null;
+		}
+
+		$ids = [];
+		foreach ($this->jsonData->hits->hits as $hit) {
+			$id = (int) ($hit->_id ?? 0);
+			if ($id > 0) {
+				$ids[] = $id;
+			}
+		}
+
+		return $ids;
+	}
+
+	/**
+	 * #826: a `location` nélkül indexelt templomok pótindexelése.
+	 *
+	 * A `reindexMissingMasses()` mintája, a másik indexre. Rendszeres futással a
+	 * hiány magától elfogy, tehát nem marad kézi deploy-lépésnek.
+	 *
+	 * @return array{candidates:int,reindexed:int,still_missing:int}
+	 */
+	static function reindexChurchesWithoutLocation(int $limit = 500, ?callable $logger = null): array {
+		$log = $logger ?? function($msg) {};
+		$elastic = new \ExternalApi\ElasticsearchApi();
+
+		if (!$elastic->isexistsIndex('churches')) {
+			$log("Nincs churches index — a pótindexelésnek nincs mit tennie.");
+			return ['candidates' => 0, 'reindexed' => 0, 'still_missing' => 0];
+		}
+
+		$ids = $elastic->churchIdsMissingLocation($limit);
+		if ($ids === null) {
+			$log("A churches index nem kérdezhető le.");
+			return ['candidates' => 0, 'reindexed' => 0, 'still_missing' => 0, 'no_coordinates' => 0];
+		}
+		if ($ids === []) {
+			$log("Minden indexelt templomnak van koordinátája.");
+			return ['candidates' => 0, 'reindexed' => 0, 'still_missing' => 0, 'no_coordinates' => 0];
+		}
+
+		/*
+		 * #826: csak azt indexeljük újra, aminek VAN mit indexelni.
+		 *
+		 * A hiányzó `location` két, teljesen különböző okból állhat elő:
+		 *
+		 *  - a dokumentum elavult (a mező azóta került a kódba)  -> újraindexelés javítja;
+		 *  - a templomnak NINCS koordinátája az adatbázisban      -> soha nem javítja.
+		 *
+		 * Élesben mind a 15 hiányzó a MÁSODIK fajta volt. Szűrés nélkül ez a cron
+		 * hatóránként újraindexelte volna ugyanazt a 15 templomot, örökre, eredmény
+		 * nélkül — és a health oldal is teljes újraindexelést javasolt rájuk, ami
+		 * szintén nem segített volna. Az ő bajuk adatbaj (#497), nem index-baj.
+		 */
+		$indexelheto = \Eloquent\Church::whereIn('id', $ids)
+				->whereNotNull('lat')->where('lat', '!=', 0)
+				->whereNotNull('lon')->where('lon', '!=', 0)
+				->pluck('id')->map('intval')->all();
+
+		$koordinataNelkul = count($ids) - count($indexelheto);
+		if ($koordinataNelkul > 0) {
+			$log("$koordinataNelkul templomnak nincs koordinátája — őket nem az index, hanem az adat hiánya érinti (#497).");
+		}
+
+		if ($indexelheto === []) {
+			return ['candidates' => 0, 'reindexed' => 0, 'still_missing' => count($ids),
+			        'no_coordinates' => $koordinataNelkul];
+		}
+
+		$log("Pótindexelés " . count($indexelheto) . " templomra.");
+		self::updateChurches($indexelheto);
+		$ids = $indexelheto;
+
+		// A bulk insert alapból ~1 másodperc múlva válik kereshetővé; enélkül a
+		// visszaellenőrzés hamis „még mindig hiányzik" eredményt adna.
+		$elastic->refreshIndex('churches');
+		$maradek = $elastic->churchIdsMissingLocation($limit);
+
+		return [
+			'candidates'     => count($ids),
+			'reindexed'      => count($ids),
+			'still_missing'  => $maradek === null ? 0 : count($maradek),
+			'no_coordinates' => $koordinataNelkul,
+		];
 	}
 
 	function churchIdsWithMassesInPeriod($startDate, $endDate) {

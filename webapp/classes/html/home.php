@@ -39,10 +39,11 @@ class Home extends Html {
         $churchIds = \Request::IntegerArray('church_ids') ?: [];
         if (!empty($churchIds)) {
             $this->churchDataJson = json_encode(
-                \Eloquent\Church::select('id', 'nev', 'varos')
+                \Eloquent\Church::select('id', 'nev')
                     ->whereIn('id', $churchIds)
                     ->get()
-                    ->map(fn($c) => ['id' => $c->id, 'name' => $c->nev, 'city' => $c->varos])
+                    // #497: a település a boundary-ból, visszaeséssel a régi oszlopra.
+                    ->map(fn($c) => ['id' => $c->id, 'name' => $c->nev, 'city' => $c->locationCityName()])
             );
         }
          
@@ -112,7 +113,11 @@ class Home extends Html {
         $this->langs = array_keys($langCounts);
         
         $this->photo = \Eloquent\Photo::big()->vertical()->where('flag', 'i')->orderbyRaw('RAND()')->first();
-        if($this->photo->church) //TODO: Van, hogy a random képhez nem is tartozik templom. Valami régi hiba miatt.
+        // A védés marad, de a mögötte álló jegyzet („van, hogy a random képhez nem is
+        // tartozik templom, valami régi hiba miatt") már nem igaz: 29 451 képből NULLA
+        // az árva, és nulla a törölt templomhoz tartozó. A `first()` viszont null-t adhat,
+        // ha egyáltalán nincs megfelelő kép — ezért a `photo` létét is nézzük.
+        if($this->photo AND $this->photo->church)
             $this->photo->church->location;
 
         $this->favorites = $user->getFavorites();

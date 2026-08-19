@@ -67,14 +67,30 @@ class ApiTest extends TestCase {
         $api->validateVersionMain();
     }
 
-    public function testValidateVersionMainRejectsVersion5() {
+    /**
+     * #56: itt korábban azt rögzítettük, hogy az 5-ös verzió NINCS. Azóta van, tehát a
+     * teszt a kiadott verziók listájával együtt mozgó számot mért — nem invariánst.
+     *
+     * A valódi állítás az, hogy a legújabbnál eggyel nagyobb verzió elutasításra kerül.
+     * Így a teszt akkor is helyes marad, amikor jön a v6.
+     */
+    public function testValidateVersionMainRejectsTheVersionAboveTheLatest() {
         $api = new Api();
-        $api->version = 5;
-        
+        $api->version = Api::LEGUJABB_VERZIO + 1;
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Invalid API version.');
-        
+
         $api->validateVersionMain();
+    }
+
+    /** A legújabb kiadott verziót viszont el kell fogadni. */
+    public function testValidateVersionMainAcceptsTheLatestVersion() {
+        $api = new Api();
+        $api->version = Api::LEGUJABB_VERZIO;
+
+        $api->validateVersionMain();
+        $this->assertSame(Api::LEGUJABB_VERZIO, $api->version);
     }
 
     public function testValidateVersionMainRejectsNonNumericVersion() {

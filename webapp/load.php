@@ -61,18 +61,7 @@ if (isset($_REQUEST['logout']) AND $_REQUEST['logout'] != 'false') {
 $user = \User::load();
 
 include_once('twig_extras.php');
-$loader = new \Twig\Loader\FilesystemLoader(PATH . 'templates');
-$twig = new \Twig\Environment($loader);
-$twig->addFilter(new \Twig\TwigFilter('miserend_date', 'twig_hungarian_date_format'));
-$twig->addFilter(new \Twig\TwigFilter('trans', 'twig_translate'));
-$twig->addFilter(new \Twig\TwigFilter('floor', 'floor'));
-$twig->addFilter(new \Twig\TwigFilter('phone_links', 'twig_phone_links'));
-$twig->addFilter(new \Twig\TwigFilter('strip_protocol', 'twig_strip_protocol'));
-$twig->addFilter(new \Twig\TwigFilter('facebook_path', 'twig_facebook_path'));
-$twig->addFilter(new \Twig\TwigFilter('readable_rrule', 'twig_readable_rrule'));
-// DANGER: a twig declarálva van / meg van hívva a Class/Html/Html.php -ban is. Így ott is módosítani kellhet a filterket
-$twig->addGlobal('domain', DOMAIN); // Environment-specific domain for email templates
-$twig->addGlobal('mcal_version', mcalVersion()); // naptár-bundle cache-buster, l. mcalVersion()
+$twig = buildTwigEnvironment();
 
 //
 //  Useful CONSTANTS

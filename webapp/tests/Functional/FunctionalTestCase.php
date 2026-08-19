@@ -37,11 +37,18 @@ abstract class FunctionalTestCase extends PantherTestCase
     private const CONNECTION_TIMEOUT_MS = 30000;
 
     /**
-     * Egyetlen WebDriver-kérés felső korlátja. Bőven a leglassabb oldalbetöltés fölött,
-     * de messze a CI 12 perces lépés-korlátja alatt — hogy a hiba a TESZTBŐL jöjjön,
-     * hibaüzenettel, ne a futtatóból.
+     * Egyetlen WebDriver-kérés felső korlátja.
+     *
+     * Eredetileg 120 másodperc volt, „bőven a leglassabb oldalbetöltés fölött". Csakhogy
+     * a teljes suite 80 teszttel együtt 59 másodperc, tehát egyetlen kérés sem közelíti
+     * ezt — a 120 másodperc nem tartalékot adott, hanem árat: ha a böngésző-munkamenet
+     * beakad, öt-hat ilyen kérés önmagában kimeríti a lépés 12 perces korlátját, és a
+     * job úgy hal meg, hogy EGYETLEN teszteredmény sem látszik.
+     *
+     * 30 másodperc bőven elég a leglassabb oldalra is, viszont egy beakadás így a
+     * hatodába kerül: a suite lefut, és megmondja, MELYIK teszt akadt meg.
      */
-    private const REQUEST_TIMEOUT_MS = 120000;
+    private const REQUEST_TIMEOUT_MS = 30000;
 
     protected static function pantherClient(array $options = []): PantherClient
     {
@@ -54,6 +61,26 @@ abstract class FunctionalTestCase extends PantherTestCase
             [
                 'connection_timeout_in_ms' => self::CONNECTION_TIMEOUT_MS,
                 'request_timeout_in_ms' => self::REQUEST_TIMEOUT_MS,
+                /*
+                 * A betöltés ne várja meg a képeket és a többi alerőforrást.
+                 *
+                 * Az alapértelmezett `normal` stratégiánál a WebDriver a `load` eseményig
+                 * vár, abba pedig minden `<img>` beleszámít — a templomok LEÍRÁSA viszont
+                 * szabad HTML, amibe a szerkesztők idegen kiszolgálókról ágyaznak be
+                 * képeket. A #2474-es templom leírásában például hat kép mutat a
+                 * `rakosliget.plebania.hu`-ra, sima HTTP-n. Ha az a szerver épp lassú a
+                 * futtatóról, a lap sosem készül el, és a teszt időtúllépéssel bukik —
+                 * miközben az alkalmazás a HTML-t 200-zal, azonnal kiszolgálta.
+                 *
+                 * Ez adta a korábbi néma beakadásokat is: a szerver rendben válaszolt, a
+                 * böngésző viszont egy harmadik fél képére várt. `eager` mellett a
+                 * betöltés a DOMContentLoaded-nél tér vissza. A tesztjeink a DOM
+                 * tartalmát mérik, és ahol tényleg megjelenésre várnak, ott úgyis
+                 * kifejezett `waitFor()` áll.
+                 */
+                'capabilities' => [
+                    'pageLoadStrategy' => 'eager',
+                ],
             ]
         );
     }

@@ -47,8 +47,18 @@ class User extends Api {
             throw new \Exception("Invalid token.");
         }    
         
-        //TODO: delete global somehow
-        global $user;
+        /*
+         * #832: a felhasználó itt LOKÁLIS, nem globális.
+         *
+         * A `global $user` a munkamenet felhasználóját írta felül az egész kérésre —
+         * pedig itt csak a token tulajdonosának adatai kellenek, és utána már senki
+         * nem nyúl hozzá. Végigmentem az API-útvonalon: sem a `Html\Api`, sem a
+         * `Html\Html`, sem a hívott `User`-metódusok nem olvassák a globált.
+         *
+         * A távolba ható értékadás azért veszélyes, mert némán megváltoztatja, KI a
+         * felhasználó a kérés hátralévő részében — és ha valaha kerül ide egy
+         * jogosultság-vizsgálat, az nem a bejelentkezettet fogja nézni.
+         */
         $user = new \User($token->uid);
         
         $data = array(

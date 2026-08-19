@@ -103,3 +103,11 @@
  flex-direction: column;
  gap: 1em;
 }
+
+/* #506: a templomválasztó a dialógus TELJES szélességét kapja.
+   A `mat-form-field` alapból inline-block, fix szélességgel — borazslo emiatt látta
+   „csak egy oszlopban". A dialógus első döntése ne szoruljon fél sorba. */
+.church-selector {
+  display: block;
+  width: 100%;
+}

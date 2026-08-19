@@ -27,7 +27,6 @@ class ChurchNeighboursTest extends TestCase {
     private function createChurch(string $name, float $lat, float $lon): int {
         return DB::table('templomok')->insertGetId([
             'nev'        => $name,
-            'varos'      => 'Budapest',
             'frissites'  => '2020-01-01',
             'ok'         => 'i',
             'plebania'   => '',

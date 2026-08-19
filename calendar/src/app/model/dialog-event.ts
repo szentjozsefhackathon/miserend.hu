@@ -10,6 +10,13 @@ import {EasterDay} from "../enum/easter-day";
 
 export interface DialogEvent {
   /**
+   * #506: melyik templomhoz tartozzon az esemény.
+   *
+   * Csak család módban van kitöltve; enélkül a szerkesztő a saját templomát használja,
+   * tehát az egy-templomos működés változatlan.
+   */
+  churchId?: number;
+  /**
    * Az esemény periódusa (liturgikus időszaka).
    * Ha van, ez határozza meg a kezdeti és a végdátumot, melyben ismétlődik az esemény.
    */
@@ -31,4 +38,12 @@ export interface DialogEvent {
   experiod?: number[] | null;
   // #428: a felhasználó által kézzel beállított kivétel-időszakok
   manualExperiod?: number[] | null;
+
+  /**
+   * #431: az alkalom saját helyszíne, ha nem a templomban van.
+   * Üresen hagyva a mise a templomban marad.
+   */
+  locationLat?: number | null;
+  locationLon?: number | null;
+  locationName?: string | null;
 }

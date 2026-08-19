@@ -76,28 +76,83 @@
 
             <div id="form_church"  style="margin-top:12px;">
                 <div class="search-field-group">
-                    <label class="search-label">Templom</label>
-                    <div class="search-input-wrap">{{ forms.input(searchform.kulcsszo) }}</div>                    
+                    {# #733: a mező név ÉS hely szerint is keres, ezért a felirat is ezt mondja. #}
+                    <label class="search-label">Templom neve vagy elhelyezkedése</label>
+                    <div class="search-input-wrap">{{ forms.input(searchform.kulcsszo) }}</div>
+                    {# A térkép-kapcsolót a JS szúrja be ide (nearby-mass-search.js). Térkép
+                       nélküli böngészőben így nem jelenik meg egy nem működő link. #}
+                    <div class="search-input-wrap" id="map_search_toggle_slot"></div>
                 </div>
             </div>
 
             {# #89: hely körüli keresés. A `hely`+`tavolsag` paramétert a kereső régóta
                beolvasta, de sosem alkalmazta, és az űrlapon nem is volt mező hozzá —
-               csak kézzel írt URL-ből lehetett próbálkozni. #}
+               csak kézzel írt URL-ből lehetett próbálkozni.
+
+               #722: a „Hely közelében" és az oldal alján lévő „Egyéni közeli keresés"
+               ugyanaz a szűrő volt, csak az egyik helynévvel, a másik koordinátával.
+               Itt egyesítve: a helynév a szélesség/hosszúság elé kerül, és a beírt helyet
+               ajaxszal koordinátává alakítjuk. A koordináta-mezők — mint eddig az alsó
+               blokk — összecsukva várnak, tehát aki csak helynevet ír, ugyanazt látja,
+               mint korábban. #}
             <div id="form_place" style="margin-top:8px;">
-                <div class="search-field-group">
-                    <label class="search-label" for="hely">Hely közelében</label>
-                    <div class="search-input-wrap d-flex" style="gap:6px;">
-                        <input type="text" class="form-control" id="hely" name="hely"
-                               placeholder="pl. Szentendre" value="{{ searchform.hely.value|default('') }}"
-                               style="flex:1 1 auto;">
-                        <select class="form-control" name="tavolsag" id="tavolsag" style="flex:0 0 8.5em;">
-                            {% set tav = searchform.tavolsag.value|default(0) %}
-                            <option value="0"{% if tav == 0 %} selected{% endif %}>bárhol</option>
-                            {% for km in [2, 5, 10, 20, 50] %}
-                                <option value="{{ km }}"{% if tav == km %} selected{% endif %}>{{ km }} km-en belül</option>
-                            {% endfor %}
-                        </select>
+                <div class="search-field-group" id="place_field_group">
+                    <label class="search-label" for="hely">Egyéni közeli keresés</label>
+                    <div class="search-input-wrap">
+                        {# #733: térkép-módban a JS ÁTHELYEZI ezt a két vezérlőt a térkép fölé
+                           lebegő dobozokba. Áthelyezés, nem másolás: így az űrlap-beküldés
+                           változatlan, és nem lehet két, egymásnak ellentmondó érték. #}
+                        <div class="d-flex" id="place_controls" style="gap:6px;">
+                            <input type="text" class="form-control" id="hely" name="hely"
+                                   placeholder="pl. Szentendre" value="{{ searchform.hely.value|default('') }}"
+                                   autocomplete="off" style="flex:1 1 auto;">
+                            <select class="form-control" name="tavolsag" id="tavolsag" style="flex:0 0 8.5em;">
+                                {% set tav = searchform.tavolsag.value|default(0) %}
+                                <option value="0"{% if tav == 0 %} selected{% endif %}>bárhol</option>
+                                {# A 3 km a „gyalogtávolság" gyorskeresés értéke — a közös listában is legyen. #}
+                                {% for km in [2, 3, 5, 10, 20, 50] %}
+                                    <option value="{{ km }}"{% if tav == km %} selected{% endif %}>{{ km }} km-en belül</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <small id="location_status" class="form-text text-muted" aria-live="polite"></small>
+
+                        {# #733: térkép-módban a JS elrejti ezt a blokkot — a koordinátát ott a
+                           húzható marker adja, a számok pedig a térkép alatt olvashatók. JS
+                           nélkül viszont marad a mai, kézi beírás. #}
+                        <details class="nearby-search-options" style="margin-top:6px;"{% if nearbyOrigin is defined and nearbyOrigin %} open{% endif %}>
+                            <summary style="cursor:pointer; color:#6f3b8f;">Koordináta megadása</summary>
+                            <div class="row g-2 align-items-end" style="margin-top:6px;">
+                                <div class="col-sm-5">
+                                    <label for="nearby_lat" class="form-label">Szélesség</label>
+                                    <input type="number" step="any" min="-90" max="90" class="form-control form-control-sm"
+                                           name="nearby_lat" id="nearby_lat" placeholder="47.4979"
+                                           value="{{ nearbyOrigin.lat|default('') }}">
+                                </div>
+                                <div class="col-sm-5">
+                                    <label for="nearby_lon" class="form-label">Hosszúság</label>
+                                    <input type="number" step="any" min="-180" max="180" class="form-control form-control-sm"
+                                           name="nearby_lon" id="nearby_lon" placeholder="19.0402"
+                                           value="{{ nearbyOrigin.lon|default('') }}">
+                                </div>
+                                <div class="col-sm-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary w-100" id="use_current_location">Saját helyzetem</button>
+                                </div>
+                            </div>
+                            <small class="form-text text-muted">A beírt helyet magunk fordítjuk koordinátává, de itt felül lehet írni. A távolság légvonalban értendő.</small>
+                        </details>
+
+                        {# #733: a térkép doboza. Üresen indul, a Leafletet a JS csak akkor
+                           tölti be, ha a felhasználó tényleg megnyitja — a főoldal így nem
+                           lesz nehezebb attól, hogy ez a lehetőség létezik. #}
+                        <div id="map_search_box" hidden style="margin-top:8px;">
+                            <div id="map_search_canvas" style="height:360px; border-radius:6px; overflow:hidden;"></div>
+                            <small class="form-text text-muted">
+                                Húzd a jelölőt a keresés kiindulópontjára, vagy írd be a helyet.
+                                Kiindulópont: <span id="map_search_readout">nincs megadva</span>.
+                                A távolság légvonalban értendő.
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -877,35 +932,13 @@
                 <button type="button" class="btn btn-primary" id="next_two_hours">Misék a következő két órában</button>
                 <button type="button" class="btn btn-primary" id="walking_masses">Következő misék gyalogtávolságra</button>
             </div>
-            <small id="location_status" class="form-text text-muted" aria-live="polite"></small>
-            <details class="nearby-search-options" style="margin-top:8px;">
-                <summary style="cursor:pointer; color:#6f3b8f;">Egyéni közeli keresés</summary>
-                <div class="row g-2 align-items-end" style="margin-top:6px;">
-                    <div class="col-sm-4">
-                        <label for="nearby_lat" class="form-label">Szélesség</label>
-                        <input type="number" step="any" min="-90" max="90" class="form-control form-control-sm" name="nearby_lat" id="nearby_lat" placeholder="47.4979">
-                    </div>
-                    <div class="col-sm-4">
-                        <label for="nearby_lon" class="form-label">Hosszúság</label>
-                        <input type="number" step="any" min="-180" max="180" class="form-control form-control-sm" name="nearby_lon" id="nearby_lon" placeholder="19.0402">
-                    </div>
-                    <div class="col-sm-2">
-                        <label for="nearby_radius" class="form-label">Sugár</label>
-                        <select class="form-select form-select-sm" name="nearby_radius" id="nearby_radius">
-                            <option value="">–</option>
-                            <option value="1">1 km</option>
-                            <option value="3">3 km</option>
-                            <option value="5">5 km</option>
-                            <option value="10">10 km</option>
-                            <option value="15">15 km</option>
-                        </select>
-                    </div>
-                    <div class="col-sm-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary w-100" id="use_current_location">Saját helyzetem</button>
-                    </div>
-                </div>
-                <small class="form-text text-muted">A sugár légvonalbeli távolságot jelent. A keresés a fent kiválasztott időszakot használja.</small>
-            </details>
+            {# #722: a koordináta-mezők felkerültek a „Egyéni közeli keresés" blokkba, a
+               helynév alá — a kettő ugyanaz a szűrő volt. A sugár is közös lett (`tavolsag`),
+               nem volt értelme két külön távolság-választónak ugyanahhoz a kereséshez. #}
+            {# #733: a térkép-modul ELŐBB tölt be, mert a kereső-szkript indulásakor
+               kérdezi meg, van-e. A Leafletet viszont egyik sem hozza magával —
+               azt csak a térkép megnyitása tölti le. #}
+            <script src="/js/nearby-map-search.js"></script>
             <script src="/js/nearby-mass-search.js"></script>
             
             <script>

@@ -36,12 +36,61 @@ final class ExternalApiTestabilityTest extends TestCase {
             }
         }
 
+        /*
+         * Két végpontnál SZÁNDÉKOS, hogy nincs ellenőrzés:
+         *   - Mapquest: minden hívás a fizetős keretből megy (#129);
+         *   - OSRM: opcionális, az `osrm` compose-profil mögött van (#673) — ha nincs
+         *     beállítva az OSRM_URL, nincs mit kérdezni.
+         *
+         * A pontos lista KÖRNYEZETFÜGGŐ (kulcs/URL megléte dönti el), ezért nem
+         * rögzítjük. Az őrzendő szabály viszont pontosan megfogalmazható: nem lehet
+         * NÉMÁN ellenőrizetlen végpont — amelyiket nem ellenőrizzük, arról tudni kell,
+         * hogy melyik az, és MIÉRT.
+         */
+        $szandekos = ['MapquestApi', 'OsrmApi'];
+
+        $ismeretlen = array_values(array_diff($notTestable, $szandekos));
         self::assertSame(
-            ['MapquestApi'],
-            $notTestable,
-            'Új, nem ellenőrizhető végpont került be. Ha ez szándékos, adj neki testSkipReason-t, '
-            . 'és vedd fel ide — ha nem, írj hozzá testQuery-t.'
+            [],
+            $ismeretlen,
+            'Új, nem ellenőrizhető végpont került be: ' . implode(', ', $ismeretlen)
+            . '. Ha ez szándékos, adj neki testSkipReason-t, és vedd fel ide — '
+            . 'ha nem, írj hozzá testQuery-t.'
         );
+
+        foreach ($notTestable as $name) {
+            $className = "\\ExternalApi\\" . $name;
+            $api = new $className();
+            self::assertNotNull(
+                $api->testSkipReason(),
+                $name . ': ha nem ellenőrizzük, mondjuk meg, miért.'
+            );
+        }
+    }
+
+    /**
+     * #673: beállított végpont mellett az útvonaltervező is a figyelt végpontok közé kerül.
+     *
+     * A végpontot KIFEJEZETTEN adjuk át, nem env-en keresztül. Az `env()` viselkedése
+     * környezetfüggő (a projekté csak akkor él, ha az Illuminate helpere még nem
+     * definiálta, és a `putenv()` nem mindenhol látszik rajta keresztül) — egy
+     * env-et állítgató teszt helyben átment, a CI-ban viszont elbukott, és a master
+     * CI-ját is elvitte.
+     */
+    public function testOsrmIsCheckedWhenConfigured(): void {
+        $api = new \ExternalApi\OsrmApi('http://osrm:5000');
+
+        self::assertTrue($api->isTestable(), 'beállított végpont mellett ellenőrizni kell');
+        self::assertNull($api->testSkipReason());
+    }
+
+    /** Beállítás nélkül viszont mondja meg, MIÉRT nincs ellenőrzés. */
+    public function testOsrmExplainsWhyItIsNotChecked(): void {
+        $api = new \ExternalApi\OsrmApi('');
+
+        self::assertFalse($api->isTestable());
+        self::assertNotNull($api->testSkipReason());
+        self::assertStringContainsString('OSRM_URL', $api->testSkipReason());
     }
 
     /*

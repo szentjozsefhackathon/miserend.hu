@@ -112,6 +112,33 @@ Alapértelmezetten a http://localhost:11080/ oldalon lehet nyomon követni a kik
 küld ki levelet, és a `/health` oldal „Levelezőrendszer egészsége” blokkja pirosan jelzi az okát. (#610)
 
 
+## 🗺️ OSRM útvonaltervező (opcionális)
+
+Saját útvonaltervező, a `docker/compose.yml`-ben. **Alapból nem indul**: az `osrm`
+profil mögött van, tehát a sima `docker compose up` nem hozza fel.
+
+```bash
+docker compose --profile osrm up -d
+```
+
+Az első indulás letölti a térkép-kivonatot (`osrm-fetch`), majd felépíti a gráfot
+(`osrm-init`) — magyarországi kivonaton ~27 másodperc, csúcs-RAM 1,9 GB. Utána a futó
+szolgáltatás ~389 MB, az útvonal-válaszidő 10–20 ms. A gráf named volume-ban marad,
+tehát újraindításnál nem épül újra.
+
+A viselkedést az `.env` állítja (mind opcionális, l. `.env.example`):
+`OSRM_IMAGE`, `OSRM_PBF_URL`, `OSRM_PORT`, `OSRM_FORCE_DOWNLOAD`, `OSRM_FORCE_REBUILD`.
+Kipróbáláshoz érdemes kisebb kivonatot megadni (`OSRM_PBF_URL`), akkor a letöltés és az
+építés is töredék idő.
+
+Ha az alkalmazásnak is használnia kell, az `OSRM_URL`-t kell beállítani
+(`OSRM_URL=http://osrm:5000`). Ekkor a `/health` külső API táblájában megjelenik, és
+figyeljük, hogy fut-e. Beállítás nélkül a `/health` nem hibát mutat, hanem azt, hogy
+nincs bekapcsolva — a piros maradjon a valódi bajnak.
+
+Részletek: [docs/osrm.md](docs/osrm.md).
+
+
 ## Miserend web alkalmazás (PHP)
 
 A webalkalmazás fő komponense a `miserend` konténerben indul. A repó `webapp` könyvtárát a dev composer rá-mappeli a konténerre. Így ha bármit változtatsz, rögtön tesztelhető is. 

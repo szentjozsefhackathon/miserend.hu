@@ -18,10 +18,12 @@ import {PeriodService} from '../../services/period.service';
 import {AsyncPipe, TitleCasePipe, CommonModule} from '@angular/common';
 import {map, Observable, of, startWith} from 'rxjs';
 import {MatSelectModule} from '@angular/material/select';
+import {MatCheckboxModule} from '@angular/material/checkbox';
 import {recurrences, Renum} from '../../enum/recurrence';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
 import {Rite, RiteMassTypes} from '../../enum/rites';
 import {MassUtil} from '../../util/mass-util';
+import {ChurchFamilyMember} from '../../model/church';
 import {LanguageCode} from '../../enum/language-code';
 import {DialogResponse} from '../../enum/dialog-response';
 import {MatExpansionModule} from '@angular/material/expansion';
@@ -57,6 +59,7 @@ import {ChristmasDay} from "../../enum/christmas-day";
     AsyncPipe,
     ReactiveFormsModule,
     MatSelectModule,
+    MatCheckboxModule,
     TranslatePipe,
     TitleCasePipe,
     MatExpansionModule,
@@ -80,8 +83,58 @@ export class AddFullEventDialogComponent {
   // (KÜLÖN az automatikusan számolt experiod-tól, hogy az automatikák ne töröljék).
   experiodCtr = new FormControl<number[]>(this.data.event.manualExperiod ?? []);
 
+  /**
+   * #431: eltérő helyszín kapcsoló.
+   *
+   * Nyitáskor abból derül ki, hogy be van-e kapcsolva, hogy van-e már koordináta —
+   * így a meglévő alkalmak szerkesztésekor magától kinyílik a blokk.
+   */
+  elteroHelyszin = this.data.event.locationLat != null && this.data.event.locationLon != null;
+
+  /**
+   * Kikapcsoláskor TÖRÖLJÜK a mezőket.
+   *
+   * Enélkül a kikapcsolt jelölő mellett is elmenne a koordináta, és a mise némán egy
+   * régi, elfelejtett helyszínen maradna — pont az a fajta hiba, amit senki nem néz
+   * meg, mert a felületen már nem is látszik.
+   */
+  onElteroHelyszinValtozott(): void {
+    if (!this.elteroHelyszin) {
+      this.data.event.locationLat = null;
+      this.data.event.locationLon = null;
+      this.data.event.locationName = null;
+    }
+  }
+
   // #454: Új dátum hozzáadásához használt ideiglenes változó
   public newExceptionDate: Date | null = null;
+
+  /**
+   * #506: melyik templomhoz tartozzon az esemény.
+   *
+   * Csak akkor jelenik meg, ha tényleg van miből választani — a plébániának vannak
+   * fíliái, és többhöz is van írásjogunk. Egy templomnál a választó felesleges zaj,
+   * és a dialógus ugyanúgy néz ki, mint eddig.
+   */
+  public get churches() {
+    return this.data.churches ?? [];
+  }
+
+  public get hasChurchChoice(): boolean {
+    return this.churches.length > 1;
+  }
+
+  public onChurchChange(churchId: number): void {
+    this.data.event.churchId = churchId;
+  }
+
+  /**
+   * #506: mindig „település, templomnév" — a naptár rövidítő szabálya itt NEM jó.
+   * A választó döntési pont: ha félreértjük, a mise rossz templomhoz íródik.
+   */
+  public churchLabel(tag: ChurchFamilyMember): string {
+    return MassUtil.familySelectorLabel(tag);
+  }
 
   public singleEvent: boolean = this.data.event.renum === Renum.NONE;
   public specialPeriodType?: SpecialType | null = null;

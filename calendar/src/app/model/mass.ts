@@ -94,6 +94,20 @@ export interface Mass {
   comment?: string | null;
 
   /**
+   * #431: az alkalom SAJÁT helyszíne, ha nem a templomban van.
+   *
+   * A használati eset: „Röszke plébánia biciklitúrát szervez időnként, és van mise
+   * valami random pusztai helyen." A helyet ezért az ALKALOMHOZ kötjük, nem új
+   * misézőhelyhez — így a mise a szervező plébániáé marad, és nem keletkezik minden
+   * szabadtéri alkalomból egy örökre ottmaradó pont a térképen.
+   *
+   * Mindhárom mező opcionális; ha nincs koordináta, a mise a templomban van.
+   */
+  locationLat?: number | null;
+  locationLon?: number | null;
+  locationName?: string | null;
+
+  /**
    * #592: külső naptárból (iCalendar) importált liturgia. Ezeket a napi szinkron
    * teljes cserével írja újra, ezért itt nem szerkeszthetők — a szerkesztő
    * felajánlás helyett magyarázatot mutat. A backend származtatja, nem tárolt mező.

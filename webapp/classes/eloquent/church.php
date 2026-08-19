@@ -414,10 +414,32 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     {
         return $this->hasMany(Attribute::class);
     }
+
+    /**
+     * #257: az OSM-ből gyűjtött címkék kulcs => érték alakban.
+     *
+     * A `names` és az `alternative_names` innen épül fel. Eddig mindkettő KÜLÖN
+     * lekérdezéssel olvasta be az attribútumokat, templomonként — egy ötven soros
+     * listánál tehát ötven plusz lekérdezés. Emiatt maradt a katalógusban, a
+     * gyűjteményekben és a szomszédos templomoknál a nyers `nev` oszlop: az OSM-nevekre
+     * váltás a listákat használhatatlanná lassította volna.
+     *
+     * Ha a hívó `->with('attributes')`-szel tölt be, a betöltött kapcsolatot használjuk,
+     * és a plusz lekérdezések eltűnnek. Enélkül a régi viselkedés marad, tehát az
+     * egyedi templomoldal semmit nem veszít.
+     */
+    private function osmAttributeMap(): array
+    {
+        $attributes = $this->relationLoaded('attributes')
+            ? $this->getRelation('attributes')
+            : $this->attributes()->get();
+
+        return $attributes->pluck('value', 'key')->toArray();
+    }
 	
 	public function loadAttributes()
     {
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
         foreach ($attributes as $key => $value) {
 			if(!isset($this->$key))
 				$this->setAttribute($key, $value);
@@ -460,13 +482,22 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 if(!empty($massRule['rrule'])) {
                     $rrule = new \SimpleRRule($massRule['rrule']);                    
                     $massRule['rrule']['readable'] = $rrule->toText();
-                    //TODO: Itt ez hiba, mert nem egy konrkét legenerált Periodban nézünk szét, hanem csak egy általánosban
-                    // Vagyis a konkrét dátumokban keresés teljesen hülyeség.
-                    // Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon kezdődik. Azt meg megtudhatjuk máshogy is.
-                    $occ = reset($rrule->getOccurrences());
-                    if($occ) {
-                        $massRule['start_date'] = $occ->toString();                                                
-                    }
+                    /*
+                     * #832: a kezdőnap a SZABÁLYBÓL, nem legenerált előfordulásból.
+                     *
+                     * A régi jelzés helyben állt: „Itt ez hiba, mert nem egy konkrét
+                     * legenerált Periodban nézünk szét, hanem csak egy általánosban.
+                     * […] Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon
+                     * kezdődik."
+                     *
+                     * Igaza volt, és nem csak elvi kérdés: ha a szabály tartománya
+                     * szűk, a `getOccurrences()` ÜRESET ad, és akkor a `start_date`
+                     * meg sem születik. Élesben 4000 ismétlődő miséből 6 ilyen — az
+                     * `Api\ServiceTimes` náluk szó szerint „(ERROR/BUG no start_date)"
+                     * -et írt ki. A `representativeStart()` mindig ad választ, és
+                     * olcsóbb is: nem generálja le a teljes sorozatot.
+                     */
+                    $massRule['start_date'] = $rrule->representativeStart()->toDateTimeString();
                     $RRulesByPeriods[$periodId]['massrules'][] = $massRule;
                 }
             } 
@@ -749,39 +780,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $distance->MupdateChurch($this);
     }
     
-    public function neighbours() {
-        return $this->where('templomok.id',$this->id)
-                ->join('distances', function($join)
-                    {
-                      $join->on('distances.fromLon', '=', 'lon');
-                      $join->on('distances.fromLat', '=', 'lat');
-
-                    })
-                  ->join('templomok as churchTo',function($join)
-                    {
-                      $join->on('distances.toLon', '=', 'churchTo.lon');
-                      $join->on('distances.toLat', '=', 'churchTo.lat');
-                    })
-                ->select('distances.*','churchTo.*')    
-                ->where('churchTo.ok', 'i')
-                ->orderBy('distances.distance', 'ASC');
-
-    }
-    
-    public function neighbourss() {
-        return \Eloquent\Church::join('distances', function($join)
-                    {
-                      $join->on('distances.toLon', '=', 'lon');
-                      $join->on('distances.toLat', '=', 'lat');
-
-                    })
-                    ->where('distances.fromLon',$this->lon)
-                    ->where('distances.fromLat',$this->lat)
-                    ->where('ok','i')
-                            ->select('templomok.*','distances.distance')
-                    ->orderBy('distances.distance', 'ASC');                                               
-    }
-
     public function getNeighboursAttribute () {
         // #103: mindkét irányban keresünk. Egy pár a distances-ben csak EGYSZER szerepel
         // (from→to), a régi accessor viszont csak a `from = ez` sorokat nézte — ezért ha a
@@ -818,7 +816,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             }
             $seenCoords[$coordKey] = true;
 
-            $church = \Eloquent\Church::where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
+            // #257: az OSM-neveket a sablon olvassa (names / alternative_names), ezért
+            // mindjárt a kapcsolattal együtt töltjük be — enélkül szomszédonként két
+            // további lekérdezés menne el a névhalmazra.
+            $church = \Eloquent\Church::with('attributes')
+                ->where('lat', $lat)->where('lon', $lon)->where('ok', 'i')->first();
             if (!$church || $church->id == $this->id || isset($seenIds[$church->id])) {
                 continue;
             }
@@ -856,7 +858,12 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $f !== null ? date('Y-m-d H:i:s', strtotime($f)) : null;
     }
 
-    public function toAPIArray($length = "minimal", $whenMass = false)
+    /**
+     * @param string    $length     minimal | medium | full | elastic
+     * @param mixed     $whenMass   melyik napra kérjük a miséket
+     * @param int|null  $apiVersion #56: az API-verzió; 5-től strukturált a mise-adat
+     */
+    public function toAPIArray($length = "minimal", $whenMass = false, ?int $apiVersion = null)
     {
 
         if($length == 'elastic') {
@@ -885,7 +892,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                     $miseLangs = \Eloquent\CalMass::splitLanguages(
                         is_array($mise->lang) ? implode(',', $mise->lang) : $mise->lang
                     );
-                    if( $this->orszag != 12 or $miseLangs != ['hu'] ) {
+                    if( !$this->isInHungary() or $miseLangs != ['hu'] ) {
                         $translated = array_map(function($l) { return t('LANGUAGES.'.$l); }, $miseLangs);
                         if ($translated) {
                             $info .= ' ' . implode('-', $translated)." nyelven";
@@ -897,9 +904,50 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                     }
                     if($mise->comment) $info .= ' (' . $mise->comment.')';
                     if($info != '') $misek[$key]['informacio'] = $info;
-                }	            
+
+                    /*
+                     * #56: v5-től a nyers adat is kimegy.
+                     *
+                     * Az `informacio` egy előre összerakott MAGYAR mondat (rítus + cím +
+                     * nyelvek + típusok + megjegyzés). A kliens ebből nem tud szűrni,
+                     * nem tud fordítani, és a hosszt sem tudja. Márpedig mindez
+                     * strukturáltan megvan a `cal_masses`-ben — csak eddig nem adtuk ki.
+                     * Ez borazslo kérése: „az egész átadott mise adatok kövessék a nagy
+                     * megújulás calendar típusú új állapotát."
+                     *
+                     * Az `informacio` a v5-ben is MEGMARAD: így a meglévő kliens
+                     * (KAPP) mezőnként állhat át, nem egyszerre kell mindent átírnia.
+                     */
+                    if ($apiVersion !== null && $apiVersion >= 5) {
+                        $misek[$key]['mise_id']    = (int) ($mise->mass_id ?? 0);
+                        $misek[$key]['ritus']      = (string) ($mise->rite ?? '');
+                        $misek[$key]['megnevezes'] = (string) ($mise->title ?? '');
+                        // #334: egy misének több nyelve is lehet — ezért mindig lista.
+                        $misek[$key]['nyelvek']    = array_values($miseLangs);
+                        $misek[$key]['tipusok']    = array_values((array) ($mise->types ?? []));
+                        $misek[$key]['megjegyzes'] = (string) ($mise->comment ?? '');
+                        $misek[$key]['hossz_perc'] = (int) ($mise->duration_minutes ?? 0);
+                    }
+                }
             }
-        } 
+
+            /*
+             * #431: az alkalom SAJÁT helyszíne, ha nem a templomban van.
+             *
+             * borazslo kérdése a #813-ra: „API-t nem érinti? (v5-ben talán és akkor
+             * ha eltér a templom alap adatától)". De: csak akkor megy ki, ha tényleg
+             * eltér — a templomi misére a `templom.koordinatak` a válasz, azt nem
+             * ismételjük meg misénként.
+             *
+             * A forrás az ADATBÁZIS, nem az Elasticsearch. Az ES-ben nincs benne, és
+             * odatenni teljes mise-újraindexelést jelentene (30+ perc, 500e esemény),
+             * ami után a mező addig NÉMÁN hiányozna. Egy `whereIn` a válaszban lévő
+             * legfeljebb 10 mise-azonosítóra olcsóbb és mindig friss.
+             */
+            if ($apiVersion !== null && $apiVersion >= 5 && $misek) {
+                $misek = $this->attachOwnLocations($misek);
+            }
+        }
 
         $adorations = [];
         $results = $this->adorations()
@@ -923,8 +971,12 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 'nev' => !empty($this->names) ? $this->names[0] : '',
                 'frissitve' => $this->frissitesFormatted(),
                 'ismertnev' => !empty($this->alternative_names) ? $this->alternative_names[0] : '',
-                'orszag' => ( DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: "" ),
-                'varos' => $this->varos,
+                'orszag' => $this->locationCountryName(),
+                'varos' => $this->locationCityName(),
+                // #805: a v5-ben a fix mezők mellé a TELJES határlista is kimegy.
+                ...(($apiVersion !== null && $apiVersion >= 5)
+                    ? ['hatarok' => $this->administrativeBoundaryList()]
+                    : []),
                 'misek' => $misek,
                 'adoraciok' => $adorations,
                 'gyontatas' => $this->confessions ? $this->confessions['status'] : false,
@@ -947,10 +999,19 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             'ismertnev' => !empty($this->alternative_names) ? $this->alternative_names[0] : '',
             'alternative_names' => $this->alternative_names,
             'frissitve' => $this->frissitesFormatted(),            
-            'orszag' => ( DB::table('orszagok')->where('id', $this->orszag)->value('nev') ?: "" ),
+            'orszag' => $this->locationCountryName(),
             'egyhazmegye' => ( DB::table('egyhazmegye')->where('id', $this->egyhazmegye)->value('nev') ?: "" ),
-            'megye' => ( DB::table('megye')->where('id', $this->megye)->value('megyenev') ?: "" ),
-            'varos' => $this->varos,
+            'megye' => $this->locationCountyName(),
+            'varos' => $this->locationCityName(),
+            /*
+             * #805: a v5-ben a fix orszag/megye/varos MELLÉ kimegy a teljes
+             * határlista is, admin_level sorrendben. A fix mezőket nem vesszük el:
+             * a v5 boríték egyébként is kompatibilis, és a meglévő kliensek
+             * (KAPP) nem esnek szét egy verzióváltáson.
+             */
+            ...(($apiVersion !== null && $apiVersion >= 5)
+                ? ['hatarok' => $this->administrativeBoundaryList()]
+                : []),
             'cim' => $this->cim,
             'megkozelites' => '',
             'plebania' => str_replace('<br>', "\n", strip_tags($this->plebania, '<br>')),
@@ -976,8 +1037,16 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         ];
 
         if($length == 'full') {
-            $return = array_merge($return, [                
-                'photos' => $this->photos->pluck('url')->toArray()                
+            /*
+             * #56: v5-től rövid út a teljes URL helyett — `{templomid}/{fájlnév}`.
+             * A teljes cím minden képnél megismételte ugyanazt az előtagot; a bázis
+             * ismert és állandó: `{domain}/kepek/templomok/`. (borazslo másik ötlete,
+             * az egyedi kép-azonosító, szerveroldali munkát is igényelne — az marad.)
+             */
+            $return = array_merge($return, [
+                'photos' => ($apiVersion !== null && $apiVersion >= 5)
+                    ? $this->photos->map(fn($kep) => $kep->church_id . '/' . $kep->filename)->values()->toArray()
+                    : $this->photos->pluck('url')->toArray()
             ]);
 
         }
@@ -1007,6 +1076,11 @@ class Church extends \Illuminate\Database\Eloquent\Model {
 
             // boundaries
             $return['boundaries'] = $this->boundaries()->pluck('boundary_id')->toArray();
+
+            // #498: az országKÓD. borazslo a #496-ban ezt kérte kifejezetten
+            // ("Az orszag kell országkódilag"): a statisztika és az Angular naptár
+            // kódot vár, ami ma csak a régi orszagok.id-n keresztül létezik.
+            $return['orszagkod'] = (string) ($this->countryCode() ?? '');
 
             // #89: a `location` mező geo_point-ként SZEREPEL a mappingben
             // (fajlok/elasticsearch/mappings/church.json), de eddig SENKI nem töltötte
@@ -1071,7 +1145,18 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     }
 
     function scopeChurchesAndMore($query) {
-        // FIXME for Issue #257
+        /*
+         * #257: ez a szűrő a NÉV MINTÁJÁBÓL következtet a misézőhely fajtájára —
+         * „kápolna" a névben, tehát nem templom. A helyi `nev` oszlopon fut, mert az
+         * OSM-név külön táblában él, több sorban templomonként: illeszteni rá csak
+         * alkérdéssel lehetne, és a találat attól függene, melyik nyelvi változat nyer.
+         *
+         * Ez azonban nem csak technikai kérdés. A besorolást ma a NÉV dönti el, pedig
+         * az OSM erre külön címkét tart (`building`, `amenity`, `place_of_worship`
+         * fajtája). A helyes megoldás nem a névhalmazra váltás, hanem a besorolás
+         * kivezetése a névből — az viszont önálló jegy, mert megváltoztatja, mely
+         * misézőhelyek számítanak templomnak a listákban és a statisztikában.
+         */
         return $query->where('nev', 'NOT LIKE', '%kápolna%');
     }
 
@@ -1119,7 +1204,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     public function getNamesAttribute($value) {
 
 
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
         
         // Collect all the possible names of the church
         $names = [];
@@ -1144,7 +1229,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     }
 
     public function getAlternativeNamesAttribute($value) {
-        $attributes = $this->attributes()->get()->pluck('value', 'key')->toArray();
+        $attributes = $this->osmAttributeMap();
 
        // Collect all alternative names of the church
        $alternativeNames = [];
@@ -1340,13 +1425,192 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         if (!empty($this->alternative_names)) {
             $return .= ' (' . $this->alternative_names[0] . ')';
         } else {
-            $return .= ' (' . $this->varos . ')';
+            $return .= ' (' . $this->locationCityName() . ')';
         }
         return $return;
     }
 
 
     
+    /**
+     * #568: Búcsú-emlékeztető a templomgondnokoknak, 21 nappal a búcsú előtt.
+     *
+     * borazslo spec-je: „A várható dátum előtt mondjuk 21 nappal küldjük ki az emailt
+     * a templomgondnokoknak (nem kell egyházmegye felelős, se általános admin)."
+     *
+     * A metódus szándékosan ITT van, nem a User osztályban — borazslo javaslata:
+     * „Szerintem sokkal inkább valami church osztályhoz tartozik, mert a közelgő
+     * búcsúval rendelkező TEMPLOMNAK értesítjük a gondnokait." A kiindulópont
+     * valóban a templom, a felhasználó csak a címzett.
+     *
+     * A dátum szabad szövegből jön, tehát lehet benne pontatlanság — borazslo
+     * megengedte: „nem baj, ha +/- pár nap […] az értesítés nem kell pontosan menjen".
+     *
+     * @param int $napokElotte hány nappal a búcsú előtt szóljunk
+     * @return int hány levelet tettünk sorba
+     */
+    public static function sendBucsuReminders(int $napokElotte = 21): int {
+        $type = 'holder_bucsu_reminder';
+        $celDatum = date('Y-m-d', strtotime("+$napokElotte days"));
+
+        $erintettek = [];
+        foreach (self::where('ok', 'i')->get() as $templom) {
+            if ($templom->nextBucsuDate() === $celDatum) {
+                $erintettek[$templom->id] = $templom;
+            }
+        }
+
+        if ($erintettek === []) {
+            return 0;
+        }
+
+        /*
+         * Gondnok-kiválasztás: a #290 ünnep-emlékeztető mintája, az érintett
+         * templomokra szűkítve. Egyházmegye-felelős és admin NEM kap — borazslo kérése.
+         * A dedup a levelek táblájából megy, egy hónapos ablakkal: a napi cron ne
+         * küldjön kétszer ugyanannak.
+         */
+        $users2notify = DB::table('templomok')
+            ->select('user.*')
+            ->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
+            ->join('user', 'user.uid', '=', 'church_holders.user_id')
+            ->whereIn('templomok.id', array_keys($erintettek))
+            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+                [$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
+            ->where('church_holders.status', 'allowed')
+            ->whereNull('church_holders.deleted_at')
+            ->where('user.notifications', 1)
+            ->whereNotNull('user.email')->where('user.email', '<>', '')
+            ->groupBy('user.email')
+            ->get();
+
+        $kuldott = 0;
+        foreach ($users2notify as $user2notify) {
+            $user = new \User($user2notify->uid);
+            $user->getResponsabilities();
+
+            $sajatTemplomok = [];
+            foreach ($user->responsible['church'] as $churchID) {
+                if (isset($erintettek[$churchID])) {
+                    $templom = $erintettek[$churchID];
+                    $templom->bucsuDatum = $celDatum;
+                    $sajatTemplomok[$churchID] = $templom;
+                }
+            }
+            if ($sajatTemplomok === []) {
+                continue;
+            }
+
+            $user->responsible['church'] = $sajatTemplomok;
+            $user->bucsuDatum = $celDatum;
+
+            $email = new \Eloquent\Email();
+            $email->to = $user->email;
+            $email->render($type, $user);
+            $email->addToQueue();
+            $kuldott++;
+        }
+
+        return $kuldott;
+    }
+
+    /**
+     * #568: a `bucsu` szabad szöveg gépi alakja.
+     *
+     * @return array{bucsu: ?array, szentsegimadas: ?array, unparsed: string}
+     */
+    public function bucsuOccasions(): array {
+        /*
+         * #568: a búcsú a MEGJEGYZÉS mezőből jön, nem a `bucsu` oszlopból.
+         *
+         * borazslo javítása a #809-hez: „itt a `templomok.bucsu` mezőt használja. Mert
+         * hát valóban mintha lenne ilyen mező, csak nem használjuk egyáltalán. Az osm
+         * adatokból vesszük már a búcsút, vagy ha nincs, akkor a megjegyzés mezőből
+         * próbáljuk kitalálni."
+         *
+         * Igaza volt, és a különbség nagy. Mérve az aktív templomokon:
+         *
+         *   bucsu oszlop kitöltve:            218   (ebből felismert dátum: 166)
+         *   megjegyzés említ búcsút:         1472   (ebből felismert dátum: 1364)
+         *
+         * A `bucsu` oszlop ráadásul NEM szerkeszthető (nincs az edit.php
+         * allowedFields listájában) és egyetlen sablonban sem jelenik meg — csak a
+         * tábla-export adja ki. Vagyis nem karbantartott adat.
+         *
+         * A megjegyzésből CSAK akkor fogadjuk el a dátumot búcsúnak, ha a szöveg maga
+         * is kimondja. Enélkül bármely ottani dátum búcsúnak számítana — mérve 135
+         * templomnál olvastunk ki így olyan dátumot, aminek semmi köze a búcsúhoz, és
+         * a gondnokuk téves értesítőt kapott volna.
+         */
+        $eredmeny = \Bucsu::containsBucsuLabel($this->megjegyzes)
+            ? \Bucsu::parse($this->megjegyzes)
+            : ['bucsu' => null, 'szentsegimadas' => null, 'unparsed' => ''];
+
+        // A régi oszlop utolsó tartaléknak marad: néhány templomnál csak ott van adat.
+        if ($eredmeny['bucsu'] === null) {
+            $regi = \Bucsu::parse($this->bucsu);
+            if ($regi['bucsu'] !== null) {
+                $eredmeny = $regi;
+            }
+        }
+
+        /*
+         * #568: az OSM `patron_day` tagje MINDKETTŐT felülírja.
+         *
+         * borazslo vetette fel: „Sőt OSM ismeri az egyáltalán nem elterjed patron_day
+         * kulcsot." Ez strukturált adat, tehát megbízhatóbb, mint amit egy szabad
+         * szöveges mezőből ki tudunk olvasni — és nem kell hozzá se új oszlop, se új
+         * szerkesztő-mező: a szinkron minden OSM-taget elment az `attributes` táblába.
+         */
+        $patronDay = \Bucsu::parsePatronDay($this->patronDayTag());
+        if ($patronDay !== null) {
+            $eredmeny['bucsu'] = $patronDay;
+            $eredmeny['forras'] = 'patron_day';
+        } elseif ($eredmeny['bucsu'] !== null) {
+            $eredmeny['forras'] = 'bucsu_mezo';
+        } else {
+            $eredmeny['forras'] = null;
+        }
+
+        return $eredmeny;
+    }
+
+    /** Az OSM `patron_day` tag nyers értéke, ha a szinkron elmentette. */
+    private function patronDayTag(): ?string {
+        $attributum = $this->attributes()->where('key', 'patron_day')->first();
+
+        return $attributum->value ?? null;
+    }
+
+    /**
+     * A következő búcsú dátuma egy adott naptól számítva.
+     *
+     * Egy értesítő cronnak pontosan ez kell: "mikor lesz legközelebb". Ha az idei
+     * dátum már elmúlt, a jövő évit adjuk — a mozgó ünnepek miatt ezt nem lehet
+     * egyszerű hónap/nap összehasonlítással kiváltani.
+     *
+     * @param string|null $tol Y-m-d, alapból a mai nap
+     * @return string|null Y-m-d, vagy null ha a mező nem értelmezhető
+     */
+    public function nextBucsuDate(?string $tol = null): ?string {
+        $alkalom = $this->bucsuOccasions()['bucsu'];
+        if ($alkalom === null) {
+            return null;
+        }
+
+        $tol = $tol ?? date('Y-m-d');
+        $ev = (int) substr($tol, 0, 4);
+
+        foreach ([$ev, $ev + 1] as $vizsgaltEv) {
+            $datum = \Bucsu::resolve($alkalom, $vizsgaltEv);
+            if ($datum !== null && $datum >= $tol) {
+                return $datum;
+            }
+        }
+
+        return null;
+    }
+
     function getLocationAttribute($value) {
         $location = new \stdClass();
 
@@ -1435,6 +1699,254 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $boundaries,
             fn($boundary) => (int) ($boundary['admin_level'] ?? 0) !== 4
         ));
+    }
+
+    /**
+     * #56 / #805: az összes adminisztratív határ, admin_level szerint rendezve.
+     *
+     * borazslo kérése: „Ha mi úgysem használunk fix orszag-megye-varos-t akkor nem
+     * lenne helyesebb API v5 templomlekérdezéshez egyszerűen berakni az összes
+     * adminisztrációs boundary-t admin_level sorrendben egy tömbben szépen listázva?
+     * Flexibilisebb és hosszabb távon is működöbb."
+     *
+     * Igaza van, és pont ez a kivezetés lényege: az `admin_level` jelentése
+     * országonként MÁS (Romániában nincs 6-os szint, Kölnben a 6-os maga a város),
+     * tehát a fix három mező eleve hazugság volt. A lista nem próbál dönteni arról,
+     * melyik szint „a megye" — a fogyasztó látja a szintet, és eldönti maga.
+     *
+     * @return array<int,array{szint: int, nev: string, alt_nev: ?string, osm: ?string}>
+     */
+    public function administrativeBoundaryList(): array {
+        $hatarok = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->orderBy('admin_level')
+                ->get();
+
+        $lista = [];
+        foreach ($hatarok as $hatar) {
+            $nev = trim((string) $hatar->name);
+            if ($nev === '') {
+                continue;
+            }
+
+            $lista[] = [
+                'szint' => (int) $hatar->admin_level,
+                'nev' => $nev,
+                'alt_nev' => trim((string) $hatar->alt_name) !== '' ? $hatar->alt_name : null,
+                'osm' => ($hatar->osmtype && $hatar->osmid)
+                    ? $hatar->osmtype . '/' . $hatar->osmid
+                    : null,
+            ];
+        }
+
+        return $lista;
+    }
+
+    /**
+     * #496 / #497 / #498: a templom helynevei az OSM-határokból, a régi oszlopokra
+     * való visszaeséssel.
+     *
+     * A három jegy a `templomok.varos`, `.megye` és `templomok.orszag` kivezetéséről
+     * szól. Ahhoz, hogy az oszlopok eldobhatók legyenek, előbb minden fogyasztónak
+     * ezeken a metódusokon kell keresztülmennie — utána a kivezetés annyi, hogy a
+     * visszaesési ág kiesik innen, és nem kell 23 fájlt átírni.
+     *
+     * A visszaesés SZÁNDÉKOSAN bent van most: a szlovák állomány 23%-ának egyáltalán
+     * nincs boundary-ja (szinkronhiány), és 47 templomnak nincs koordinátája sem.
+     * Amíg ez így van, a régi oszlop a jobb válasz, mint az üres string.
+     *
+     * A besorolás szint szerint megy, nem pozíció szerint: a location() a rendezett
+     * lista 0./1./2. elemét címkézi, ami hiányos határláncnál elcsúszik.
+     */
+    /**
+     * #431: a válaszban lévő misékhez hozzáfűzi a SAJÁT helyszínüket, ha van.
+     *
+     * Csak akkor kerül be a `helyszin` kulcs, ha az alkalomnak tényleg van külön
+     * koordinátája — a templomi misékre a `templom.koordinatak` a válasz. Így a
+     * kliens egyetlen kulcs meglétéből tudja, hogy „ez máshol lesz", és nem kell
+     * lebegőpontos számokat összehasonlítania.
+     *
+     * @param  array<int,array<string,mixed>> $misek
+     * @return array<int,array<string,mixed>>
+     */
+    private function attachOwnLocations(array $misek): array {
+        $ids = array_values(array_filter(array_map(
+            fn($mise) => (int) ($mise['mise_id'] ?? 0),
+            $misek
+        )));
+        if (!$ids) {
+            return $misek;
+        }
+
+        $helyszinek = DB::table('cal_masses')
+                ->whereIn('id', $ids)
+                ->whereNotNull('location_lat')
+                ->whereNotNull('location_lon')
+                ->get(['id', 'location_lat', 'location_lon', 'location_name'])
+                ->keyBy('id');
+
+        if ($helyszinek->isEmpty()) {
+            return $misek;
+        }
+
+        foreach ($misek as $key => $mise) {
+            $hely = $helyszinek->get((int) ($mise['mise_id'] ?? 0));
+            if (!$hely) {
+                continue;
+            }
+            $misek[$key]['helyszin'] = [
+                'koordinatak' => [(float) $hely->location_lat, (float) $hely->location_lon],
+                'nev' => (string) ($hely->location_name ?? ''),
+            ];
+        }
+
+        return $misek;
+    }
+
+    /**
+     * #824: a település neve SQL-ből, tömeges lekérdezésekhez.
+     *
+     * A `locationCityName()` Eloquent-modellt kér. Több tömeges lekérdezés viszont
+     * `DB::table()`-lel dolgozik, és nyers `stdClass` sorokat kap — azokon nincs
+     * metódus. Ez már meg is bosszulta magát: a `Campaign::sendWeeklyEmail()`
+     * `$c->locationCityName()`-t hívott egy `stdClass`-on, és a heti önkéntes-levél
+     * emiatt SOHA nem ment ki („Call to undefined method stdClass::locationCityName()").
+     *
+     * A másik hiba ugyanebből a családból: a `User::sendUpdateNotification()` a
+     * `templomok.varos` oszlopra esett vissza — arra, amit a kivezetés eldobott.
+     *
+     * Ezért van egy közös definíció: aki SQL-ben kéri a települést, innen vegye.
+     *
+     * @param string $churchIdColumn a templom azonosítója a külső lekérdezésben
+     *                               (pl. `templomok.id` vagy `t.id`)
+     */
+    public static function citySubquerySql(string $churchIdColumn = 'templomok.id'): string {
+        return self::boundaryNameSubquerySql([8, 9, 10], $churchIdColumn);
+    }
+
+    /**
+     * #824: egy adminisztratív határ neve alkérdésként, szint-sorrenddel.
+     *
+     * A `FIELD()` rendezés adja a preferenciát: a felsorolás sorrendje dönt, nem a
+     * szint nagysága — így ugyanaz a szabály érvényesül, mint a modell-oldali
+     * `adminBoundaryName()`-ben.
+     *
+     * @param int[] $szintek admin_level értékek, preferencia szerint
+     */
+    public static function boundaryNameSubquerySql(array $szintek, string $churchIdColumn = 'templomok.id'): string {
+        $lista = implode(', ', array_map('intval', $szintek));
+
+        return "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = $churchIdColumn AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN ($lista)"
+            . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
+    }
+
+    private function adminBoundaryName(array $szintek): ?string {
+        $talalat = $this->boundaries()
+                ->where('boundary', 'administrative')
+                ->whereIn('admin_level', $szintek)
+                ->orderBy('admin_level', 'desc')
+                ->first();
+
+        $nev = trim((string) ($talalat->name ?? ''));
+
+        return $nev !== '' ? $nev : null;
+    }
+
+    /**
+     * Település. Ha van kerület is, azzal együtt — így a nagyvárosi templomoknál nem
+     * vész el a pontosság.
+     *
+     * Ez SZÁNDÉKOSAN a régi oszlop alakját reprodukálja, mert az API-ban és a
+     * felületen ez látszik. Két országfüggő eset van, mindkettőt valódi adaton mértem:
+     *
+     *   Budapest, Szent Imre-templom      8=Budapest  9=XI. kerület  10=Szentimreváros
+     *       -> "Budapest XI. kerület", ami bitre a régi `templomok.varos`.
+     *       A puszta legspecifikusabb elem "Szentimreváros" lenne: pontosabb ugyan,
+     *       de a látogató szempontjából visszalépés ahhoz képest, amit ma lát.
+     *
+     *   Köln, St. Aposteln                6=Köln      9=Innenstadt   10=Altstadt-Nord
+     *       Köln kreisfreie Stadt, tehát NINCS 8-as szintje. Ha vakon a 9-esre esnénk
+     *       vissza, "Innenstadt" jönne ki "Köln" helyett.
+     *
+     * Ezért a kerületet CSAK akkor fűzzük hozzá, ha a település a 8-as szintről jött.
+     * Ha a településnek a 6-osra kellett visszaesni, a 9-es már másfajta felosztás,
+     * és a régi adat sem tartalmazta.
+     */
+    public function locationCityName(): string {
+        $telepules = $this->adminBoundaryName([8]);
+        if ($telepules !== null) {
+            $kerulet = $this->adminBoundaryName([9]);
+            return $kerulet !== null ? $telepules . ' ' . $kerulet : $telepules;
+        }
+
+        // Nincs 8-as szint (pl. német kreisfreie Stadt): a 6-os maga a település.
+        return $this->adminBoundaryName([6])
+            ?? $this->adminBoundaryName([9])
+            ?? $this->adminBoundaryName([10])
+            ?? '';
+    }
+
+    /** Megye. Romániában nincs 6-os szint, ott a 4-es (judet) hordozza. */
+    public function locationCountyName(): string {
+        return $this->adminBoundaryName([6]) ?? $this->adminBoundaryName([4]) ?? '';
+    }
+
+    public function locationCountryName(): string {
+        return $this->adminBoundaryName([2]) ?? '';
+    }
+
+    /**
+     * Magyarországi templom-e. A naptár ez alapján dönti el, kell-e nyelvi zászló a
+     * magyar mise mellé, a statisztika pedig ez alapján szűkít.
+     *
+     * Elsődlegesen az ISO-kód, mert a `templomok.orszag = 12` a kivezetéssel eltűnik.
+     */
+    public function isInHungary(): bool {
+        return $this->countryCode() === 'HU';
+    }
+
+    /**
+     * #497: rendezés a település szerint, boundary-alapon.
+     *
+     * A katalógusok eddig `orderBy('varos')`-t használtak. Az oszlop megszűnt, a
+     * település viszont továbbra is rendezési szempont — korrelált alkérdéssel
+     * kérjük le. Nem olcsó, de ezek admin/katalógus oldalak, nem forgalmas útvonalak,
+     * és a lista használhatatlan lenne település szerinti csoportosítás nélkül.
+     */
+    public function scopeOrderByCity($query, string $irany = 'asc') {
+        return $query->orderByRaw(
+            "(SELECT b.name FROM lookup_boundary_church lbc"
+            . " JOIN boundaries b ON b.id = lbc.boundary_id"
+            . " WHERE lbc.church_id = templomok.id AND b.boundary = 'administrative'"
+            . " AND b.admin_level IN (8, 6, 9, 10)"
+            . " ORDER BY FIELD(b.admin_level, 8, 6, 9, 10) LIMIT 1) " . ($irany === 'desc' ? 'DESC' : 'ASC')
+        );
+    }
+
+    /**
+     * #498: lekérdezés-szintű szűrés a magyarországi templomokra.
+     *
+     * A statisztika eddig `where('orszag', 12)`-vel szűkített — pont az az oszlop,
+     * amit ki akarunk vezetni. A boundary-alapú megfelelője az országhatáron megy.
+     *
+     * NÉVRE és ISO-kódra IS illesztünk. Az ISO a helyes hosszú távon, de ma 7964
+     * határból egyetlenegynél van kitöltve (a szinkronnak újra kell futnia), addig
+     * a puszta ISO-szűrés üres statisztikát adna.
+     */
+    public function scopeInHungary($query) {
+        return $query->whereIn('templomok.id', function ($sub) {
+            $sub->select('lookup_boundary_church.church_id')
+                ->from('lookup_boundary_church')
+                ->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+                ->where('boundaries.admin_level', 2)
+                ->where(function ($w) {
+                    $w->where('boundaries.iso3166_1', 'HU')
+                      ->orWhere('boundaries.name', 'Magyarország');
+                });
+        });
     }
 
     /**
@@ -1709,12 +2221,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $access;
     }
 
-    function MgetDioceseId() {
-        if($this->religious_administratin)
-            return $this->religious_administration->diocese->id;
-        else 
-            return false;
-    }
 	
     public function boundaries()
     {
@@ -1736,9 +2242,6 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         // Ha nincs átadva (pl. egyedi hívásból), akkor töltjük be helyben.
         $_egyhazmegyek     = $referenceData['egyhazmegyek']     ?? collect(DB::table('egyhazmegye')->get())->keyBy('id')->sortBy('sorrend');
         $_espereskeruletek = $referenceData['espereskeruletek'] ?? collect(DB::table('espereskerulet')->get())->keyBy('id');
-        $_orszagok         = $referenceData['orszagok']         ?? collect(DB::table('orszagok')->get())->keyBy('id');
-        $_megyek           = $referenceData['megyek']           ?? collect(DB::table('megye')->select('*','megyenev as nev')->get())->keyBy('id');
-        $_varosok          = isset($referenceData['varosok']) ? $referenceData['varosok'] : collect([]);
         
         /* egyházmegye */
         $tmp = $this->boundaries()
@@ -1768,44 +2271,19 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             }
         }
         
-        /* ország */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',2)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(isset($_orszagok[$this->orszag]) && $_orszagok[$this->orszag]->nev) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 2, 'name' => $_orszagok[$this->orszag]->nev]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
-        
-        /* megye */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',6)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(isset($_megyek[$this->megye]) && $_megyek[$this->megye]->nev) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 6, 'name' => $_megyek[$this->megye]->nev." megye"]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
-
-        /* város */
-        $tmp = $this->boundaries()
-                ->where('boundary','administrative')
-                ->where('admin_level',8)
-                ->get()->toArray();
-        if($tmp == array()) {
-            if(!empty($this->varos)) {
-                $boundary = \Eloquent\Boundary::firstOrNew(['boundary' => 'administrative', 'admin_level' => 8, 'name' => $this->varos]);
-                $boundary->save();
-                $this->boundaries()->attach($boundary->id);
-            }
-        }
+        /*
+         * #496 / #497 / #498: itt épült ország-, megye- és város-boundary a régi
+         * `templomok.orszag`, `.megye` és `.varos` oszlopokból, ha az OSM nem adott
+         * ilyet. Az oszlopok megszűntek, tehát nincs miből.
+         *
+         * A már legyártott boundary-sorok a helyükön maradnak — csak új nem készül
+         * belőlük. A földrajzi határok innentől kizárólag az OSM-ből jönnek
+         * (OSM::checkBoundaries), a hiányzó lefedettséget pedig a /health mutatja és
+         * a cron 497 próbálja újra.
+         *
+         * Az egyházmegye és az esperesi kerület MARAD: azok nem OSM-adatok, és nem is
+         * ez a három jegy tárgya.
+         */
 
     }
 

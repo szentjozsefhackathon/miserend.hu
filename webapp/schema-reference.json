@@ -1,3266 +1,3134 @@
 {
-    "tables": {
-        "attributes": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "bigint(20)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "key": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "value": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "fromOSM": {
-                    "type": "tinyint(1)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "church_id": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "key_church": {
-                    "unique": false,
-                    "columns": [
-                        "key",
-                        "church_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+  "tables": {
+    "attributes": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "bigint(20)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
         },
-        "boundaries": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "boundary": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "admin_level": {
-                    "type": "int(2)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "name": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "alt_name": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "denomination": {
-                    "type": "varchar(50)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "iso3166_1": {
-                    "type": "varchar(2)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmtype": {
-                    "type": "varchar(9)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmid": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "index1": {
-                    "unique": false,
-                    "columns": [
-                        "boundary",
-                        "admin_level"
-                    ]
-                },
-                "index2": {
-                    "unique": false,
-                    "columns": [
-                        "osmtype",
-                        "osmid"
-                    ]
-                },
-                "index3": {
-                    "unique": false,
-                    "columns": [
-                        "iso3166_1"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "cal_generated_periods": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "period_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "name": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "weight": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_date": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "end_date": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "color": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "period_id": {
-                    "unique": false,
-                    "columns": [
-                        "period_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "key": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "cal_masses": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "period_id": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "title": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "types": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "rite": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_date": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "duration": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "rrule": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "experiod": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "manual_experiod": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "exdate": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lang": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "comment": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": "curdate()",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "church_id": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "period_id": {
-                    "unique": false,
-                    "columns": [
-                        "period_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "value": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "cal_periods": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "name": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "weight": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_month_day": {
-                    "type": "varchar(5)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "end_month_day": {
-                    "type": "varchar(5)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_period_id": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "end_period_id": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "all_inclusive": {
-                    "type": "tinyint(1)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "multi_day": {
-                    "type": "tinyint(1)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "special_type": {
-                    "type": "enum('christmas','easter')",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "selectable": {
-                    "type": "tinyint(1)",
-                    "nullable": true,
-                    "default": "1",
-                    "extra": ""
-                },
-                "color": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "end_period_id": {
-                    "unique": false,
-                    "columns": [
-                        "end_period_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "start_period_id": {
-                    "unique": false,
-                    "columns": [
-                        "start_period_id"
-                    ]
-                }
-            }
+        "fromOSM": {
+          "type": "tinyint(1)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "church_id": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
         },
-        "cal_period_years": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "period_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_year": {
-                    "type": "int(4)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "start_date": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "end_date": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": "curdate()",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": "curdate()",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "period_id": {
-                    "unique": false,
-                    "columns": [
-                        "period_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "key_church": {
+          "unique": false,
+          "columns": [
+            "key",
+            "church_id"
+          ]
         },
-        "cal_suggestions": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "package_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "period_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "mass_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "mass_state": {
-                    "type": "enum('new','deleted','modified')",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "changes": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "package_id": {
-                    "unique": false,
-                    "columns": [
-                        "package_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "boundaries": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
         },
-        "cal_suggestion_packages": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "sender_name": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "sender_email": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "sender_user_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "sender_message": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "state": {
-                    "type": "enum('accepted','rejected','pending')",
-                    "nullable": true,
-                    "default": "PENDING",
-                    "extra": ""
-                },
-                "handled_by_user_id": {
-                    "type": "bigint(20) unsigned",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "handled_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "church_id": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "boundary": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "chat": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "datum": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "user": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "kinek": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "szoveg": {
-                    "type": "tinytext",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "admin_level": {
+          "type": "int(2)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "church_holders": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "user_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "church_id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "description": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "status": {
-                    "type": "enum('asked','allowed','denied','revoked')",
-                    "nullable": false,
-                    "default": "asked",
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "deleted_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "name": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "church_links": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "href": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "title": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "deleted_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "alt_name": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "church_relationships": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "parent_church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "child_church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": "on update current_timestamp()"
-                }
-            },
-            "indexes": {
-                "child_idx": {
-                    "unique": false,
-                    "columns": [
-                        "child_church_id"
-                    ]
-                },
-                "parent_idx": {
-                    "unique": false,
-                    "columns": [
-                        "parent_church_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "unique_pair": {
-                    "unique": true,
-                    "columns": [
-                        "parent_church_id",
-                        "child_church_id"
-                    ]
-                }
-            }
+        "denomination": {
+          "type": "varchar(50)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "church_update_tokens": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "token": {
-                    "type": "varchar(64)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "uid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "email_batch_id": {
-                    "type": "varchar(64)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "expires_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "used_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": "current_timestamp",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "token"
-                    ]
-                }
-            }
+        "iso3166_1": {
+          "type": "varchar(2)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "confessions": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "deduplicationId": {
-                    "type": "char(36)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "local_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "timestamp": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": "on update current_timestamp()"
-                },
-                "fulldata": {
-                    "type": "longtext",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "status": {
-                    "type": "enum('on','off')",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "deduplicationId": {
-                    "unique": true,
-                    "columns": [
-                        "deduplicationId"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "osmtype": {
+          "type": "varchar(9)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "crons": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "class": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "function": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "frequency": {
-                    "type": "varchar(45)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "from": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "until": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "deadline_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "attempts": {
-                    "type": "int(2)",
-                    "nullable": true,
-                    "default": "0",
-                    "extra": ""
-                },
-                "lastsuccess_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_At": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "osmid": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "distances": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "fromLat": {
-                    "type": "decimal(11,7)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "fromLon": {
-                    "type": "decimal(11,7)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "toLat": {
-                    "type": "decimal(11,7)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "toLon": {
-                    "type": "decimal(11,7)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "distance": {
-                    "type": "float",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "toupdate": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "Coord": {
-                    "unique": true,
-                    "columns": [
-                        "fromLat",
-                        "fromLon",
-                        "toLat",
-                        "toLon"
-                    ]
-                },
-                "From": {
-                    "unique": false,
-                    "columns": [
-                        "fromLat",
-                        "fromLon"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "created_at": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "egyhazmegye": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "nev": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "sorrend": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "ok": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "felelos": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "email": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "csakez": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "osm_relation": {
-                    "type": "int(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "id": {
-                    "unique": false,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "updated_at": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "index1": {
+          "unique": false,
+          "columns": [
+            "boundary",
+            "admin_level"
+          ]
         },
-        "emails": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "type": {
-                    "type": "varchar(30)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "to": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "header": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "subject": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "body": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "status": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "index2": {
+          "unique": false,
+          "columns": [
+            "osmtype",
+            "osmid"
+          ]
         },
-        "espereskerulet": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "ehm": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "nev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "index3": {
+          "unique": false,
+          "columns": [
+            "iso3166_1"
+          ]
         },
-        "events": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "name": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "year": {
-                    "type": "varchar(4)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "date": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "id_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "name+year": {
-                    "unique": true,
-                    "columns": [
-                        "name",
-                        "year"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "cal_generated_periods": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
         },
-        "external_calendars": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "name": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "url": {
-                    "type": "varchar(2048)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "active": {
-                    "type": "tinyint(1)",
-                    "nullable": true,
-                    "default": "1",
-                    "extra": ""
-                },
-                "last_import_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": "on update current_timestamp()"
-                }
-            },
-            "indexes": {
-                "fk_external_calendars_church_id": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "unique_church_external": {
-                    "unique": true,
-                    "columns": [
-                        "church_id",
-                        "name"
-                    ]
-                }
-            }
+        "period_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "favorites": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(10) unsigned",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "uid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "tid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "uid_tid_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "uid",
-                        "tid"
-                    ]
-                }
-            }
+        "name": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "keyword_shortcuts": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmtag_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "type": {
-                    "type": "varchar(30)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "value": {
-                    "type": "varchar(200)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "church_type_value": {
-                    "unique": false,
-                    "columns": [
-                        "church_id",
-                        "type",
-                        "value"
-                    ]
-                },
-                "FK_keyword_shortchuts_church_idx": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "FK_keyword_shortchuts_osmtag_idx": {
-                    "unique": false,
-                    "columns": [
-                        "osmtag_id"
-                    ]
-                },
-                "index_value": {
-                    "unique": false,
-                    "columns": [
-                        "value"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "type_value": {
-                    "unique": false,
-                    "columns": [
-                        "type",
-                        "value"
-                    ]
-                }
-            }
+        "weight": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "lookup_boundary_church": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "boundary_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "FK_boundary_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "boundary_id"
-                    ]
-                },
-                "FK_church_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "unique": {
-                    "unique": true,
-                    "columns": [
-                        "church_id",
-                        "boundary_id"
-                    ]
-                }
-            }
+        "start_date": {
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "lookup_church_osm": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "osm_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "FK_church_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "FK_osm_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "osm_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "unique": {
-                    "unique": true,
-                    "columns": [
-                        "church_id",
-                        "osm_id"
-                    ]
-                }
-            }
+        "end_date": {
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "lookup_osm_enclosed": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "osm_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "enclosing_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "FK_osm_enclosing_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "enclosing_id"
-                    ]
-                },
-                "FK_osm_id_idx": {
-                    "unique": false,
-                    "columns": [
-                        "osm_id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "unique": {
-                    "unique": true,
-                    "columns": [
-                        "enclosing_id",
-                        "osm_id"
-                    ]
-                }
-            }
+        "created_at": {
+          "type": "date",
+          "nullable": false,
+          "default": "curdate()",
+          "extra": ""
         },
-        "megye": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "megyenev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "orszag": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "12",
-                    "extra": ""
-                },
-                "egyeb": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "updated_at": {
+          "type": "date",
+          "nullable": true,
+          "default": "curdate()",
+          "extra": ""
         },
-        "messages": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "sid": {
-                    "type": "varchar(45)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "timestamp": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "severity": {
-                    "type": "varchar(10)",
-                    "nullable": true,
-                    "default": "info",
-                    "extra": ""
-                },
-                "text": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "shown": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": "0",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "color": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "period_id": {
+          "unique": false,
+          "columns": [
+            "period_id"
+          ]
         },
-        "orszagok": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "nev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "telkod": {
-                    "type": "varchar(5)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "ok": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "kiemelt": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "n",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "cal_masses": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
         },
-        "osm": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "osmid": {
-                    "type": "varchar(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmtype": {
-                    "type": "varchar(9)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "lon": {
-                    "type": "decimal(10,8)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lat": {
-                    "type": "decimal(11,8)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "idUNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "osmid",
-                        "osmtype"
-                    ]
-                },
-                "id_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "osmid",
-                        "osmtype"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "photos": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "filename": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "title": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "weight": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "flag": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "height": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "width": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "FKchurch": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "kiemelt": {
-                    "unique": false,
-                    "columns": [
-                        "flag"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "period_id": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "remarks": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(10)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "nev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "login": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "email": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "megbizhato": {
-                    "type": "enum('?','i','n','e')",
-                    "nullable": false,
-                    "default": "?",
-                    "extra": ""
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "allapot": {
-                    "type": "enum('u','f','j')",
-                    "nullable": false,
-                    "default": "u",
-                    "extra": ""
-                },
-                "admin": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "admindatum": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "leiras": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "adminmegj": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "log": {
-                    "type": "text",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "FK_church_id": {
-                    "unique": false,
-                    "columns": [
-                        "church_id"
-                    ]
-                },
-                "index1": {
-                    "unique": false,
-                    "columns": [
-                        "id",
-                        "church_id"
-                    ]
-                },
-                "index2": {
-                    "unique": false,
-                    "columns": [
-                        "id",
-                        "church_id",
-                        "allapot"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "title": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "stats_externalapi": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_bin",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "name": {
-                    "type": "varchar(45)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "url": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "responsecode": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "rawdata": {
-                    "type": "longtext",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "date": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "count": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "diff": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "fast": {
-                    "unique": false,
-                    "columns": [
-                        "url",
-                        "date"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "types": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "stats_pageviews": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "date": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "route": {
-                    "type": "varchar(120)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "kind": {
-                    "type": "enum('html','api','ajax')",
-                    "nullable": false,
-                    "default": "html",
-                    "extra": ""
-                },
-                "count": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "nap": {
-                    "unique": false,
-                    "columns": [
-                        "date"
-                    ]
-                },
-                "nap_utvonal": {
-                    "unique": true,
-                    "columns": [
-                        "date",
-                        "route",
-                        "kind"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "rite": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "stats_searches": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "date": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "keyword": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "hits": {
-                    "type": "tinyint(1)",
-                    "nullable": false,
-                    "default": "1",
-                    "extra": ""
-                },
-                "count": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "nap": {
-                    "unique": false,
-                    "columns": [
-                        "date"
-                    ]
-                },
-                "nap_kulcsszo": {
-                    "unique": true,
-                    "columns": [
-                        "date",
-                        "keyword",
-                        "hits"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "start_date": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         },
-        "szentsegimadasok": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "church_id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "date": {
-                    "type": "date",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "starttime": {
-                    "type": "varchar(5)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "endtime": {
-                    "type": "varchar(5)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "type": {
-                    "type": "varchar(40)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "info": {
-                    "type": "varchar(255)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "duration": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "templomok": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "nev": {
-                    "type": "varchar(150)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "ismertnev": {
-                    "type": "varchar(150)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "orszag": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "megye": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "varos": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "cim": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "megkozelites": {
-                    "type": "tinytext",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "plebania": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "pleb_url": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "pleb_eml": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "egyhazmegye": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "espereskerulet": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "leiras": {
-                    "type": "mediumtext",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "megjegyzes": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "miseaktiv": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": "1",
-                    "extra": ""
-                },
-                "misemegj": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "bucsu": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "frissites": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "kontakt": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "kontaktmail": {
-                    "type": "varchar(70)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "adminmegj": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "letrehozta": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "megbizhato": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "n",
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "modositotta": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "moddatum": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "log": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "ok": {
-                    "type": "enum('i','n','f')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "eszrevetel": {
-                    "type": "enum('i','n','f')",
-                    "nullable": false,
-                    "default": "n",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "deleted_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmid": {
-                    "type": "varchar(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmtype": {
-                    "type": "varchar(9)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lat": {
-                    "type": "decimal(11,7)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lon": {
-                    "type": "decimal(10,7)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "boundaries_checked_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "boundaries_checked_at": {
-                    "unique": false,
-                    "columns": [
-                        "boundaries_checked_at"
-                    ]
-                },
-                "egyhazmegye": {
-                    "unique": false,
-                    "columns": [
-                        "egyhazmegye"
-                    ]
-                },
-                "espereskerulet": {
-                    "unique": false,
-                    "columns": [
-                        "espereskerulet"
-                    ]
-                },
-                "id": {
-                    "unique": false,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "ismertnev": {
-                    "unique": false,
-                    "columns": [
-                        "ismertnev"
-                    ]
-                },
-                "osm": {
-                    "unique": false,
-                    "columns": [
-                        "osmid",
-                        "osmtype"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "varos": {
-                    "unique": false,
-                    "columns": [
-                        "varos"
-                    ]
-                }
-            }
+        "rrule": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "templomok_full": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "nev": {
-                    "type": "varchar(150)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "ismertnev": {
-                    "type": "varchar(150)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "orszag": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "megye": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "varos": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "cim": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "megkozelites": {
-                    "type": "tinytext",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "plebania": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "pleb_url": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "pleb_eml": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "egyhazmegye": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "espereskerulet": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "leiras": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "megjegyzes": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "miseaktiv": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": "1",
-                    "extra": ""
-                },
-                "misemegj": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "bucsu": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "frissites": {
-                    "type": "date",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "kontakt": {
-                    "type": "varchar(250)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "kontaktmail": {
-                    "type": "varchar(70)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "adminmegj": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "letrehozta": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "megbizhato": {
-                    "type": "enum('i','n')",
-                    "nullable": false,
-                    "default": "n",
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "modositotta": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "moddatum": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "log": {
-                    "type": "text",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "ok": {
-                    "type": "enum('i','n','f')",
-                    "nullable": false,
-                    "default": "i",
-                    "extra": ""
-                },
-                "eszrevetel": {
-                    "type": "enum('i','n','f')",
-                    "nullable": false,
-                    "default": "n",
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "deleted_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmid": {
-                    "type": "varchar(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "osmtype": {
-                    "type": "varchar(9)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lat": {
-                    "type": "decimal(11,7)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "lon": {
-                    "type": "decimal(10,7)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "egyhazmegye": {
-                    "unique": false,
-                    "columns": [
-                        "egyhazmegye"
-                    ]
-                },
-                "espereskerulet": {
-                    "unique": false,
-                    "columns": [
-                        "espereskerulet"
-                    ]
-                },
-                "id": {
-                    "unique": false,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "ismertnev": {
-                    "unique": false,
-                    "columns": [
-                        "ismertnev"
-                    ]
-                },
-                "osm": {
-                    "unique": false,
-                    "columns": [
-                        "osmid",
-                        "osmtype"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "varos": {
-                    "unique": false,
-                    "columns": [
-                        "varos"
-                    ]
-                }
-            }
+        "experiod": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "tokens": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "type": {
-                    "type": "varchar(15)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "name": {
-                    "type": "varchar(40)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "uid": {
-                    "type": "int(11)",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "timeout": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "created_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "updated_at": {
-                    "type": "timestamp",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "id_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "name_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "name"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "manual_experiod": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         },
-        "updates": {
-            "engine": "InnoDB",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "uid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "tid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": ""
-                },
-                "timestamp": {
-                    "type": "timestamp",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "id_UNIQUE": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                },
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "exdate": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lang": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "comment": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "location_lat": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "location_lon": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "location_name": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "date",
+          "nullable": false,
+          "default": "curdate()",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "date",
+          "nullable": true,
+          "default": "curdate()",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "church_id": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "period_id": {
+          "unique": false,
+          "columns": [
+            "period_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "cal_periods": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "name": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "weight": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "start_month_day": {
+          "type": "varchar(5)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "end_month_day": {
+          "type": "varchar(5)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "start_period_id": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "end_period_id": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "all_inclusive": {
+          "type": "tinyint(1)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "multi_day": {
+          "type": "tinyint(1)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "created_at": {
+          "type": "date",
+          "nullable": false,
+          "default": "curdate()",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "date",
+          "nullable": true,
+          "default": "curdate()",
+          "extra": ""
+        },
+        "special_type": {
+          "type": "enum('christmas','easter')",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "selectable": {
+          "type": "tinyint(1)",
+          "nullable": true,
+          "default": "1",
+          "extra": ""
+        },
+        "color": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "end_period_id": {
+          "unique": false,
+          "columns": [
+            "end_period_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "start_period_id": {
+          "unique": false,
+          "columns": [
+            "start_period_id"
+          ]
+        }
+      }
+    },
+    "cal_period_years": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "period_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "start_year": {
+          "type": "int(4)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "start_date": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "end_date": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "date",
+          "nullable": false,
+          "default": "curdate()",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "date",
+          "nullable": true,
+          "default": "curdate()",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "period_id": {
+          "unique": false,
+          "columns": [
+            "period_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "cal_suggestions": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "bigint(20) unsigned",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "package_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "period_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "mass_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "mass_state": {
+          "type": "enum('new','deleted','modified')",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "changes": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "package_id": {
+          "unique": false,
+          "columns": [
+            "package_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "cal_suggestion_packages": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "bigint(20) unsigned",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "sender_name": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "sender_email": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "sender_user_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "sender_message": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "state": {
+          "type": "enum('accepted','rejected','pending')",
+          "nullable": true,
+          "default": "PENDING",
+          "extra": ""
+        },
+        "handled_by_user_id": {
+          "type": "bigint(20) unsigned",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "handled_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "church_id": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "chat": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "datum": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
         },
         "user": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "uid": {
-                    "type": "int(11)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "login": {
-                    "type": "varchar(20)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "jelszo": {
-                    "type": "varchar(255)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "jogok": {
-                    "type": "varchar(200)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "regdatum": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "lastlogin": {
-                    "type": "datetime",
-                    "nullable": false,
-                    "default": "current_timestamp",
-                    "extra": ""
-                },
-                "lastactive": {
-                    "type": "datetime",
-                    "nullable": true,
-                    "default": null,
-                    "extra": ""
-                },
-                "email": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "notifications": {
-                    "type": "int(1)",
-                    "nullable": true,
-                    "default": "1",
-                    "extra": ""
-                },
-                "becenev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "nev": {
-                    "type": "varchar(100)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                },
-                "volunteer": {
-                    "type": "int(1)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "uid"
-                    ]
-                }
-            }
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
         },
-        "varosok": {
-            "engine": "MyISAM",
-            "collation": "utf8mb4_unicode_ci",
-            "columns": {
-                "id": {
-                    "type": "int(3)",
-                    "nullable": false,
-                    "default": null,
-                    "extra": "auto_increment"
-                },
-                "irsz": {
-                    "type": "int(4)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "megye_id": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "0",
-                    "extra": ""
-                },
-                "orszag": {
-                    "type": "int(2)",
-                    "nullable": false,
-                    "default": "46",
-                    "extra": ""
-                },
-                "nev": {
-                    "type": "varchar(50)",
-                    "nullable": false,
-                    "default": "",
-                    "extra": ""
-                }
-            },
-            "indexes": {
-                "PRIMARY": {
-                    "unique": true,
-                    "columns": [
-                        "id"
-                    ]
-                }
-            }
+        "kinek": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "szoveg": {
+          "type": "tinytext",
+          "nullable": false,
+          "default": null,
+          "extra": ""
         }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
     },
-    "_meta": {
-        "generated_at": "2026-08-10T18:36:26+02:00",
-        "source_schema": "miserend",
-        "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
-        "initdb_files": {
-            "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
-            "01-create-database.sql": "dec66da6495a0d5ee007beda9e2be684b104cb4875b12ba0cf21ebae81874385",
-            "02-schema.sql": "40fdcedfd73cc57f8cb24e64c5785c91286de80d22c42700e0704cd42d657b7a",
-            "03-migrations.sql": "b17a6da4226a09f95c8249d6886802fe1087b944644f705d75a716a9a562f644",
-            "04-attributes-index.sql": "b2cf9ff6b616a8679c944fb6eb09baf6daeaa53793c0395e8d921525a91ea61a",
-            "04-mass-languages.sql": "9df189d0de091724f0b3119bd9fc088a5960885e4a35487df11d5a6422c2bcf5",
-            "05-data.sh": "5cf4dcd42e89288863792ed219c41937abcca249da22fbbf623d30dcd176874f",
-            "06-data-integrity.sql": "d0afff9288b6b7ccd60aae9e9f9e14c903732f4560e7eb7efde299ff946a944a",
-            "06-relationship-type-drop.sql": "04ac1538b42e0d9ad1f8106762013c8e9003965b70bc76ae1b27891273da938e",
-            "07-boundaries-iso.sql": "120cd5b6a656e754c8eef74d34415e03d987a09dce6ba998cb5c6ad1604fc03b"
+    "church_holders": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "user_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "description": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "status": {
+          "type": "enum('asked','allowed','denied','revoked')",
+          "nullable": false,
+          "default": "asked",
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "deleted_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "church_links": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "href": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "title": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "deleted_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "church_relationships": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "parent_church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "child_church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": "on update current_timestamp()"
+        }
+      },
+      "indexes": {
+        "child_idx": {
+          "unique": false,
+          "columns": [
+            "child_church_id"
+          ]
+        },
+        "parent_idx": {
+          "unique": false,
+          "columns": [
+            "parent_church_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "unique_pair": {
+          "unique": true,
+          "columns": [
+            "parent_church_id",
+            "child_church_id"
+          ]
+        }
+      }
+    },
+    "church_update_tokens": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "token": {
+          "type": "varchar(64)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "uid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "email_batch_id": {
+          "type": "varchar(64)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "expires_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "used_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": "current_timestamp",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "token"
+          ]
+        }
+      }
+    },
+    "confessions": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "deduplicationId": {
+          "type": "char(36)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "local_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "timestamp": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": "on update current_timestamp()"
+        },
+        "fulldata": {
+          "type": "longtext",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "status": {
+          "type": "enum('on','off')",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "deduplicationId": {
+          "unique": true,
+          "columns": [
+            "deduplicationId"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "crons": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "class": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "function": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "frequency": {
+          "type": "varchar(45)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "from": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "until": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "deadline_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "attempts": {
+          "type": "int(2)",
+          "nullable": true,
+          "default": "0",
+          "extra": ""
+        },
+        "lastsuccess_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_At": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "distances": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "fromLat": {
+          "type": "decimal(11,7)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "fromLon": {
+          "type": "decimal(11,7)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "toLat": {
+          "type": "decimal(11,7)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "toLon": {
+          "type": "decimal(11,7)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "distance": {
+          "type": "float",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "toupdate": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "Coord": {
+          "unique": true,
+          "columns": [
+            "fromLat",
+            "fromLon",
+            "toLat",
+            "toLon"
+          ]
+        },
+        "From": {
+          "unique": false,
+          "columns": [
+            "fromLat",
+            "fromLon"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "egyhazmegye": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "nev": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "sorrend": {
+          "type": "int(3)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "ok": {
+          "type": "enum('i','n')",
+          "nullable": false,
+          "default": "i",
+          "extra": ""
+        },
+        "felelos": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "email": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "csakez": {
+          "type": "enum('i','n')",
+          "nullable": false,
+          "default": "i",
+          "extra": ""
+        },
+        "osm_relation": {
+          "type": "int(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "id": {
+          "unique": false,
+          "columns": [
+            "id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "emails": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "type": {
+          "type": "varchar(30)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "to": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "header": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "subject": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "body": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "status": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "espereskerulet": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(3)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "ehm": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "nev": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "events": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "name": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "year": {
+          "type": "varchar(4)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "date": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "id_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "name+year": {
+          "unique": true,
+          "columns": [
+            "name",
+            "year"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "external_calendars": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "name": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "url": {
+          "type": "varchar(2048)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "active": {
+          "type": "tinyint(1)",
+          "nullable": true,
+          "default": "1",
+          "extra": ""
+        },
+        "last_import_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": "on update current_timestamp()"
+        }
+      },
+      "indexes": {
+        "fk_external_calendars_church_id": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "unique_church_external": {
+          "unique": true,
+          "columns": [
+            "church_id",
+            "name"
+          ]
+        }
+      }
+    },
+    "favorites": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(10) unsigned",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "uid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "tid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "uid_tid_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "uid",
+            "tid"
+          ]
+        }
+      }
+    },
+    "keyword_shortcuts": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "osmtag_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "type": {
+          "type": "varchar(30)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "value": {
+          "type": "varchar(200)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "church_type_value": {
+          "unique": false,
+          "columns": [
+            "church_id",
+            "type",
+            "value"
+          ]
+        },
+        "FK_keyword_shortchuts_church_idx": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "FK_keyword_shortchuts_osmtag_idx": {
+          "unique": false,
+          "columns": [
+            "osmtag_id"
+          ]
+        },
+        "index_value": {
+          "unique": false,
+          "columns": [
+            "value"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "type_value": {
+          "unique": false,
+          "columns": [
+            "type",
+            "value"
+          ]
+        }
+      }
+    },
+    "lookup_boundary_church": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "boundary_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "FK_boundary_id_idx": {
+          "unique": false,
+          "columns": [
+            "boundary_id"
+          ]
+        },
+        "FK_church_id_idx": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "unique": {
+          "unique": true,
+          "columns": [
+            "church_id",
+            "boundary_id"
+          ]
+        }
+      }
+    },
+    "lookup_church_osm": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "osm_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "FK_church_id_idx": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "FK_osm_id_idx": {
+          "unique": false,
+          "columns": [
+            "osm_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "unique": {
+          "unique": true,
+          "columns": [
+            "church_id",
+            "osm_id"
+          ]
+        }
+      }
+    },
+    "lookup_osm_enclosed": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "osm_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "enclosing_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "FK_osm_enclosing_id_idx": {
+          "unique": false,
+          "columns": [
+            "enclosing_id"
+          ]
+        },
+        "FK_osm_id_idx": {
+          "unique": false,
+          "columns": [
+            "osm_id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "unique": {
+          "unique": true,
+          "columns": [
+            "enclosing_id",
+            "osm_id"
+          ]
+        }
+      }
+    },
+    "messages": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "sid": {
+          "type": "varchar(45)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "timestamp": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "severity": {
+          "type": "varchar(10)",
+          "nullable": true,
+          "default": "info",
+          "extra": ""
+        },
+        "text": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "shown": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": "0",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "osm": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "osmid": {
+          "type": "varchar(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "osmtype": {
+          "type": "varchar(9)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "lon": {
+          "type": "decimal(10,8)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lat": {
+          "type": "decimal(11,8)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "idUNIQUE": {
+          "unique": true,
+          "columns": [
+            "osmid",
+            "osmtype"
+          ]
+        },
+        "id_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "osmid",
+            "osmtype"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "photos": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "filename": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "title": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "weight": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "flag": {
+          "type": "enum('i','n')",
+          "nullable": false,
+          "default": "i",
+          "extra": ""
+        },
+        "height": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "width": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "FKchurch": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "kiemelt": {
+          "unique": false,
+          "columns": [
+            "flag"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "remarks": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(10)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "nev": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "login": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "email": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "megbizhato": {
+          "type": "enum('?','i','n','e')",
+          "nullable": false,
+          "default": "?",
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "allapot": {
+          "type": "enum('u','f','j')",
+          "nullable": false,
+          "default": "u",
+          "extra": ""
+        },
+        "admin": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "admindatum": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "leiras": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "adminmegj": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "log": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "FK_church_id": {
+          "unique": false,
+          "columns": [
+            "church_id"
+          ]
+        },
+        "index1": {
+          "unique": false,
+          "columns": [
+            "id",
+            "church_id"
+          ]
+        },
+        "index2": {
+          "unique": false,
+          "columns": [
+            "id",
+            "church_id",
+            "allapot"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "stats_externalapi": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_bin",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "name": {
+          "type": "varchar(45)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "url": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "responsecode": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "rawdata": {
+          "type": "longtext",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "date": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "count": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "diff": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "fast": {
+          "unique": false,
+          "columns": [
+            "url",
+            "date"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "stats_pageviews": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "date": {
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "route": {
+          "type": "varchar(120)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "kind": {
+          "type": "enum('html','api','ajax')",
+          "nullable": false,
+          "default": "html",
+          "extra": ""
+        },
+        "count": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "nap": {
+          "unique": false,
+          "columns": [
+            "date"
+          ]
+        },
+        "nap_utvonal": {
+          "unique": true,
+          "columns": [
+            "date",
+            "route",
+            "kind"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "stats_searches": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "date": {
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "keyword": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "hits": {
+          "type": "tinyint(1)",
+          "nullable": false,
+          "default": "1",
+          "extra": ""
+        },
+        "count": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "nap": {
+          "unique": false,
+          "columns": [
+            "date"
+          ]
+        },
+        "nap_kulcsszo": {
+          "unique": true,
+          "columns": [
+            "date",
+            "keyword",
+            "hits"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "szentsegimadasok": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "date": {
+          "type": "date",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "starttime": {
+          "type": "varchar(5)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "endtime": {
+          "type": "varchar(5)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "type": {
+          "type": "varchar(40)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "info": {
+          "type": "varchar(255)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "templomok": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "nev": {
+          "type": "varchar(150)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "ismertnev": {
+          "type": "varchar(150)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "cim": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "megkozelites": {
+          "type": "tinytext",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "plebania": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "pleb_url": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "pleb_eml": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "egyhazmegye": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "espereskerulet": {
+          "type": "int(3)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "leiras": {
+          "type": "mediumtext",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "megjegyzes": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "miseaktiv": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": "1",
+          "extra": ""
+        },
+        "misemegj": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "bucsu": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "frissites": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "kontakt": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "kontaktmail": {
+          "type": "varchar(70)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "adminmegj": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "letrehozta": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "megbizhato": {
+          "type": "enum('i','n')",
+          "nullable": false,
+          "default": "n",
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "modositotta": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "moddatum": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "log": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "ok": {
+          "type": "enum('i','n','f')",
+          "nullable": false,
+          "default": "i",
+          "extra": ""
+        },
+        "eszrevetel": {
+          "type": "enum('i','n','f')",
+          "nullable": false,
+          "default": "n",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "deleted_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "osmid": {
+          "type": "varchar(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "osmtype": {
+          "type": "varchar(9)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lat": {
+          "type": "decimal(11,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lon": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "boundaries_checked_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "boundaries_checked_at": {
+          "unique": false,
+          "columns": [
+            "boundaries_checked_at"
+          ]
+        },
+        "egyhazmegye": {
+          "unique": false,
+          "columns": [
+            "egyhazmegye"
+          ]
+        },
+        "espereskerulet": {
+          "unique": false,
+          "columns": [
+            "espereskerulet"
+          ]
+        },
+        "id": {
+          "unique": false,
+          "columns": [
+            "id"
+          ]
+        },
+        "ismertnev": {
+          "unique": false,
+          "columns": [
+            "ismertnev"
+          ]
+        },
+        "osm": {
+          "unique": false,
+          "columns": [
+            "osmid",
+            "osmtype"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "templomok_full": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "nev": {
+          "type": "varchar(150)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "ismertnev": {
+          "type": "varchar(150)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "orszag": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "megye": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "varos": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "cim": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "megkozelites": {
+          "type": "tinytext",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "plebania": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "pleb_url": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "pleb_eml": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "egyhazmegye": {
+          "type": "int(2)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "espereskerulet": {
+          "type": "int(3)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        },
+        "leiras": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "megjegyzes": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "miseaktiv": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": "1",
+          "extra": ""
+        },
+        "misemegj": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "bucsu": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "frissites": {
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "kontakt": {
+          "type": "varchar(250)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "kontaktmail": {
+          "type": "varchar(70)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "adminmegj": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "letrehozta": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "megbizhato": {
+          "type": "enum('i','n')",
+          "nullable": false,
+          "default": "n",
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "modositotta": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "moddatum": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "log": {
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "ok": {
+          "type": "enum('i','n','f')",
+          "nullable": false,
+          "default": "i",
+          "extra": ""
+        },
+        "eszrevetel": {
+          "type": "enum('i','n','f')",
+          "nullable": false,
+          "default": "n",
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "deleted_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "osmid": {
+          "type": "varchar(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "osmtype": {
+          "type": "varchar(9)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lat": {
+          "type": "decimal(11,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "lon": {
+          "type": "decimal(10,7)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "egyhazmegye": {
+          "unique": false,
+          "columns": [
+            "egyhazmegye"
+          ]
+        },
+        "espereskerulet": {
+          "unique": false,
+          "columns": [
+            "espereskerulet"
+          ]
+        },
+        "id": {
+          "unique": false,
+          "columns": [
+            "id"
+          ]
+        },
+        "ismertnev": {
+          "unique": false,
+          "columns": [
+            "ismertnev"
+          ]
+        },
+        "osm": {
+          "unique": false,
+          "columns": [
+            "osmid",
+            "osmtype"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "varos": {
+          "unique": false,
+          "columns": [
+            "varos"
+          ]
+        }
+      }
+    },
+    "tokens": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "type": {
+          "type": "varchar(15)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "name": {
+          "type": "varchar(40)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "uid": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "timeout": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "id_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "name_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "name"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "updates": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "uid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "tid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "timestamp": {
+          "type": "timestamp",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "id_UNIQUE": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        }
+      }
+    },
+    "user": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_unicode_ci",
+      "columns": {
+        "uid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "login": {
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "jelszo": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "jogok": {
+          "type": "varchar(200)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "regdatum": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "lastlogin": {
+          "type": "datetime",
+          "nullable": false,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "lastactive": {
+          "type": "datetime",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "email": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "notifications": {
+          "type": "int(1)",
+          "nullable": true,
+          "default": "1",
+          "extra": ""
+        },
+        "becenev": {
+          "type": "varchar(50)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "nev": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": "",
+          "extra": ""
+        },
+        "volunteer": {
+          "type": "int(1)",
+          "nullable": false,
+          "default": "0",
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "uid"
+          ]
+        }
+      }
     }
+  },
+  "_meta": {
+    "generated_at": "2026-08-16T18:24:34+02:00",
+    "source_schema": "miserend",
+    "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
+    "initdb_files": {
+      "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
+      "01-create-database.sql": "dec66da6495a0d5ee007beda9e2be684b104cb4875b12ba0cf21ebae81874385",
+      "02-schema.sql": "40fdcedfd73cc57f8cb24e64c5785c91286de80d22c42700e0704cd42d657b7a",
+      "03-migrations.sql": "b17a6da4226a09f95c8249d6886802fe1087b944644f705d75a716a9a562f644",
+      "04-attributes-index.sql": "b2cf9ff6b616a8679c944fb6eb09baf6daeaa53793c0395e8d921525a91ea61a",
+      "04-mass-languages.sql": "9df189d0de091724f0b3119bd9fc088a5960885e4a35487df11d5a6422c2bcf5",
+      "05-data.sh": "5cf4dcd42e89288863792ed219c41937abcca249da22fbbf623d30dcd176874f",
+      "06-data-integrity.sql": "d0afff9288b6b7ccd60aae9e9f9e14c903732f4560e7eb7efde299ff946a944a",
+      "06-relationship-type-drop.sql": "04ac1538b42e0d9ad1f8106762013c8e9003965b70bc76ae1b27891273da938e",
+      "07-boundaries-iso.sql": "120cd5b6a656e754c8eef74d34415e03d987a09dce6ba998cb5c6ad1604fc03b"
+    }
+  }
 }

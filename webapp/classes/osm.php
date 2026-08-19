@@ -31,8 +31,6 @@ class OSM {
         $referenceData = [
             'egyhazmegyek'     => collect(DB::table('egyhazmegye')->get())->keyBy('id'),
             'espereskeruletek' => collect(DB::table('espereskerulet')->get())->keyBy('id'),
-            'orszagok'         => collect(DB::table('orszagok')->get())->keyBy('id'),
-            'megyek'           => collect(DB::table('megye')->select('*', 'megyenev as nev')->get())->keyBy('id'),
         ];
 
         foreach ($churches as $church) {
@@ -165,8 +163,47 @@ class OSM {
         if (empty($overpass->jsonData->elements)) {
             return [];
         }
-         
-        foreach($overpass->jsonData->elements as $element) {            
+
+        return self::saveBoundaryElements($overpass->jsonData->elements);
+    }
+
+    /**
+     * #821: az Overpass-tól kapott határ-elemek mentése.
+     *
+     * Külön metódus, mert a `downloadBoundaries()` maga építi a HTTP-klienst, tehát a
+     * mentési logikát csak élő hálózattal lehetne mérni. Márpedig épp ez a rész
+     * szállt el élesben egyetlen rossz elemtől, és állította meg az egész cront.
+     *
+     * @param  iterable $elements az Overpass válaszának `elements` tömbje
+     * @return int[] a mentett/megtalált határok azonosítói
+     */
+    static function saveBoundaryElements($elements): array {
+        $return = [];
+
+        foreach($elements as $element) {
+            /*
+             * #821: a `boundary` TAG nélküli elemeket kihagyjuk.
+             *
+             * A lekérdezés az OSM `type=boundary` RELÁCIÓ-TÍPUSRA szűr, ami nem
+             * ugyanaz, mint a `boundary=*` tag: van olyan elem, amin az előbbi ott
+             * van, az utóbbi viszont nincs (élesben a 18357156-os reláció, a „Dublin
+             * Metropolitan District Court"). A `boundaries.boundary` oszlop NOT NULL,
+             * alapérték nélkül — a mentés tehát kivétellel elszállt:
+             *
+             *   Field 'boundary' doesn't have a default value
+             *
+             * És mivel a kivételt senki nem fogta el, EGYETLEN ilyen elem megállította
+             * az egész cront: élesben 21 órán át egyetlen templom határa sem frissült.
+             *
+             * Az ilyen elem amúgy sem használható: minden fogyasztó `boundary`-re
+             * szűr (`where('boundary','administrative')`), tehát egy besorolás nélküli
+             * sor csak szemét lenne — épp az, ami az „Orphan Boundaries" számlálót hizlalja.
+             */
+            $boundaryTag = trim((string) ($element->tags->boundary ?? ''));
+            if ($boundaryTag === '') {
+                continue;
+            }
+
             $boundary = \Eloquent\Boundary::firstOrNew(['osmtype' => $element->type, 'osmid' => $element->id]);
             
             $changed = false;
@@ -201,12 +238,28 @@ class OSM {
                 $changed = true;
             }
 
-            if ($changed) {
-                $boundary->save();
-            } else {
-                // Az OSM adat nem változott, de jelezzük, hogy most is ellenőriztük.
-                // Ez biztosítja, hogy a boundaries.updated_at tükrözze az utolsó ellenőrzés idejét.
-                $boundary->touch();
+            /*
+             * #821: egyetlen rossz elem ne állítsa meg az egész cront.
+             *
+             * A fenti kihagyás a MOST ismert okot szünteti meg, de az OSM szabadon
+             * szerkeszthető: bármikor jöhet olyan adat, amit a séma nem fogad el (túl
+             * hosszú név, ismeretlen mező). Ezért a mentés köré védőháló kerül — a
+             * hibás elemet kihagyjuk és naplózzuk, a többi templom határa frissül.
+             */
+            try {
+                if ($changed) {
+                    $boundary->save();
+                } else {
+                    // Az OSM adat nem változott, de jelezzük, hogy most is ellenőriztük.
+                    // Ez biztosítja, hogy a boundaries.updated_at tükrözze az utolsó ellenőrzés idejét.
+                    $boundary->touch();
+                }
+            } catch (\Throwable $e) {
+                error_log(sprintf(
+                    '[miserend] Nem menthető határ (%s/%s): %s',
+                    $element->type, $element->id, $e->getMessage()
+                ));
+                continue;
             }
 
             $return[] = $boundary->id;
@@ -246,6 +299,32 @@ class OSM {
      *
      * @throws Exception Ha az Overpass API lekérdezésből hiányoznak az elemek
      */
+    /** Egy futásban ennyi elemnél többet nem dolgozunk fel. */
+    const URL_MISEREND_LIMIT = 10000;
+
+    /**
+     * #658: az `url:miserend` értékéből a templom azonosítója.
+     *
+     * #410: a mintát nem horgonyozzuk, így a http/https/www prefix nem számít; kezeli
+     * az opcionális `?`-et és a path-suffixeket (pl. /templom/5/calendar). Mindkét
+     * útvonal-formát elfogadja: `templom/N` és `(?)templom=N`.
+     *
+     * #510: az `uj.miserend.hu`-t szándékosan NEM fogadjuk el (negatív lookbehind):
+     * hibás adat, essen a „van url:miserend, de nem használható" ágba.
+     *
+     * Külön metódus, hogy tesztelhető legyen, MELYIK alakot fogadjuk el — a jegy épp
+     * arról szól, hogy az OSM-ben sokféle alak van forgalomban.
+     */
+    public static function churchIdFromMiserendUrl(?string $url): ?int {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+        if (preg_match('#(?<!uj\.)miserend\.hu/?\??templom(?:=|/)(\d+)#i', $url, $match) !== 1) {
+            return null;
+        }
+        return (int) $match[1];
+    }
+
     function syncUrlMiserendFromOSM() {
         
         $overpass = new \ExternalApi\OverpassApi();
@@ -254,29 +333,74 @@ class OSM {
          if (!$overpass->jsonData->elements) {
             throw new Exception("Missing Json Elements from OverpassApi Query");
         }
+
+        /*
+         * #658: a hibás értékeket JELENTJÜK, nem dobjuk el némán.
+         *
+         * Az OSM-ben sokféle alak van forgalomban (http nélkül, `?templom=345`,
+         * `uj.miserend.hu`, elgépelt hoszt), és borazslo egyetlen nagy changesetben
+         * akarja rendbe tenni. Ahhoz viszont tudnia kell, MELYIK elemről van szó —
+         * eddig ezek nyom nélkül elvesztek (a kódban ottfelejtett TODO helyén).
+         */
+        $hibasErtek = [];
+        $ismeretlenTemplom = [];
+        $sikeres = 0;
+
         $c = 0;
         foreach ($overpass->jsonData->elements as $element) {
             $c++;
-            if($c > 10000) exit;
-            // #410: robusztusabb match. A mintát nem horgonyozzuk, így a
-            // http/https/www prefix nem számít; kezeli az opcionális `?`-et és
-            // a path-suffixeket (pl. /templom/5/calendar). Mindkét útvonal-
-            // formát elfogadja: templom/N és (?)templom=N. A korábbi {1,5}
-            // helyett \d+ (nincs 5-jegyű felső korlát az ID-n).
-            // #510: az uj.miserend.hu-t szándékosan NEM matcheljük (negatív
-            // lookbehind) - hibás adat, így a "van url:miserend, de nem
-            // használható" ágba esik, amit borazslo kézzel javít.
-            preg_match('#(?<!uj\.)miserend\.hu/?\??templom(?:=|/)(\d+)#i', $element->tags->{'url:miserend'} ?? '', $match);
-            if(!isset($match[1])) {
-                /*
-                 * TODO: Van url:miserend, de az értéke vacak.
-                 */
-                //printr($element);
+            if ($c > self::URL_MISEREND_LIMIT) {
+                // Itt korábban `exit` állt: az a cron-futtatót is megölte, tehát a munka
+                // SOHA nem került sikeres állapotba, és a többi cron sem futott le utána.
+                echo "OSM url:miserend: elértem a(z) " . self::URL_MISEREND_LIMIT
+                    . " elemes korlátot, a többit ebben a körben kihagyom.\n";
+                break;
+            }
 
-            } else {
-                $church = \Eloquent\Church::find($match[1]);
-                if($church)
-                    $this->saveOSM2Church($church,$element);
+            $ertek = $element->tags->{'url:miserend'} ?? '';
+            $tid = self::churchIdFromMiserendUrl($ertek);
+
+            if ($tid === null) {
+                $hibasErtek[] = $this->osmElementLabel($element) . ' → ' . $ertek;
+                continue;
+            }
+
+            $church = \Eloquent\Church::find($tid);
+            if (!$church) {
+                $ismeretlenTemplom[] = $this->osmElementLabel($element) . ' → ' . $ertek;
+                continue;
+            }
+
+            $this->saveOSM2Church($church, $element);
+            $sikeres++;
+        }
+
+        $this->reportUrlMiserendIssues($sikeres, $hibasErtek, $ismeretlenTemplom);
+    }
+
+    /** Az OSM-elem emberi azonosítója, hogy a jelentésből meg lehessen találni. */
+    private function osmElementLabel($element): string {
+        return ($element->type ?? '?') . '/' . ($element->id ?? '?');
+    }
+
+    /**
+     * #658: a futás összegzése. A cron-oldalon és a `docker logs`-ban is látszik,
+     * tehát egyetlen futásból megvan a javítandó elemek listája.
+     */
+    private function reportUrlMiserendIssues(int $sikeres, array $hibasErtek, array $ismeretlenTemplom): void {
+        printf("OSM url:miserend: %d elem átkötve, %d hibás értékű, %d ismeretlen templomra mutat.\n",
+            $sikeres, count($hibasErtek), count($ismeretlenTemplom));
+
+        foreach ([
+            'Nem értelmezhető url:miserend érték' => $hibasErtek,
+            'Nem létező templomra mutat'          => $ismeretlenTemplom,
+        ] as $cim => $lista) {
+            if (!$lista) {
+                continue;
+            }
+            echo '  ' . $cim . ":\n";
+            foreach ($lista as $sor) {
+                echo '    ' . $sor . "\n";
             }
         }
     }

@@ -37,6 +37,42 @@ class SimpleRRule
         $this->debugCallback = $debugCallback;
     }
 
+    /**
+     * #832: egy JELLEMZŐ kezdet — a szabályból, előfordulás-generálás nélkül.
+     *
+     * Ahol csak azt kell tudni, MELYIK NAPON és hánykor van a mise (mise-lista,
+     * rendezés, külső export), ott a teljes sorozat legenerálása nem csak fölösleges,
+     * hanem félrevezető is: a `getOccurrences()` a szabály saját tartományában keres,
+     * és ha az szűk, ÜRESET ad. Élesben mérve 4000 ismétlődő miséből 6 ilyen — az
+     * `Api\ServiceTimes` náluk szó szerint „(ERROR/BUG no start_date)"-et írt ki.
+     * A `Church::getMassRRulesByPeriodAttribute()`-ban ott is állt rá a jelzés:
+     * „Itt ez hiba, mert nem egy konkrét legenerált Periodban nézünk szét".
+     *
+     * A `dtstart` adja az időt, a `byweekday` a napot: a `dtstart`-tól előrelépünk az
+     * első olyan napra, amit a szabály megenged. `byweekday` nélkül maga a `dtstart`.
+     * A `bysetpos` (pl. „minden hónap 4. vasárnapja") itt szándékosan nem számít — a
+     * kérdés a NAP, nem a konkrét dátum, és a negyedik vasárnap is vasárnap.
+     */
+    public function representativeStart(): \Carbon\Carbon
+    {
+        $kezdet = $this->start->copy();
+        if (empty($this->byWeekday)) {
+            return $kezdet;
+        }
+
+        for ($lepes = 0; $lepes < 7; $lepes++) {
+            // A Carbon vasárnapra 0-t ad, a szabály viszont ISO-t használ (hétfő = 1).
+            $isoNap = $kezdet->dayOfWeek === 0 ? 7 : $kezdet->dayOfWeek;
+            if (in_array($isoNap, $this->byWeekday)) {
+                return $kezdet;
+            }
+            $kezdet->addDay();
+        }
+
+        // Ismeretlen nap-jelölésnél (a normalizálás átengedi) maradjon a dtstart.
+        return $this->start->copy();
+    }
+
     private function logDebug(string $msg, array $ctx = []): void
     {
         if ($this->debugCallback) {
@@ -44,13 +80,41 @@ class SimpleRRule
         }
     }
 
-    private function normalizeByWeekday(array $days): array
+    /**
+     * #765: a `byweekday` STRINGKÉNT is érkezhet, nem csak tömbként.
+     *
+     * A külső naptár importálója a `BYDAY=2SU` alakot (minden hónap 2. vasárnapja)
+     * egyetlen stringgel adta vissza, míg a `BYDAY=SU,MO` alakot tömbbel — a típus-
+     * kikötés miatt az előbbi TypeError-ral megölte az egész import futását.
+     *
+     * Az importálót külön javítom, de itt is elfogadjuk: az adatbázisban MÁR ott vannak
+     * a korábbi futások stringes sorai, és azok különben minden generáláskor újra
+     * elhasalnának.
+     *
+     * @param array|string|null $days
+     */
+    private function normalizeByWeekday($days): array
     {
+        if ($days === null || $days === '') {
+            return [];
+        }
+        if (!is_array($days)) {
+            $days = [$days];
+        }
+
         $map = [
             'MO' => 1, 'TU' => 2, 'WE' => 3, 'TH' => 4,
             'FR' => 5, 'SA' => 6, 'SU' => 7,
         ];
-        return array_map(fn($d) => $map[strtoupper($d)] ?? $d, $days);
+
+        $out = [];
+        foreach ($days as $d) {
+            if ($d === null || $d === '') {
+                continue;
+            }
+            $out[] = $map[strtoupper((string) $d)] ?? $d;
+        }
+        return $out;
     }
 
     public function getOccurrences(): array
@@ -339,6 +403,88 @@ class SimpleRRule
      *                          byweekno, count, dtstart
      * @return string emberi-olvasható magyar leírás, vagy '' ha nincs rrule
      */
+    /**
+     * #800: az ismétlődési szabály RFC 5545 szerinti RRULE-sztringje.
+     *
+     * Eddig ez a Html\Church\Ical privát metódusa volt. Az sqlite-exportnak (API v5)
+     * ugyanez kell — borazslo kifejezetten az iCal formátumát kérte referenciának —,
+     * ezért ide kerül, hogy egy helyen legyen és ne csússzon szét a kettő.
+     *
+     * Az `exdate` NEM része: az külön mező, mert a szabályhoz képest kivétel.
+     *
+     * @param array<string,mixed>|null $rrule
+     */
+    static function toRfcString($rrule): string {
+        if (!$rrule || !is_array($rrule)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($rrule as $kulcs => $ertek) {
+            if ($kulcs === 'exdate' || $kulcs === 'dtstart') {
+                continue;
+            }
+            if ($kulcs === 'byweekday') {
+                $kulcs = 'byday';
+            }
+            if ($kulcs === 'until') {
+                $parts[] = 'UNTIL=' . self::rfcDatum($ertek);
+                continue;
+            }
+            if (is_array($ertek)) {
+                $parts[] = strtoupper($kulcs) . '=' . implode(',', array_map(
+                    fn($x) => strtoupper((string) $x),
+                    $ertek
+                ));
+                continue;
+            }
+            $parts[] = strtoupper($kulcs) . '=' . strtoupper((string) $ertek);
+        }
+
+        return implode(';', $parts);
+    }
+
+    /**
+     * #800: a kizárt alkalmak KONKRÉT dátumai.
+     *
+     * borazslo pontosan ezt kérte: "az exdates azok konkrét dátumok". A táblázatos
+     * exportnak nem szabály kell, hanem lista — a fogyasztó így egyszerűen kiveszi
+     * az rrule-lal felszorzott sorozatból.
+     *
+     * @param array<string,mixed>|null $rrule
+     * @return array<int,string> Y-m-d dátumok, rendezve, duplikátum nélkül
+     */
+    static function exdates($rrule): array {
+        if (!$rrule || !is_array($rrule) || empty($rrule['exdate']) || !is_array($rrule['exdate'])) {
+            return [];
+        }
+
+        $datumok = [];
+        foreach ($rrule['exdate'] as $ertek) {
+            try {
+                $datumok[] = (new \DateTime((string) $ertek))->format('Y-m-d');
+            } catch (\Throwable $e) {
+                // Értelmezhetetlen dátumot inkább kihagyunk, mint hogy szemetet exportáljunk.
+            }
+        }
+
+        $datumok = array_values(array_unique($datumok));
+        sort($datumok);
+
+        return $datumok;
+    }
+
+    /** UTC-re normalizált, RFC 5545 alakú időbélyeg. */
+    private static function rfcDatum($ertek): string {
+        try {
+            return (new \DateTime((string) $ertek))
+                ->setTimezone(new \DateTimeZone('UTC'))
+                ->format('Ymd\\THis\\Z');
+        } catch (\Throwable $e) {
+            return (string) $ertek;
+        }
+    }
+
     static function humanText($rrule): string
     {
         if (empty($rrule) || !is_array($rrule)) {

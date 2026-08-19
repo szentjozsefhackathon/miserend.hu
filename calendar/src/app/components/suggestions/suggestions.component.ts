@@ -244,10 +244,17 @@ export class SuggestionsComponent implements OnInit {
       res => {
         this.snackBarService.success('Sikeres jóváhagyás!');
 
-        //TODO: EZT MAJD HÁTTÉRBEN
+        /*
+         * #832: az újragenerálás tűz-és-felejts — lásd a church-calendar párját.
+         * A „háttérben" a SZERVER oldalán volna értelmes (sorkezelés), a felület
+         * felől már most sem blokkol. Itt a kezelő nélküli `subscribe()`-ot javítom:
+         * a szolgáltatás hiba esetén újradobja a hibát, ami különben elkapatlanul
+         * buborékolna tovább.
+         */
         const currentYear = new Date().getFullYear();
         const years: number[] = [currentYear - 1, currentYear, currentYear + 1];
-        this.searchService.generateMasses(years, this.currentChurch!.id).subscribe();
+        this.searchService.generateMasses(years, this.currentChurch!.id)
+          .subscribe({error: () => { /* a szolgáltatás már jelezte a felhasználónak */ }});
 
         this.suggestionPackages = res.suggestionPackages.map(pkg => ({
           ...pkg,
@@ -447,6 +454,8 @@ export class SuggestionsComponent implements OnInit {
       ...(rite && rite.length > 0 && {rite: rite}),
       ...(duration && duration.length > 0 && {duration: duration}),
       ...(mass.comment && mass.comment.length > 0 && {comment: mass.comment}),
+      // #431: ha az alkalom nem a templomban van, azt a javaslatban is látni kell.
+      ...(MassUtil.hasOwnLocation(mass) && {ownLocation: MassUtil.locationLabel(mass)}),
       // #334: a mise több nyelvű is lehet ("sk,la") — mindegyiket külön fordítjuk,
       // különben a `LANGUAGES.sk,la` kulcs fordítás nélkül, nyersen jelenne meg.
       lang: MassUtil.languageCodes(mass.lang)

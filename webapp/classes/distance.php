@@ -87,6 +87,47 @@ class Distance {
         return $row;
     }
 
+    /**
+     * #829: EGY templompár távolságának frissítése.
+     *
+     * Ugyanez a blokk kétszer szerepelt a `MupdateChurch()`-ben — a kódban ott állt rá
+     * a `//TODO: duplicated code`. A két példány közben el is csúszott egymástól: a
+     * másodikban a `$highestDistance = 0;` a CIKLUSON BELÜL volt, tehát minden körben
+     * lenullázta magát. Ott ez nem okozott kárt (a változót utána nem használtuk), de
+     * pontosan így születnek a néma hibák: valaki később ráépít egy másolatra.
+     *
+     * @param  object $processingDistance a pár sora (meglévő vagy új)
+     * @param  float  $maxDistance ennél távolabbi párt nem mentünk el
+     * @return float|null a mentett távolság; 0.0, ha megnéztük de nem mentettük;
+     *                    `null`, ha nem is kellett dolgozni (a sor frissebb, mint a templomok)
+     */
+    private function updatePairDistance($processingDistance, $churchFrom, $churchTo, $maxDistance) {
+        $frissebbTemplom = $churchFrom->updated_at > $processingDistance->updated_at
+                OR $churchTo->updated_at > $processingDistance->updated_at;
+        if (!$frissebbTemplom) {
+            return null;
+        }
+
+        $pointFrom = ['lat' => $churchFrom->location->lat, 'lon' => $churchFrom->location->lon];
+        $pointTo   = ['lat' => $churchTo->location->lat,   'lon' => $churchTo->location->lon];
+        $rawDistance = $this->getRawDistance($pointFrom, $pointTo);
+
+        // Pontatlant inkább soha nem mentünk el.
+        if (!($rawDistance < $maxDistance AND $rawDistance > 0)) {
+            return 0.0;
+        }
+
+        // #172: nem dőlünk el a Mapquesten — road-distance ha van, egyébként a
+        // légvonalbeli (haversine) rawDistance.
+        $resolved = $this->resolveDistance($pointFrom, $pointTo, $rawDistance);
+        $processingDistance->distance = $resolved['distance'];
+        // #526: légvonal-fallback -> toupdate=1 (később útvonalra frissítendő); road -> 0.
+        $processingDistance->toupdate = $resolved['road'] ? 0 : 1;
+        $processingDistance->save();
+
+        return (float) $resolved['distance'];
+    }
+
     function MupdateChurch($churchFrom, $maxDistance = 5000) { //maxDistance in meter
             set_time_limit('600');
             $counter = 0;
@@ -112,28 +153,12 @@ class Distance {
                     ['lat' => $churchFrom->lat, 'lon' => $churchFrom->lon],
                     ['lat' => $churchTo->lat,   'lon' => $churchTo->lon]
                 );
-                if ($churchFrom->updated_at > $processingDistance->updated_at
-                        OR $churchTo->updated_at > $processingDistance->updated_at) {
-
-                    $pointFrom = ['lat' => $churchFrom->location->lat, 'lon' => $churchFrom->location->lon];
-                    $pointTo = ['lat' => $churchTo->location->lat, 'lon' => $churchTo->location->lon];
-                    $rawDistance = $this->getRawDistance($pointFrom, $pointTo);
-                    if ($rawDistance < $maxDistance AND $rawDistance > 0) {
-                        // #172: nem dőlünk el a Mapquesten - road-distance ha van,
-                        // egyébként a légvonalbeli (haversine) rawDistance.
-                        $resolved = $this->resolveDistance($pointFrom, $pointTo, $rawDistance);
-                        $processingDistance->distance = $resolved['distance'];
-                        // #526: légvonal-fallback -> toupdate=1 (később útvonalra frissítendő); road -> 0.
-                        $processingDistance->toupdate = $resolved['road'] ? 0 : 1;
-                        if ($resolved['distance'] > $highestDistance)
-                            $highestDistance = $resolved['distance'];
-                        $processingDistance->save();
-                    } else {
-                        //Pontatlant inkább soha senem mentünk el.
-                        //$processingDistance->distance = $rawDistance;
-                    }        
-
-                    $counter++;                    
+                $resolvedDistance = $this->updatePairDistance($processingDistance, $churchFrom, $churchTo, $maxDistance);
+                if ($resolvedDistance !== null) {
+                    if ($resolvedDistance > $highestDistance) {
+                        $highestDistance = $resolvedDistance;
+                    }
+                    $counter++;
                 }
             }
             /*
@@ -142,56 +167,55 @@ class Distance {
              * a kört. 
              */
             if($highestDistance > $maxDistance) {
-                //echo "Van nagyobb kör is. Bocsesz.";
-                
-                //TODO: duplicated code
+                // #829: a duplikált blokk megszűnt — az `updatePairDistance()` közös.
                 $bbox = $this->getBBox($point, $highestDistance);
                 $churchesInBBox = \Eloquent\Church::inBBox($bbox)->where('id', '!=', $churchFrom->id);
                 
-                foreach ($churchesInBBox as $churchTo) {  
+                foreach ($churchesInBBox as $churchTo) {
+                    // #748: kanonikus sorrend, és a fordított irányú sort is megtaláljuk.
+                    $processingDistance = self::findOrNewPair(
+                        ['lat' => $churchFrom->lat, 'lon' => $churchFrom->lon],
+                        ['lat' => $churchTo->lat,   'lon' => $churchTo->lon]
+                    );
 
-                        // #748: kanonikus sorrend, és a fordított irányú sort is megtaláljuk.
-                        $processingDistance = self::findOrNewPair(
-                            ['lat' => $churchFrom->lat, 'lon' => $churchFrom->lon],
-                            ['lat' => $churchTo->lat,   'lon' => $churchTo->lon]
-                        );
-                        $highestDistance = 0;
-                        if ($churchFrom->updated_at > $processingDistance->updated_at
-                                OR $churchTo->updated_at > $processingDistance->updated_at) {
-
-                            $pointFrom = ['lat' => $churchFrom->location->lat, 'lon' => $churchFrom->location->lon];
-                            $pointTo = ['lat' => $churchTo->location->lat, 'lon' => $churchTo->location->lon];
-                            $rawDistance = $this->getRawDistance($pointFrom, $pointTo);
-
-                            if ($rawDistance < $maxDistance AND $rawDistance > 0) {
-                                // #172: road-distance ha elérhető, egyébként légvonal.
-                                $resolved = $this->resolveDistance($pointFrom, $pointTo, $rawDistance);
-                                $processingDistance->distance = $resolved['distance'];
-                                $processingDistance->toupdate = $resolved['road'] ? 0 : 1; // #526
-                                $processingDistance->save();
-                            } else {
-                                //Pontatlant inkább soha senem mentünk el.
-                                //$processingDistance->distance = $rawDistance;
-                            }        
-
-                            $counter++;                    
-                        }
+                    if ($this->updatePairDistance($processingDistance, $churchFrom, $churchTo, $highestDistance) !== null) {
+                        $counter++;
                     }
-                
+                }
             }
             return $counter;
     }
 
-    // #172: a szomszédság-számítás ne dőljön el a Mapquesten. Ha a road-distance
-    // elérhető (van kulcs, nincs rate-limit), azt adjuk vissza; egyébként a
-    // légvonalbeli (haversine) rawDistance-re esünk vissza. Így a feature mindig
-    // frissül, a Mapquest csak opcionális felminősítés.
-    // #526: visszaadja a távolságot ÉS a minőségét ('road' => true, ha Mapquest
+    // #172: a szomszédság-számítás ne dőljön el az útvonaltervezőn. Ha a
+    // road-distance elérhető, azt adjuk vissza; egyébként a légvonalbeli
+    // (haversine) rawDistance-re esünk vissza. Így a feature mindig frissül, az
+    // útvonal-távolság csak opcionális felminősítés.
+    // #526: visszaadja a távolságot ÉS a minőségét ('road' => true, ha
     // útvonal-távolság; false, ha csak légvonal). A hívó ez alapján állítja a
     // distances.toupdate flaget (1 = később útvonalra frissítendő).
+    //
+    // #673: a SAJÁT OSRM-et kérdezzük először. Az OSRM kifejezetten azért került a
+    // compose-ba, hogy ne függjünk idegen szolgáltatótól, kulcstól és kvótától — a
+    // bekötése viszont elmaradt, és az OsrmApi::routeDistance() docblockja azóta is
+    // azt állította, hogy ez a metódus a hívója. Nem ez volt: ide egyedül a Mapquest
+    // jutott el. Mostantól a sorrend OSRM -> Mapquest -> légvonal.
+    //
+    // Az OSRM opcionális (`docker compose --profile osrm up -d`), és ha nincs
+    // beállítva, a routeDistance() null-t ad — ilyenkor a viselkedés bitre azonos
+    // marad a korábbival.
     function resolveDistance($pointFrom, $pointTo, $rawDistance) {
         try {
-            $mapquest = new \ExternalApi\MapquestApi();
+            $osrm = $this->osrmApi();
+            $osrmDistance = $osrm->routeDistance($pointFrom, $pointTo);
+            if ($osrmDistance !== null && $osrmDistance > 0) {
+                return ['distance' => $osrmDistance, 'road' => true];
+            }
+        } catch (\Throwable $e) {
+            // nincs OSRM vagy bármilyen hiba -> jöhet a Mapquest
+        }
+
+        try {
+            $mapquest = $this->mapquestApi();
             $mapquestDistance = $mapquest->distance($pointFrom, $pointTo);
             if ($mapquestDistance > 0) {
                 return ['distance' => $mapquestDistance, 'road' => true];
@@ -201,6 +225,25 @@ class Distance {
         }
         return ['distance' => $rawDistance, 'road' => false];
     }
+
+    /**
+     * A két útvonaltervező példányosítása külön metódusban, hogy a teszt le tudja
+     * cserélni őket. Enélkül a sorrend (OSRM -> Mapquest -> légvonal) csak éles
+     * szolgáltatásokkal lenne mérhető, és pont az nem derülne ki, hogy melyik nyer.
+     */
+    protected function osrmApi(): \ExternalApi\OsrmApi {
+        // Példányonként egyszer: a resolveDistance() templomonként fut a
+        // MupdateChurch() ciklusában, és minden hívásnál új objektumot gyártani
+        // fölösleges — a beállítás úgysem változik futás közben.
+        return $this->osrm ??= new \ExternalApi\OsrmApi();
+    }
+
+    protected function mapquestApi(): \ExternalApi\MapquestApi {
+        return $this->mapquest ??= new \ExternalApi\MapquestApi();
+    }
+
+    private ?\ExternalApi\OsrmApi $osrm = null;
+    private ?\ExternalApi\MapquestApi $mapquest = null;
 
     function getRawDistance($pointFrom, $pointTo) {
         $this->validatePoint($pointFrom);

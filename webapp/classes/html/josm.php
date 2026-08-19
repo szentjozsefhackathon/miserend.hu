@@ -83,13 +83,13 @@ class Josm extends Html {
                     $query->whereNull('osmtype')
                         ->orWhereNull('osmid');
                 })
-                ->orderBy('orszag')->orderBy('megye')->orderBy('varos')->orderBy('nev')
+                ->orderByCity()->orderBy('nev')
                 ->get();
         
         $this->churchesWBadOsm = \Eloquent\Church::where('ok','i')
                 ->whereNotIn('id',$goodIDs)
                 ->whereNotNull('osmtype')->whereNotNull('osmid')
-                ->orderBy('orszag')->orderBy('megye')->orderBy('varos')->orderBy('nev')
+                ->orderByCity()->orderBy('nev')
                 ->get();
         
         $this->churchesWBad = \Eloquent\Church::where('ok','i')
@@ -143,27 +143,6 @@ class Josm extends Html {
                
     }
 
-    function osm2txt($osm) {
-        $osm = (array) $osm;
-
-        $return = '';
-        $e = array('node' => 'n', 'way' => 'w', 'relation' => 'r');
-        $return .= (int) $osm['distance'] . "m: ";
-        $return .= " <a title='Megnyitás JOSM-ben' href='http://localhost:8111/load_object?new_layer=false&objects=" . $e[$osm['type']] . $osm['id'] . "' target='_blank' class='ajax'>";
-        if (isset($osm['tags']['name']))
-            $return .= $osm['tags']['name'] . " ";
-        else
-            $return .= $e[$osm['type']] . $osm['id'];
-        $return .= "</a>";
-        if (isset($osm['tags']['alt_name']))
-            $return .= "<span title='alt_name'>" . $osm['tags']['alt_name'] . "</span> ";
-        if (isset($osm['tags']['denomination']))
-            $return .= "<span title='denomination'>" . $osm['tags']['denomination'] . "</span> ";
-        if (isset($osm['tags']['building']))
-            $return .= "<span title='building'>" . $osm['tags']['building'] . "</span> ";
-
-        return $return;
-    }
 
    function checkOsmElements($elements) {
        $osmWBadTag = array();

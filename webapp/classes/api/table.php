@@ -108,10 +108,32 @@ class Table extends Api {
         switch ($this->tableName) {
             case 'templomok':
                 
+                /*
+                 * #496 / #497 / #498: az `orszag`, `megye` és `varos` mezők a publikus
+                 * API szerződésének részei — a nevük és a jelentésük NEM változhat.
+                 * A forrásuk viszont igen: eddig az `orszagok`/`megye` táblákhoz
+                 * kapcsolt join adta őket, mostantól az OSM-határok.
+                 *
+                 * Korrelált alkérdéssel, nem join-nal: egy templomhoz több határ
+                 * tartozik, a join megsokszorozná a sorokat.
+                 */
+                $orszag = self::boundaryNameSql([2]);
+                $megye = self::boundaryNameSql([6, 4]);
+                $telepules = self::boundaryNameSql([8]);
+                $kerulet = self::boundaryNameSql([9]);
+                $tartalek = self::boundaryNameSql([6, 9, 10]);
+
                 $this->table = DB::table("templomok as t")
-                        ->SELECT("t.*","orszagok.nev as orszag","megye.megyenev as megye")
-                        ->leftJoin('orszagok', 'orszagok.id','=','t.orszag')
-                        ->leftJoin('megye', 'megye.id',"=","megye")
+                        ->select("t.*")
+                        ->selectRaw("$orszag AS orszag")
+                        ->selectRaw("$megye AS megye")
+                        // Ugyanaz a szabály, mint a Church::locationCityName()-ben: a
+                        // kerület csak 8-as szintű település mellé fűzhető (Köln
+                        // kreisfreie Stadt, tehát nincs 8-asa — ott a 6-os a település).
+                        ->selectRaw(
+                            "TRIM(CONCAT_WS(' ', COALESCE($telepules, $tartalek),"
+                            . " CASE WHEN $telepules IS NOT NULL THEN $kerulet END)) AS varos"
+                        )
                         ->where('t.ok',"=","i")
                         ->limit(10000)
                         ->get();
@@ -133,6 +155,20 @@ class Table extends Api {
     }
     
   
+    /**
+     * #496 / #497 / #498: egy administratív határ nevének korrelált alkérdése.
+     *
+     * @param array<int,int> $szintek admin_level-ek, PREFERENCIA sorrendben
+     * @return string beilleszthető SQL-részlet (a külső lekérdezésben `t` a templom)
+     */
+    private static function boundaryNameSql(array $szintek): string {
+        // #824: a definíció a `Church`-ben él, hogy ne legyen belőle három változat.
+        // Egy ilyen másolat már el is csúszott: a `User::sendUpdateNotification()`
+        // `ORDER BY admin_level DESC`-et használt `FIELD()` helyett, és visszaesett a
+        // közben eldobott `templomok.varos` oszlopra.
+        return \Eloquent\Church::boundaryNameSubquerySql($szintek, 't.id');
+    }
+
     function mapTemplomok() {
         $output = array();
 
@@ -148,6 +184,19 @@ class Table extends Api {
                 ->where('key', 'denomination')
                 ->pluck('value', 'church_id')->toArray();
 
+        /*
+         * #257: a névhalmaz batch-betöltése. Egyesével kérve 10 000 templomnál
+         * ugyanennyi lekérdezés lenne — a `with('attributes')` egyetlen körben hozza,
+         * és a `Church::names` accessor a #787 óta eager-load-tudatos.
+         */
+        $churchNames = [];
+        foreach (\Eloquent\Church::with('attributes')->whereIn('id', $churchIds)->get() as $church) {
+            $churchNames[$church->id] = [
+                'names' => $church->names,
+                'alternative_names' => $church->alternative_names,
+            ];
+        }
+
         foreach ($this->table as $row) {
             $tmp = array();
             foreach ($this->columns as $column) {
@@ -155,11 +204,28 @@ class Table extends Api {
                 if (isset($row->$column) AND in_array($column, array('id', 'nev', 'ismertnev', 'turistautak', 'orszag', 'megye', 'varos', 'cim', 'plebania', 'pleb_eml', 'egyhazmegye', 'espereskerulet', 'leiras', 'megjegyzes', 'miseaktiv', 'misemegj', 'bucsu', 'frissites', 'lat', 'lon', 'geochecked'))) {
                     $tmp[$column] = $row->$column;
                 }
-                // simple data mapping
-                // FIXME for Issue #257
-                $mapping = array('name' => 'nev', 'alt_name' => 'ismertnev');
-                if (array_key_exists($column, $mapping)) {
-                    $tmp[$column] = $row->{$mapping[$column]};
+                /*
+                 * #257: a `name` és az `alt_name` az OSM-névhalmazból jön.
+                 *
+                 * borazslo kérése a #803-hoz: „Simán csinálhatjuk, hogy a name-hez az
+                 * osmból szedett nevek sorából az elsőt tesszük, az alt_name-hez pedig
+                 * az alternative_names első elemét tesszük. Az Api V5-ben #56 pedig
+                 * mindkét mező helyére egy lista/jsonlista kerülhetne."
+                 *
+                 * Mindkettőt megcsinálom: a régebbi verziók az ELSŐ nevet kapják (a mező
+                 * marad string, tehát a meglévő fogyasztóknak nem törik el), a v5 pedig a
+                 * TELJES listát.
+                 *
+                 * A `names[0]` a `name:hu` -> `name` sorrendet követi, és csak ezek
+                 * hiányában esik vissza a helyi `nev` oszlopra — ahol nincs OSM-adat, ott
+                 * tehát pontosan a régi értéket adja.
+                 */
+                if ($column === 'name' || $column === 'alt_name') {
+                    $lista = $column === 'name'
+                        ? ($churchNames[$row->id]['names'] ?? [])
+                        : ($churchNames[$row->id]['alternative_names'] ?? []);
+
+                    $tmp[$column] = $this->version >= 5 ? array_values($lista) : ($lista[0] ?? '');
                 }
                 //extra mapping
                 switch ($column) {

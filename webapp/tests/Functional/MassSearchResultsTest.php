@@ -184,7 +184,7 @@ final class MassSearchResultsTest extends FunctionalTestCase
     public function testCurrentLocationFillsTheNearbyOrigin(): void
     {
         $this->client->request('GET', '/');
-        $this->client->waitFor('#use_current_location', 10);
+        $this->client->waitFor('#map_search_toggle', 10);
         $this->client->executeScript(<<<'JS'
             Object.defineProperty(navigator, 'geolocation', {
                 configurable: true,
@@ -195,9 +195,17 @@ final class MassSearchResultsTest extends FunctionalTestCase
                 }
             });
         JS);
-        // A gomb az összecsukott „Egyéni közeli keresés" details-ben van: zárva nem kattintható.
-        $this->client->executeScript("document.querySelector('.nearby-search-options').open = true;");
-        $this->client->waitForVisibility('#use_current_location', 5);
+
+        /*
+         * #733: a „Saját helyzetem" gomb a TÉRKÉPRE került, és a hely szerinti keresés
+         * alapból össze van csukva — a felületen csak a „Térkép alapú keresés" link
+         * látszik. A gombhoz tehát előbb ki kell nyitni a térképet.
+         *
+         * A várakozás hosszabb, mint a régi, azonnali details-lenyitásnál: a Leaflet
+         * lustán töltődik, csak a megnyitáskor jön le.
+         */
+        $this->client->getCrawler()->filter('#map_search_toggle')->click();
+        $this->client->waitForVisibility('#use_current_location', 20);
         $this->client->getCrawler()->filter('#use_current_location')->click();
 
         $coordinates = $this->client->executeScript(<<<'JS'
@@ -211,7 +219,10 @@ final class MassSearchResultsTest extends FunctionalTestCase
 
         $this->client->executeScript("HTMLFormElement.prototype.submit = function () { this.dataset.submitted = '1'; };");
         $this->client->getCrawler()->filter('#walking_masses')->click();
-        self::assertSame('3', $this->client->executeScript("return document.querySelector('#nearby_radius').value;"));
+        // #722: a helynévhez és a koordinátához tartozó két külön távolság-választóból egy
+        // lett (`tavolsag`) — ugyanahhoz a kereséshez nem volt értelme kettőnek. A 3 km
+        // (gyalogtávolság) benne maradt a listában.
+        self::assertSame('3', $this->client->executeScript("return document.querySelector('#tavolsag').value;"));
         self::assertSame('1', $this->client->executeScript("return document.querySelector('#kereses').dataset.submitted;"));
         // A gyalogos gyorskeresés mindhárom feltételt beállítja: hely + 3 km + következő két óra.
         $walkingOrigin = $this->client->executeScript(<<<'JS'

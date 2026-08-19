@@ -18,13 +18,13 @@ class Report extends Api {
             'example' => 'A mise vasárnap 11-kor van, de a honlapon 10:30 szerepel.'
         ],
         'timestamp' => [
-            'validation' => 'string', // TODO: timestamp validation
+            'validation' => 'timestamp',
             'description' => 'a beküldés időpontja (hiánya esetén aktuális pillanat)',
             'default' => 'current timestamp',
             'example' => '2024-01-16 12:34:56'
         ],
         'email' => [
-            'validation' => 'string', // TODO: email validation
+            'validation' => 'email',
             'description' => 'a beküldő email címe, hogy tudjunk neki válaszolni',
             'example' => 'somebody@no.mail'
         ],

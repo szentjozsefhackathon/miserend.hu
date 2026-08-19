@@ -23,3 +23,9 @@ services:
       # szolgáltatásokat hívna (kozossegek.hu, Overpass), ami üres cache-sel másodperceket
       # vesz és a CI-ban időtúllépést okozott. Teszt alatt nincs kifelé menő hálózat.
       - EXTERNAL_APIS_OFFLINE=1
+      # A böngésző www-data-ként indul, akinek a HOME-ja (/var/www) NEM írható. A
+      # Chromium ilyenkor a saját adatkönyvtárát sem tudja létrehozni, és rögtön
+      # kilép: "Failed to create headless user data directory container" — a
+      # Panther pedig ezt "session not created: Chrome instance exited"-ként
+      # jelenti, minden egyes teszten. Írható HOME-mal elindul.
+      - HOME=/tmp

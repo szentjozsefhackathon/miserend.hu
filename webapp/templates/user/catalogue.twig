@@ -18,6 +18,9 @@
          <br/>
 		 <div class="row" style="margin-bottom:12px">
             Összesen: {{ pagination.resultsCount }} találat<br/>
+            {% if showVolunteer %}
+                Ebből <strong>{{ volunteerCount }}</strong> vállalja a heti hét templom frissítését.<br/>
+            {% endif %}
             Listázás: {{ (pagination.active * pagination.take) + 1 }} - 
             {% if pagination.resultsCount < ( pagination.active + 1 ) * pagination.take %}
                 {{ pagination.resultsCount }}
@@ -32,6 +35,7 @@
                 <th class="col-md-1"><span class="fa-solid fa-church" title="Ellátott templomok száma"></span></th>
 				<th class="col-md-1"><span class="{{ ICONS_FAVORITE }}" title="Kedvenc templomok száma"></span></th>
 				<th class="col-md-1"><span class="fa-solid fa-message" title="Email üzenetküldés engedélyezve"></span></th>
+				{% if showVolunteer %}<th class="col-md-1"><span class="fa-solid fa-hands-helping" title="Vállalja a heti hét templom frissítését"></span></th>{% endif %}
     		<th class="col-md-3">{{ field }}</th>
     		<th class="col-md-1"><span class="fa {{ ICONS_DELETE }}" aria-hidden="true" style=""></span></th>
   		</tr>
@@ -60,6 +64,15 @@
 						<span class="fa-regular fa-circle" title="Email üzenetküldés NINCS engedélyezve">
 					{% endif %}
 				</td>
+				{% if showVolunteer %}
+					<td>
+						{% if user.volunteer %}
+							<span class="fa-regular fa-circle-dot" title="Vállalja a heti hét templom frissítését"></span>
+						{% else %}
+							<span class="fa-regular fa-circle" title="Nem vállalja"></span>
+						{% endif %}
+					</td>
+				{% endif %}
                                 <td>
 					{{ attribute(user, field)}} 
 				</td>

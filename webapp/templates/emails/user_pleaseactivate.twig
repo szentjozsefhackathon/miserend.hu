@@ -1,6 +1,6 @@
 Miserend – Aktiválás
 
-Kedves {% if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif %}!<br/>
+Kedves {% include 'emails/_megszolitas.twig' %}!<br/>
 <br/>
 Sajnálattal látjuk, hogy bár már {{ inactiveDays }} nappal ezelőtt regisztráltál, mégsem léptél még be a honlapunkra.<br/>
 Regisztrált felhasználóként megjelölheted kedvenc templomaidat és így a <a href="{{ domain }}">miserend.hu</a> főoldaláról egyetlen kattintással máris a templomod miserendjénél vagy.<br/>
