@@ -204,10 +204,18 @@
             {{ _self.helptr(6,help) }}
             
             <tr>
-                <td bgcolor=#F0E6D2 class=kiscim align=right>Külső naptár (iCalendar):</td>
+                <td bgcolor=#F0E6D2 class=kiscim align=right>Külső naptárak (iCalendar):</td>
                 <td bgcolor=#F0E6D2>
-                    {{ forms.input(form.external_calendar_url) }}
-                    <small><i>Google Calendar vagy más iCalendar-kompatibilis naptár URL. Az importálást naponta automatikusan végezzük. Maximum 1 naptár templomként. Ürítse a mezőt az importálás leállításához.</i></small>
+                    {{ forms.textarea(form.external_calendar_url) }}
+                    <small><i>Google Calendar vagy más iCalendar-kompatibilis naptár URL-je, <b>soronként egy</b>. Az importálást naponta automatikusan végezzük. A naptár nevét magából a naptárból vesszük át. Ürítse a mezőt az importálás leállításához.</i></small>
+                    {% if externalCalendars %}
+                    <table class="table table-sm" style="margin-top:.5em">
+                        <tr><th>Naptár</th><th>Utolsó sikeres import</th></tr>
+                        {% for naptar in externalCalendars %}
+                        <tr><td>{{ naptar.nev }}</td><td>{{ naptar.utolso_import }}</td></tr>
+                        {% endfor %}
+                    </table>
+                    {% endif %}
                 </td>
                 <td>{{ _self.helplink(60, ICONS_INFO ) }}</td>
             </tr>

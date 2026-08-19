@@ -216,6 +216,29 @@ class Search {
             $bool['should'][] = ['terms' => [$prefix . 'boundaries' => $boundaryIds, 'boost' => 16]];
         }
 
+        /*
+         * #157: misére keresve MAGÁT A MISÉT is nézzük, ne csak a templomát.
+         *
+         * Eddig a kulcsszó kizárólag templom-mezőkre ment (`names`, `varos`,
+         * `alternative_names`), tehát az esemény CÍME sehol nem számított. Aki
+         * „Rorate"-ra vagy „angol nyelvű misé"-re keresett, nulla találatot kapott —
+         * pedig a külső naptárakból épp ilyen, beszédes címek jönnek be.
+         *
+         * borazslo listáján ez így szerepel: „A keresőt fel kell készíteni, hogy ne
+         * csak pontos egyezésnél találjon rá egy eseményre."
+         *
+         * A `match` az elemzett mezőn szótöredék helyett SZAVAKRA illeszt, tehát a
+         * „szentmise angol" is megtalálja az „Angol nyelvű szentmise (P. Elek)"-et. A
+         * `wildcard` mellette a szó belsejét is engedi, gyengébb súllyal. A boost a
+         * városnév-egyezés (64/18) ALATT van: aki egy települést ír be, továbbra is a
+         * települést kapja, a cím csak bővíti a találatokat.
+         */
+        if ($this->massOrChurch === 'mass') {
+            $bool['should'][] = ['match'    => ['title'   => ['query' => $keyword, 'boost' => 14]]];
+            $bool['should'][] = ['wildcard' => ['title'   => ['value' => '*' . mb_strtolower($keyword) . '*', 'boost' => 6]]];
+            $bool['should'][] = ['match'    => ['comment' => ['query' => $keyword, 'boost' => 3]]];
+        }
+
         $this->query['bool']['must'][] = ['bool' => $bool ];
     }
 
