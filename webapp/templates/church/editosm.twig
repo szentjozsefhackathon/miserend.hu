@@ -61,7 +61,7 @@
 			<table class="table table-hover table-condensed table-striped" >			
 			<tbody>
 			{% for key, item in section.inputs %}
-				<tr>
+				<tr class="{{ item['highlighted'] is defined and item['highlighted'] ? 'table-warning' : '' }}">
 					<td class="align-middle col-md-3" align="right" >
 						{{ item['title'] }}:<br/>
 						<small><a href="https://wiki.openstreetmap.org/wiki/{% if item['wiki_hu'] %}HU:{% endif %}Key:{{ item['id'] }}" target="_blank">{{ item['id'] }}</a></small>
