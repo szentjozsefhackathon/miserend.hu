@@ -109,13 +109,21 @@ class CalMassPeriodCoverageEndToEndTest extends TestCase
             'a lefedő mise nem lépett hátra — a két mise duplán jelenne meg a szünet idején');
     }
 
-    /** A szűkebb mise a teljes saját tartományát megtartja. */
+    /**
+     * A szűkebb mise a teljes saját tartományát megtartja.
+     *
+     * A vég 08-30, nem 08-31. A Nyári szünet az „Első tanítási nap"-ig tart
+     * (`end_period_id = 5`, 2026-08-31), `all_inclusive = 0` — vagyis az első
+     * tanítási nap MÁR NEM szünet. Emiatt a tárolt `end_date` kizáró, és pont ez
+     * teszi lehetővé, hogy a láncolt időszakok hézag és ÁTFEDÉS nélkül illeszkedjenek:
+     * beleértendő olvasattal minden szomszédos időszakpár osztozna egy napon.
+     */
     public function testALefedettMiseTartomanyaSertetlen(): void
     {
         $sorok = $this->aPáros();
 
         self::assertSame(self::EV . '-06-30', substr((string) $sorok[9001]['start_date'], 0, 10));
-        self::assertSame(self::EV . '-08-31', substr((string) $sorok[9001]['end_date'], 0, 10));
+        self::assertSame(self::EV . '-08-30', substr((string) $sorok[9001]['end_date'], 0, 10));
     }
 
     /**

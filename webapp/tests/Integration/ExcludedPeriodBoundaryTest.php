@@ -68,7 +68,11 @@ final class ExcludedPeriodBoundaryTest extends TestCase {
         $mise->start_date = '2026-01-01';
         $mise->duration = 60;
         $mise->rrule = ['freq' => 'daily', 'dtstart' => '2026-01-01T07:00:00'];
-        $mise->experiod = $experiod;
+        // A FELHASZNÁLÓ által beállított kizárás mezője a `manual_experiod`. Az
+        // `experiod` a SZÁMÍTOTT párja, amit a generálás évenként újraszámol (és a
+        // #747 nullázza is) — abba írni annyi, mintha a saját szándékunkat egy
+        // munkaváltozóba tennénk.
+        $mise->manual_experiod = $experiod;
         $mise->save();
 
         $peldanyok = \Eloquent\CalMass::generateMassPeriodInstancesForYears([$mise], [], [2026]);
