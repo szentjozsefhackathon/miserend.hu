@@ -45,6 +45,12 @@ return [
      */
     ['class' => '\Eloquent\Church',               'function' => 'sendBucsuReminders',         'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
     /*
+     * #497: a koordináta nélküli templomok kivétele a megjelenésből.
+     * FIGYELEM: publikus tartalmat rejt el, élesben 47 templomot.
+     * Napi futás: az újonnan felvett, koordináta nélküli templomokat is elkapja.
+     */
+    ['class' => '\Crons',                         'function' => 'hideChurchesWithoutCoordinates', 'frequency' => '1 day'],
+    /*
      * #496: a határ nélkül maradt templomok újra sorba állítása. HAVI futás — a
      * 30 napos korlát miatt gyakoribbnak nincs értelme, lásd a metódus doksiját.
      */

@@ -86,6 +86,22 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
                     'masses' => $this->getEventsByChurchId($this->tid)
                     
                 ];
+
+                /*
+                 * #506: a plébánia és fíliái egy naptárban.
+                 *
+                 * OPCIONÁLIS (`?family=1`), hogy a mai válasz bitre ugyanaz maradjon —
+                 * a szerkesztő csak akkor kéri, ha tényleg családban dolgozik.
+                 *
+                 * Minden családtag bekerül, mert a miserend nyilvános adat, és a
+                 * plébánia rendjét együtt látni akkor is hasznos, ha nem mindegyikhez
+                 * van jogod. Hogy melyikbe LEHET írni, azt a `writable` mondja meg —
+                 * és a mentés úgyis templomonként ellenőrzi.
+                 */
+                if (\Request::Integer('family')) {
+                    $response['family'] = $this->familyOf($this->church);
+                }
+
                 $this->content = json_encode($response);
                 break;
             default:
@@ -95,6 +111,43 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
 
     public function getEventsByChurchId(int $churchId): array {
         return CalMass::where('church_id', $churchId)->get()->toArray();
+    }
+
+    /**
+     * #506: a templom „családja" — az ősök, a leszármazottak, és maga a templom.
+     *
+     * A `fullNetwork` a teljes hálózatot adja (plébánia → fíliák), a hierarchia-oldal is
+     * ezt használja. A saját templom is benne marad, hogy a szerkesztő egyetlen listából
+     * tudja felkínálni, melyikhez tartozzon egy esemény.
+     *
+     * @return array<int, array{id:int, name:string, writable:bool, isCurrent:bool, masses:array}>
+     */
+    private function familyOf(\Eloquent\Church $church): array {
+        $family = [];
+
+        foreach ($church->fullNetwork as $tag) {
+            $tagChurch = $tag['church'] ?? null;
+            if (!$tagChurch) {
+                continue;
+            }
+            $tagChurch->append(['writeAccess']);
+
+            $family[] = [
+                'id'        => (int) $tagChurch->id,
+                'name'      => (string) $tagChurch->nev,
+                // #496/#497/#498: a település az OSM-határokból, NEM a `templomok.varos`
+                // oszlopból — azt a #805 eldobja, és a névképzés némán kiürülne.
+                'city'      => $tagChurch->locationCityName(),
+                // A rítus templomonként más lehet (görögkatolikus fília római
+                // plébánia alatt), és az új esemény alapértelmezését ez adja.
+                'rite'      => strtoupper((string) $tagChurch->denomination),
+                'writable'  => (bool) $tagChurch->writeAccess,
+                'isCurrent' => (int) $tagChurch->id === (int) $church->id,
+                'masses'    => $this->getEventsByChurchId((int) $tagChurch->id),
+            ];
+        }
+
+        return $family;
     }
 
     

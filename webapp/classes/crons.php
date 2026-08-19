@@ -83,6 +83,44 @@ class Crons {
 	}
 
 	/**
+	 * #497: a koordináta nélküli templomok kivétele a megjelenésből.
+	 *
+	 * borazslo kérése: „A koordináta nélküli templomokat lehet egyszerűen kiiktatjuk.
+	 * Egyelőre »nem jelenhet meg« részre. Annak a pár templomnak aminek még az
+	 * elhelyezkedését sem tudjuk, annak az adatait sem fogjuk tudni igazán frissen
+	 * tartani."
+	 *
+	 * FIGYELEM: ez publikus tartalmat rejt el. Élesben 47 templomot érint.
+	 *
+	 * „Áttekintésre vár" (f) állapotba tesszük, nem „letiltva" (n) állapotba: az
+	 * „egyelőre" szó ideiglenességre utal, és ezek a templomok nem szabályszegés
+	 * miatt kerülnek ki, hanem mert hiányzik az adatuk. Ha mégis a végleges letiltás
+	 * a szándék, ez egyetlen karakter a konstansban.
+	 *
+	 * @return int hány templomot vettünk ki
+	 */
+	public const KOORDINATA_NELKUL_ALLAPOT = 'f';
+
+	public static function hideChurchesWithoutCoordinates(): int {
+		return DB::table('templomok')
+			->where('ok', 'i')
+			// A lat/lon numerikus oszlop: üres sztringgel összehasonlítva a MySQL
+			// "Truncated incorrect DECIMAL value" hibát dob. NULL és 0 elég.
+			->where(function ($q) {
+				$q->whereNull('lat')->orWhere('lat', 0)
+				  ->orWhereNull('lon')->orWhere('lon', 0);
+			})
+			->update([
+				'ok' => self::KOORDINATA_NELKUL_ALLAPOT,
+				'adminmegj' => DB::raw(
+					"CONCAT(COALESCE(adminmegj, ''), "
+					. "IF(COALESCE(adminmegj, '') = '', '', '\n'), "
+					. "'[#497] Koordináta hiányában kivéve a megjelenésből.')"
+				),
+			]);
+	}
+
+	/**
 	 * #351: a stats_externalapi tábla nő a legnagyobbra. Elég az utolsó 30 nap
 	 * megőrzése, a régebbi statisztika-sorokat naponta töröljük. A `date` oszlopra
 	 * szűrünk (DATE típus). Cron-ként a crons.sql-ben 41-es id-vel regisztrálva.

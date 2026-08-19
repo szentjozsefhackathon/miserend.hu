@@ -104,6 +104,7 @@
  gap: 1em;
 }
 
+
 /* #431/#816: helyszín-jel a „Tulajdonságok" fejlécében.
    A színt szándékosan nem a szöveghez igazítom: pont az a lényeg, hogy kiüssön. */
 .mcal-location-icon {
@@ -112,4 +113,12 @@
   height: 20px;
   width: 20px;
   vertical-align: middle;
+}
+
+/* #506: a templomválasztó a dialógus TELJES szélességét kapja.
+   A `mat-form-field` alapból inline-block, fix szélességgel — borazslo emiatt látta
+   „csak egy oszlopban". A dialógus első döntése ne szoruljon fél sorba. */
+.church-selector {
+  display: block;
+  width: 100%;
 }
