@@ -482,13 +482,22 @@ class Church extends \Illuminate\Database\Eloquent\Model {
                 if(!empty($massRule['rrule'])) {
                     $rrule = new \SimpleRRule($massRule['rrule']);                    
                     $massRule['rrule']['readable'] = $rrule->toText();
-                    //TODO: Itt ez hiba, mert nem egy konrkét legenerált Periodban nézünk szét, hanem csak egy általánosban
-                    // Vagyis a konkrét dátumokban keresés teljesen hülyeség.
-                    // Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon kezdődik. Azt meg megtudhatjuk máshogy is.
-                    $occ = reset($rrule->getOccurrences());
-                    if($occ) {
-                        $massRule['start_date'] = $occ->toString();                                                
-                    }
+                    /*
+                     * #832: a kezdőnap a SZABÁLYBÓL, nem legenerált előfordulásból.
+                     *
+                     * A régi jelzés helyben állt: „Itt ez hiba, mert nem egy konkrét
+                     * legenerált Periodban nézünk szét, hanem csak egy általánosban.
+                     * […] Nekünk amúgy is csak azért kell, hogy tudjuk milyen napon
+                     * kezdődik."
+                     *
+                     * Igaza volt, és nem csak elvi kérdés: ha a szabály tartománya
+                     * szűk, a `getOccurrences()` ÜRESET ad, és akkor a `start_date`
+                     * meg sem születik. Élesben 4000 ismétlődő miséből 6 ilyen — az
+                     * `Api\ServiceTimes` náluk szó szerint „(ERROR/BUG no start_date)"
+                     * -et írt ki. A `representativeStart()` mindig ad választ, és
+                     * olcsóbb is: nem generálja le a teljes sorozatot.
+                     */
+                    $massRule['start_date'] = $rrule->representativeStart()->toDateTimeString();
                     $RRulesByPeriods[$periodId]['massrules'][] = $massRule;
                 }
             } 

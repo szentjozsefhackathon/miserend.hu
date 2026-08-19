@@ -37,6 +37,42 @@ class SimpleRRule
         $this->debugCallback = $debugCallback;
     }
 
+    /**
+     * #832: egy JELLEMZŐ kezdet — a szabályból, előfordulás-generálás nélkül.
+     *
+     * Ahol csak azt kell tudni, MELYIK NAPON és hánykor van a mise (mise-lista,
+     * rendezés, külső export), ott a teljes sorozat legenerálása nem csak fölösleges,
+     * hanem félrevezető is: a `getOccurrences()` a szabály saját tartományában keres,
+     * és ha az szűk, ÜRESET ad. Élesben mérve 4000 ismétlődő miséből 6 ilyen — az
+     * `Api\ServiceTimes` náluk szó szerint „(ERROR/BUG no start_date)"-et írt ki.
+     * A `Church::getMassRRulesByPeriodAttribute()`-ban ott is állt rá a jelzés:
+     * „Itt ez hiba, mert nem egy konkrét legenerált Periodban nézünk szét".
+     *
+     * A `dtstart` adja az időt, a `byweekday` a napot: a `dtstart`-tól előrelépünk az
+     * első olyan napra, amit a szabály megenged. `byweekday` nélkül maga a `dtstart`.
+     * A `bysetpos` (pl. „minden hónap 4. vasárnapja") itt szándékosan nem számít — a
+     * kérdés a NAP, nem a konkrét dátum, és a negyedik vasárnap is vasárnap.
+     */
+    public function representativeStart(): \Carbon\Carbon
+    {
+        $kezdet = $this->start->copy();
+        if (empty($this->byWeekday)) {
+            return $kezdet;
+        }
+
+        for ($lepes = 0; $lepes < 7; $lepes++) {
+            // A Carbon vasárnapra 0-t ad, a szabály viszont ISO-t használ (hétfő = 1).
+            $isoNap = $kezdet->dayOfWeek === 0 ? 7 : $kezdet->dayOfWeek;
+            if (in_array($isoNap, $this->byWeekday)) {
+                return $kezdet;
+            }
+            $kezdet->addDay();
+        }
+
+        // Ismeretlen nap-jelölésnél (a normalizálás átengedi) maradjon a dtstart.
+        return $this->start->copy();
+    }
+
     private function logDebug(string $msg, array $ctx = []): void
     {
         if ($this->debugCallback) {
