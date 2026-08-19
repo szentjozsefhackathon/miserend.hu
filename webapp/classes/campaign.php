@@ -81,6 +81,16 @@ class Campaign {
         $staleDate = (new DateTime())->modify('-' . self::STALE_MONTHS . ' months')->format('Y-m-d');
         $assignableChurches = DB::table('templomok AS t')
             ->select('t.id', 't.nev', 't.ismertnev', 't.frissites')
+            /*
+             * #824: a település a levélhez. Itt `DB::table()` fut, tehát nyers
+             * `stdClass` sorok jönnek — azokon a `locationCityName()` nem létezik, és
+             * a heti önkéntes-levél emiatt SOHA nem ment ki:
+             *   „Call to undefined method stdClass::locationCityName()"
+             * A templomok addigra már ki voltak osztva (az `updates` sorok bementek),
+             * tehát az önkéntes nem is értesült a munkájáról, a templom viszont
+             * hónapokra kiesett az újraosztásból.
+             */
+            ->selectRaw(\Eloquent\Church::citySubquerySql('t.id') . ' AS varos')
             ->where('t.ok', 'i')
             // #498: a `t.orszag = 12` helyett országhatár. Névre és ISO-kódra is
             // illesztünk, mert az ISO ma még alig van kitöltve.
@@ -281,8 +291,8 @@ class Campaign {
                     'id' => $c->id,
                     'nev' => $c->nev,
                     'ismertnev' => $c->ismertnev,
-                    // #497: a levélben a település a boundary-ból, mint mindenhol máshol.
-                    'varos' => $c->locationCityName(),
+                    // #497/#824: a település a boundary-ból, a lekérdezés alkérdésével.
+                    'varos' => $c->varos ?? '',
                     'frissites' => $c->frissites,
                 ];
             }, $churches),

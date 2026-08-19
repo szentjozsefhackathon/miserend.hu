@@ -205,7 +205,7 @@ class szentsegimadasApi extends \ExternalApi\ExternalApi {
                 return $hits[0]->id;
             }
 
-            // Holtverseny. Ilyenkor a régi TODO ötlete segít: szűkítsük a mezőnyt azokra a
+            // Holtverseny. Ilyenkor szűkítsük a mezőnyt azokra a
             // templomokra, amikhez ebben a futásban még nem osztottunk szentségimádást.
             // Csak MÁSODIK körben tesszük, mert hard filterként rontana: ha egy templom
             // két, eltérően írt néven szerepel a forrásban, az elsőnél kiesne a mezőnyből,

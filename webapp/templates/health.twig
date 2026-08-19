@@ -129,8 +129,19 @@
 			<small class="text-muted">/ {{ churchesMissingLocation.indexed }} indexelt ({{ arany }}%)</small>
 			<div class="alert alert-warning" style="margin-top: 8px;">
 				Ezeket a templomokat a „X km-en belül" keresés <strong>nem találja meg</strong>.
-				Teljes újraindexelés kell: <code>/index.php?q=cron&amp;cron_id=38</code>
-				(vagy <code>\ExternalApi\ElasticsearchApi::updateChurches()</code> templom-azonosítók nélkül).
+				{# #826: a tanács attól függ, MIÉRT hiányzik a mező. Újraindexeléssel csak
+				   az elavult dokumentum javul; akinek nincs koordinátája, azon nem segít. #}
+				{% if churchesMissingLocation.no_coordinates is defined and churchesMissingLocation.no_coordinates > 0 %}
+					<br><strong>{{ churchesMissingLocation.no_coordinates }}</strong> templomnak
+					<strong>nincs koordinátája</strong> az adatbázisban — rajtuk az újraindexelés
+					NEM segít, ez adathiány (#497).
+				{% endif %}
+				{% if churchesMissingLocation.reindexable is defined and churchesMissingLocation.reindexable > 0 %}
+					<br><strong>{{ churchesMissingLocation.reindexable }}</strong> templom
+					dokumentuma elavult — ezeket a
+					<code>\ExternalApi\ElasticsearchApi::reindexChurchesWithoutLocation()</code>
+					cron magától pótolja, kézi teljes újraindexelés nélkül.
+				{% endif %}
 			</div>
 		{% endif %}
 	</p>
@@ -323,6 +334,32 @@
 				{% endif %}
 			</td>
 		</tr>
+		{#
+			#827: külön sor a KÖZIGAZGATÁSI határnak.
+			A fenti sor bármilyen kapcsolatot beszámít — az OSM sokféle határt ad
+			(postal_code, judicial, wine_community…), a religious_administration
+			határokat pedig MI hozzuk létre minden templomhoz. A HELYNEVEK viszont
+			kizárólag közigazgatási határból jönnek, és ez a szám dönti el, hány
+			templom maradna helynév nélkül a `templomok.varos` eldobása után.
+		#}
+		<tr>
+			<td><strong>Van közigazgatási határa</strong> <small class="text-muted">(a helynevek ebből jönnek)</small></td>
+			<td>
+				{% set osszes = boundariesStats.with_osm.count %}
+				{% set adminnal = boundariesStats.with_osm.with_admin_boundary_count %}
+				{% if osszes > 0 and adminnal >= osszes %}
+					<span class="badge bg-success">{{ adminnal }}</span> / {{ osszes }} (100%)
+				{% else %}
+					<span class="badge bg-warning">{{ adminnal }}</span> / {{ osszes }}
+					<div class="alert alert-warning" style="margin-top:6px">
+						<strong>{{ boundariesStats.with_osm.without_admin_boundary_count }}</strong> misézőhelynek
+						nincs közigazgatási határa. Ők a <code>templomok.varos</code> oszlop eldobása után
+						(#496/#497/#498) <strong>helynév nélkül maradnának</strong> — a kivezetés előtt
+						ezt érdemes lenullázni.
+					</div>
+				{% endif %}
+			</td>
+		</tr>
 		<tr>
 			<td><strong>Misézőhelyek amiknek nem kerestük még soha</strong> </td>
 			<td>
@@ -382,7 +419,31 @@
 				{% if boundariesStats.orphan_count == 0 %}
 						<span class="badge bg-success">0</span>
 				{% else %}
-						<span class="badge bg-danger">{{ boundariesStats.orphan_count }}</span>							
+						{# #825: a puszta szám alapján nem lehet eldönteni, baj-e. Az árva határ
+						   lehet ártalmatlan maradék, elrontott szinkron nyoma, vagy szabályos
+						   egyházmegye-határ templom nélkül. Ezért kilistázzuk őket. #}
+						<span class="badge bg-warning">{{ boundariesStats.orphan_count }}</span>
+						{% if boundariesStats.orphan_list|length > 0 %}
+							<details style="margin-top:6px">
+								<summary class="kicsi" style="cursor:pointer">Mik ezek?</summary>
+								<table class="table table-condensed kicsi" style="margin-top:6px">
+									<tr><th>név</th><th>típus</th><th>szint</th><th>OSM</th><th>frissítve</th></tr>
+									{% for b in boundariesStats.orphan_list %}
+										<tr>
+											<td>{{ b.name }}</td>
+											<td>{{ b.boundary }}</td>
+											<td>{{ b.admin_level }}</td>
+											<td>
+												{% if b.osmtype and b.osmid %}
+													<a href="https://www.openstreetmap.org/{{ b.osmtype }}/{{ b.osmid }}" target="_blank" rel="noopener">{{ b.osmtype }}/{{ b.osmid }}</a>
+												{% endif %}
+											</td>
+											<td>{{ b.updated_at }}</td>
+										</tr>
+									{% endfor %}
+								</table>
+							</details>
+						{% endif %}
 				{% endif %}
 			</td>
 		</tr>

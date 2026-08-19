@@ -62,6 +62,19 @@ if (!function_exists('t')) {
     }
 }
 
+/*
+ * #824: a globális `$user`-t a load.php állítja be a munkamenetből, a tesztek viszont
+ * nem azt töltik be. Enélkül minden jogosultság-vizsgálat „Call to a member function
+ * checkRole() on null"-lal hasal el — a `ChurchPrintableScheduleTest` például külön
+ * futtatva 12-ből 9 hibával állt meg, a teljes futamban viszont zöld volt, mert egy
+ * korábbi teszt véletlenül beállította. Az ilyen sorrendfüggés a legrosszabb fajta
+ * hiba: nem a kód romlik el tőle, hanem a mérés hitele.
+ *
+ * VENDÉG felhasználót adunk, mert az a nyilvános alapállapot: aki bejelentkezettet
+ * akar mérni, az állítsa be magának a saját tesztjében.
+ */
+$GLOBALS['user'] = new \User();
+
 // A levélküldés Twig-sablonból áll elő (\Eloquent\Email::render()), így $twig nélkül
 // egyetlen email-út sem tesztelhető. Ugyanaz a környezet, mint amit a load.php épít.
 //

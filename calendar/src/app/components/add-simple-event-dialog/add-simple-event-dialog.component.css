@@ -10,3 +10,10 @@
 .mat-mdc-card-actions {
   justify-content: end;
 }
+
+/* #506: a templomválasztó teljes szélességben — lásd a teljes szerkesztőt. */
+.simple-church {
+  display: block;
+  width: 100%;
+  margin-top: 0.5em;
+}
