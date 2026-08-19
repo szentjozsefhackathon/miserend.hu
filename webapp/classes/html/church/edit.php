@@ -9,13 +9,20 @@ class Edit extends \Html\Html {
     public $help;
     public $input;
     public $nearbyChurches;
-    /** #157: a templom aktív külső naptárai (név, url, utolsó import). */
-    public $externalCalendars = [];
 
     /* #639: mit tegyünk a beküldött ellátó-plébánia választással. */
     public const PARENT_REPLACE = 'replace';
     public const PARENT_REMOVE  = 'remove';
     public const PARENT_INVALID = 'invalid';
+
+    /**
+     * #157: a templom aktív külső naptárai (név, url, utolsó import).
+     *
+     * Szándékosan NEM a többi property mellett, hanem a konstansok után: ott a #819
+     * is szúr be egy mezőt (`$derivedHolders`), és a git a két független hozzáadást
+     * ütközésnek látná. Egy sor odébb — és a két PR bármilyen sorrendben mehet.
+     */
+    public $externalCalendars = [];
 
     /**
      * #639: a legördülő "0" értéke a placeholder-opció ("– válassz templomot –"), vagyis
