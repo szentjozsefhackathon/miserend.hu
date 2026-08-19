@@ -46,7 +46,7 @@ cd webapp && composer install
 ./scripts/docker-test.sh                          # PHP unit + integration
 ./scripts/docker-test.sh --testsuite api          # specific suite
 ./scripts/docker-test-panther.sh                  # E2E browser tests
-./scripts/docker-test-panther.sh -- --filter HomepageTest
+./scripts/docker-test-panther.sh --filter HomepageTest
 ./scripts/docker-coverage.sh                      # coverage report → webapp/tests/coverage/html/
 ```
 
