@@ -158,10 +158,29 @@ class Crons {
 			'churchholders_asked_admin',
 			'image_admin', 'image_diocese', 'image_responsible',
 		];
+		/*
+		 * #823: a HIBÁS leveleket megtartjuk.
+		 *
+		 * A `User::isUndeliverable()` pontosan ezekből a sorokból tudja, hogy egy címre
+		 * már háromszor nem sikerült kézbesíteni — az az egyetlen bizonyíték. Ha 90 nap
+		 * után kitöröljük, a bizonyíték eltűnik, és az értesítő cron újrakezdi a
+		 * próbálkozást: három kísérlet, majd megint 90 nap, megint három. Örökre.
+		 *
+		 * Nem nő el: a harmadik hiba után nem küldünk többet, tehát címenként és
+		 * típusonként legfeljebb három ilyen sor keletkezik. Ha a cím később mégis
+		 * működni kezd, a sikeres levél időbélyege érvényteleníti a korábbi hibákat
+		 * (az `isUndeliverable()` csak az utolsó siker UTÁNI hibákat számolja).
+		 */
 		$cutoff = date('Y-m-d H:i:s', strtotime('-90 days'));
 		DB::table('emails')
 			->where('created_at', '<', $cutoff)
 			->whereIn('type', $deletableTypes)
+			// A NULL státuszt is töröljük: az nem hiba-bizonyíték, csak régi, státusz
+			// nélküli sor — a puszta `<> 'error'` viszont az SQL NULL-logikája miatt
+			// kihagyná (NULL <> 'error' eredménye NULL, nem igaz).
+			->where(function ($q) {
+				$q->whereNull('status')->orWhere('status', '<>', 'error');
+			})
 			->delete();
 	}
 
