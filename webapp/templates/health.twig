@@ -71,7 +71,21 @@
 				<td>{{ cron.id }}</td>
 				<td><a href="{{ base_url }}/index.php?q=cron&cron_id={{cron.id}}" target="_blank">{{ cron.class }}::{{ cron.function }}()</a></td>
 				<td>{{ cron.frequency }} {% if cron.from %}({{ cron.from }} - {{ cron.until }}){% endif %}</td>
-				<td class="{% if cron.deadline_at < "now"|date("Y-m-d H:i:s") %}table-danger{% endif %}">{{ cron.deadline_at }}</td>
+				{#
+					#822: a lejárt határidő ÖNMAGÁBAN nem hiba.
+					Egy 15 perces cron a perc nagy részében „lejárt" — a következő
+					ütemezésig. Eddig ezek mind pirosak voltak, tehát egy tökéletesen
+					egészséges lapon is négy-öt piros cella állt. Az állandó, tennivaló
+					nélküli piros arra tanít, hogy a lapot ne vegyük komolyan.
+					A valódi baj a `stuck_reason` — az marad piros; a lejárt határidő
+					csak halk „esedékes" jelzést kap.
+				#}
+				<td class="{% if cron.stuck_reason %}table-danger{% endif %}">
+					{{ cron.deadline_at }}
+					{% if not cron.stuck_reason and cron.deadline_at < "now"|date("Y-m-d H:i:s") %}
+						<br><small class="text-muted">esedékes</small>
+					{% endif %}
+				</td>
 				<td  style="text-align: center" class="{% if cron.attempts > 0 %}table-danger{% endif%}">{{ cron.attempts }}</td>
 				<td class="{% if cron.stuck_reason %}table-danger{% endif %}" {% if cron.stuck_reason %}title="{{ cron.stuck_reason }}"{% endif %}>
 					{{ cron.lastsuccess_at }}
@@ -474,7 +488,9 @@
 		</tr>
 	</table>
 
-	<h3 id="externalapis">Levelezőrendszer egészsége</h3>
+	{# #822: az azonosító DUPLA volt — a „Külső szolgáltatók" szakasz is ezt viselte,
+	   így a #externalapis horgony mindig az elsőre ugrott, ide sosem lehetett linkelni. #}
+	<h3 id="mailing">Levelezőrendszer egészsége</h3>
 	
 	<table class="table table-hover table-condensed table-striped">
 			<tr>
