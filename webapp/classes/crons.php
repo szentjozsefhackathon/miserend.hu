@@ -7,6 +7,119 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class Crons {
 
+	/*
+	 * #496 / #497 / #498: itt állt az archiveLocationOfChurchesWithoutCoordinates(),
+	 * ami a koordináta nélküli templomok helyadatát mentette át a megjegyzés mezőbe.
+	 *
+	 * Kikerült, mert a ledobott oszlopokat olvasta volna — a CI ezt azonnal meg is
+	 * fogta. Az archiválás ATTÓL nem maradt el: átkerült magába a migrációs SQL-be,
+	 * közvetlenül a DROP elé. Így egyetlen fájlon belül atomi, és nem lehet rossz
+	 * sorrendben futtatni.
+	 *
+	 * Lásd: docker/mysql/migrations/496-497-498-oszlopok-eldobasa.sql
+	 */
+
+	/**
+	 * #496: újra sorba állítja azokat a templomokat, amiknek nincs administratív
+	 * határuk, pedig már ellenőriztük őket.
+	 *
+	 * A `checkBoundaries()` sora `boundaries_checked_at` szerint halad, és a #570/#700
+	 * óta helyesen megkülönbözteti a HIBÁT a "lekérdeztük, de nincs határ" esettől:
+	 * hibánál nem bélyegez, tehát a templom a sor elején marad. A második eset viszont
+	 * BÉLYEGET kap — és ott is marad, amíg a teljes sor körbe nem ér.
+	 *
+	 * Ez akkor fáj, ha a "nincs határ" nem az OSM valósága volt, hanem a mi oldalunk
+	 * változott azóta. Pontosan ez történt Szlovákiában: a tárolt szintjeink elavultak
+	 * (nálunk 8=okres/9=obec, az OSM ma 6=okres/8=obec), és a szlovák minta 23%-ának
+	 * emiatt egyáltalán nincs határa. A #699 óta a lekérdezés a 4-es szintet is
+	 * behúzza, de a régen bélyegzett templomok ettől még nem próbálkoznak újra.
+	 *
+	 * Ezért a bélyeget levesszük róluk — a következő futás így elöl veszi őket.
+	 *
+	 * A 30 napos korlát SZÁNDÉKOS: enélkül azok a templomok, amiknek tényleg nincs
+	 * határuk (az OSM ott nem fed le semmit), minden futásban visszakerülnének a sor
+	 * elejére, és kiszorítanák a valóban ellenőrizendőket. Így legfeljebb havonta
+	 * egyszer próbálkozunk velük újra.
+	 *
+	 * @return int hány templomot állítottunk vissza a sorba
+	 */
+	public static function requeueChurchesWithoutBoundary(): int {
+		$hatarido = date('Y-m-d H:i:s', strtotime('-30 days'));
+
+		return DB::table('templomok')
+			->where('ok', 'i')
+			->whereNotNull('lat')->where('lat', '!=', 0)
+			->whereNotNull('lon')->where('lon', '!=', 0)
+			->whereNotNull('boundaries_checked_at')
+			->where('boundaries_checked_at', '<', $hatarido)
+			->whereNotExists(function ($q) {
+				$q->select(DB::raw(1))
+					->from('lookup_boundary_church')
+					->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+					->whereColumn('lookup_boundary_church.church_id', 'templomok.id')
+					->where('boundaries.boundary', 'administrative');
+			})
+			->update(['boundaries_checked_at' => null]);
+	}
+
+	/**
+	 * #496: hány aktív, koordinátával rendelkező templomnak nincs administratív
+	 * határa. A /health ezt írja ki, hogy a lefedettségi hiány LÁTSZÓDJON — eddig
+	 * csak abból derült volna ki, hogy egy település alatt nem jön ki a templom.
+	 */
+	public static function churchesWithoutBoundaryCount(): int {
+		return DB::table('templomok')
+			->where('ok', 'i')
+			->whereNotNull('lat')->where('lat', '!=', 0)
+			->whereNotNull('lon')->where('lon', '!=', 0)
+			->whereNotExists(function ($q) {
+				$q->select(DB::raw(1))
+					->from('lookup_boundary_church')
+					->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+					->whereColumn('lookup_boundary_church.church_id', 'templomok.id')
+					->where('boundaries.boundary', 'administrative');
+			})
+			->count();
+	}
+
+	/**
+	 * #497: a koordináta nélküli templomok kivétele a megjelenésből.
+	 *
+	 * borazslo kérése: „A koordináta nélküli templomokat lehet egyszerűen kiiktatjuk.
+	 * Egyelőre »nem jelenhet meg« részre. Annak a pár templomnak aminek még az
+	 * elhelyezkedését sem tudjuk, annak az adatait sem fogjuk tudni igazán frissen
+	 * tartani."
+	 *
+	 * FIGYELEM: ez publikus tartalmat rejt el. Élesben 47 templomot érint.
+	 *
+	 * „Áttekintésre vár" (f) állapotba tesszük, nem „letiltva" (n) állapotba: az
+	 * „egyelőre" szó ideiglenességre utal, és ezek a templomok nem szabályszegés
+	 * miatt kerülnek ki, hanem mert hiányzik az adatuk. Ha mégis a végleges letiltás
+	 * a szándék, ez egyetlen karakter a konstansban.
+	 *
+	 * @return int hány templomot vettünk ki
+	 */
+	public const KOORDINATA_NELKUL_ALLAPOT = 'f';
+
+	public static function hideChurchesWithoutCoordinates(): int {
+		return DB::table('templomok')
+			->where('ok', 'i')
+			// A lat/lon numerikus oszlop: üres sztringgel összehasonlítva a MySQL
+			// "Truncated incorrect DECIMAL value" hibát dob. NULL és 0 elég.
+			->where(function ($q) {
+				$q->whereNull('lat')->orWhere('lat', 0)
+				  ->orWhereNull('lon')->orWhere('lon', 0);
+			})
+			->update([
+				'ok' => self::KOORDINATA_NELKUL_ALLAPOT,
+				'adminmegj' => DB::raw(
+					"CONCAT(COALESCE(adminmegj, ''), "
+					. "IF(COALESCE(adminmegj, '') = '', '', '\n'), "
+					. "'[#497] Koordináta hiányában kivéve a megjelenésből.')"
+				),
+			]);
+	}
+
 	/**
 	 * #351: a stats_externalapi tábla nő a legnagyobbra. Elég az utolsó 30 nap
 	 * megőrzése, a régebbi statisztika-sorokat naponta töröljük. A `date` oszlopra
@@ -45,10 +158,29 @@ class Crons {
 			'churchholders_asked_admin',
 			'image_admin', 'image_diocese', 'image_responsible',
 		];
+		/*
+		 * #823: a HIBÁS leveleket megtartjuk.
+		 *
+		 * A `User::isUndeliverable()` pontosan ezekből a sorokból tudja, hogy egy címre
+		 * már háromszor nem sikerült kézbesíteni — az az egyetlen bizonyíték. Ha 90 nap
+		 * után kitöröljük, a bizonyíték eltűnik, és az értesítő cron újrakezdi a
+		 * próbálkozást: három kísérlet, majd megint 90 nap, megint három. Örökre.
+		 *
+		 * Nem nő el: a harmadik hiba után nem küldünk többet, tehát címenként és
+		 * típusonként legfeljebb három ilyen sor keletkezik. Ha a cím később mégis
+		 * működni kezd, a sikeres levél időbélyege érvényteleníti a korábbi hibákat
+		 * (az `isUndeliverable()` csak az utolsó siker UTÁNI hibákat számolja).
+		 */
 		$cutoff = date('Y-m-d H:i:s', strtotime('-90 days'));
 		DB::table('emails')
 			->where('created_at', '<', $cutoff)
 			->whereIn('type', $deletableTypes)
+			// A NULL státuszt is töröljük: az nem hiba-bizonyíték, csak régi, státusz
+			// nélküli sor — a puszta `<> 'error'` viszont az SQL NULL-logikája miatt
+			// kihagyná (NULL <> 'error' eredménye NULL, nem igaz).
+			->where(function ($q) {
+				$q->whereNull('status')->orWhere('status', '<>', 'error');
+			})
 			->delete();
 	}
 

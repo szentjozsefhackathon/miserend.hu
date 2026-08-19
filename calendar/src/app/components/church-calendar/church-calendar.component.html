@@ -80,7 +80,7 @@
 
 <!-- Template used to render FullCalendar list items via Angular bindings.
      Context variables provided from component: timeText, title, lang, types, comment -->
-<ng-template #eventListTemplate let-timeText="timeText" let-title="title" let-lang="lang" let-types="types" let-comment="comment">
+<ng-template #eventListTemplate let-timeText="timeText" let-title="title" let-lang="lang" let-types="types" let-comment="comment" let-ownLocation="ownLocation">
   <div class="fc-list-item-container d-flex align-items-center" style="gap:6px;">
     <span class="fc-list-item-time" *ngIf="timeText">{{ timeText }}</span>
     <div class="fc-list-item-main d-flex align-items-center" style="gap:6px;">
@@ -99,8 +99,17 @@
         </ng-container>
       </ng-container>
 
-      <ng-container *ngIf="comment">          
+      <ng-container *ngIf="comment">
           <span class="material-icons" title="{{ comment }}" style="margin-left:6px; height:18px; font-size:18px; vertical-align:top;">info</span>
+      </ng-container>
+
+      <!-- #431: az alkalom saját helyszíne. A listás nézetben a NÉV is kifér, nem csak
+           az ikon — ez a leginkább olvasásra való nézet. -->
+      <ng-container *ngIf="ownLocation">
+        <span class="mcal-location-badge" [matTooltip]="'DIFFERENT_LOCATION_BADGE' | translate:{place: ownLocation}">
+          <span class="material-icons" style="height:18px; font-size:18px; vertical-align:top;">place</span>
+          <span class="mcal-location-name">{{ ownLocation }}</span>
+        </span>
       </ng-container>
     </div>
   </div>
@@ -272,6 +281,12 @@
                       <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
                     </ng-container>
                   </ng-container>
+
+                  <!-- #431: saját helyszín — a hivatkozás az OpenStreetMap-re visz. -->
+                  <a *ngIf="m.ownLocation" class="mcal-location-badge" [href]="m.ownLocationUrl" target="_blank" rel="noopener"
+                     [matTooltip]="('DIFFERENT_LOCATION_BADGE' | translate:{place: m.ownLocation}) + ' — ' + ('DIFFERENT_LOCATION_SHOW_ON_MAP' | translate)">
+                    <mat-icon class="mcal-location-icon">place</mat-icon>
+                  </a>
                 </td>
                 <td style="padding:10px">
                   <div *ngIf="(m.experiodNames && m.experiodNames.length) || m.exdate || m.exDates" class="text-muted small">
@@ -358,6 +373,12 @@
                     <img class="type-icon" style="height:18px; margin-left:6px" [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
                   </ng-container>
                 </ng-container>
+
+                <!-- #431: saját helyszín — a hivatkozás az OpenStreetMap-re visz. -->
+                <a *ngIf="m.ownLocation" class="mcal-location-badge" [href]="m.ownLocationUrl" target="_blank" rel="noopener"
+                   [matTooltip]="('DIFFERENT_LOCATION_BADGE' | translate:{place: m.ownLocation}) + ' — ' + ('DIFFERENT_LOCATION_SHOW_ON_MAP' | translate)">
+                  <mat-icon class="mcal-location-icon">place</mat-icon>
+                </a>
               </td>
               <td style="padding:10px">
                 <div *ngIf="(m.experiodNames && m.experiodNames.length) || m.exdate || m.exDates" class="text-muted small">

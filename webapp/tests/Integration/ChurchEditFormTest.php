@@ -36,7 +36,6 @@ class ChurchEditFormTest extends TestCase {
     private function createChurch(): int {
         return DB::table('templomok')->insertGetId([
             'nev'        => 'Szerkesztés teszt',
-            'varos'      => 'Budapest',
             'cim'        => 'Régi cím 1.',
             'frissites'  => '2020-01-01',
             'ok'         => 'i',
@@ -106,14 +105,18 @@ class ChurchEditFormTest extends TestCase {
         $this->post('/templom/' . $this->churchId . '/edit', $this->editFields([
             'church[cim]'        => 'Harmadik cím',
             'church[megjegyzes]' => 'Teszt megjegyzés',
-            'church[varos]'      => 'Debrecen',
         ]));
 
         $row = $this->churchRow();
         $this->assertSame('Harmadik cím', $row->cim);
         $this->assertSame('Teszt megjegyzés', $row->megjegyzes);
-        $this->assertSame('Debrecen', $row->varos);
     }
+
+    /*
+     * #496 / #497 / #498: a #798-ban itt egy teszt állt arról, hogy az űrlapról
+     * beküldött `varos`/`megye`/`orszag` NEM írja felül a mentett adatot. Az
+     * oszlopok azóta megszűntek, tehát nincs mit felülírni — a teszt tárgytalan.
+     */
 
     /**
      * A LÉNYEG: idegen azonosítóval nem lehet más templomot átírni.

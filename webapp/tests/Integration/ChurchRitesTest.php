@@ -29,7 +29,6 @@ class ChurchRitesTest extends TestCase {
     private function createChurch(): int {
         $id = DB::table('templomok')->insertGetId([
             'nev'        => 'Rítus teszt',
-            'varos'      => 'Budapest',
             'frissites'  => '2020-01-01',
             'ok'         => 'i',
             'plebania'   => '', 'leiras' => '', 'megjegyzes' => '', 'misemegj' => '',

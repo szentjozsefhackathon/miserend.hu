@@ -23,7 +23,7 @@ import {AddSimpleEventDialogComponent} from '../add-simple-event-dialog/add-simp
 import {MassUtil} from '../../util/mass-util';
 import {Mass} from '../../model/mass';
 import {CalendarEvent} from '../../model/calendar/calendar-event';
-import {Church} from '../../model/church';
+import {Church, ChurchFamilyMember} from '../../model/church';
 import {SensorEvent} from '../../model/sensor-event';
 import {LiturgicalDay} from '../../model/liturgical-day';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
@@ -63,6 +63,10 @@ import {CompressionResult, WeekCompressionUtil, WeekEvent} from '../../util/week
 export interface SimpleDialogData {
   dateTime: Date;
   title: string;
+  /** #506: a választható (írható) templomok — család módon kívül üres. */
+  churches?: ChurchFamilyMember[];
+  /** A dialógus ebbe írja vissza a választást. */
+  selectedChurchId?: number;
 }
 
 export interface EventViewerDialogData {
@@ -88,6 +92,8 @@ export interface DialogData {
   // templomnak van már „illeszthető" rendszeres miserendje (pl. tanítási idő).
   existingPeriodIds?: number[];
   country?: string;
+  /** #506: a választható (írható) templomok — család módon kívül üres. */
+  churches?: ChurchFamilyMember[];
 }
 
 @Component({
@@ -106,8 +112,117 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
   @Input() changes: Map<number, Mass> = new Map();
   @Input() deletedMasses: number[] = [];
   @Input() deletedDates: Map<number, string[]> = new Map();
+
   @Input() changedMasses: number[] = [];
   @Input() sensorEvents: SensorEvent[] = [];
+
+  /**
+   * #506: a plébánia és fíliái. Üres marad az egy-templomos szerkesztőben, tehát a
+   * mostani viselkedés semmiben nem változik.
+   */
+  @Input() family: ChurchFamilyMember[] = [];
+
+  /**
+   * A ROKON templomok neve azonosító szerint — a saját templom szándékosan kimarad.
+   *
+   * Így a naptárban csak az idegen esemény kap templomnevet a címe elé; a sajátjaink
+   * ugyanúgy néznek ki, mint eddig.
+   */
+  /**
+   * #506: az ÍRHATÓ családtagok — köztük a saját templom is.
+   *
+   * A felület csak ezeket kínálja fel: értelmetlen olyan templomot választhatóvá tenni,
+   * amit a szerver úgyis visszautasítana. Család módon kívül üres, tehát nincs választó.
+   */
+  /**
+   * #506: mely templomokat érinti ez a mentés?
+   *
+   * A mentendő mise a saját `churchId`-jét hozza; a törlendőét a betöltött adatból
+   * nézzük meg. A szerkesztett templom mindig benne van, mert a kérés oda megy.
+   */
+  private affectedChurchIds(changed: Mass[], deleted: number[]): number[] {
+    const ids = new Set<number>([this.currentChurch!.id]);
+
+    for (const mass of changed) {
+      if (mass.churchId) {
+        ids.add(mass.churchId);
+      }
+      /*
+       * #506: az EREDETI templom is érintett, ha a mise átkerült máshova.
+       *
+       * borazslo: „ha a teljes ismétlődő sorozatot módosítottam egyik templomból a
+       * másikra, akkor csak egy helyen jelent meg a módosítási javaslat." A forrás
+       * gondnoka így nem is értesült arról, hogy egy misét elvisznek tőle — pedig ez
+       * az ő miserendjét változtatja meg. (Egyetlen alkalomnál azért működött, mert
+       * ott a forráson keletkezik egy kivétel-dátum, tehát ő is változik.)
+       */
+      const eredeti = mass.id != null ? this.masses.get(mass.id) : undefined;
+      if (eredeti?.churchId) {
+        ids.add(eredeti.churchId);
+      }
+    }
+    for (const id of deleted) {
+      const mass = this.masses.get(id) ?? this.changes.get(id);
+      if (mass?.churchId) {
+        ids.add(mass.churchId);
+      }
+    }
+
+    return Array.from(ids);
+  }
+
+  public writableFamily(): ChurchFamilyMember[] {
+    return this.family.filter(tag => tag.writable);
+  }
+
+  /** Van-e egyáltalán miből választani? Egy templomnál a választó felesleges zaj. */
+  public hasChurchChoice(): boolean {
+    return this.writableFamily().length > 1;
+  }
+
+  /**
+   * Az a templom, amelyikhez az ÚJ esemény kerül.
+   *
+   * Alapból a szerkesztett templom — ez a mai viselkedés. Család módban a dialógusban
+   * választott templom, a saját rítusával: egy görögkatolikus fília miséje ne kapjon
+   * római rítust csak azért, mert a plébánia felől nyitottuk meg.
+   */
+  private targetChurch(churchId?: number): Church {
+    if (!churchId || churchId === this.currentChurch!.id) {
+      return this.currentChurch!;
+    }
+
+    /*
+     * #506: a TELJES családban keresünk, nem csak az írhatókban.
+     *
+     * Ha csak az írhatókat néznénk, egy nem írható templom miséje mentéskor némán a
+     * szerkesztett templomhoz került volna — vagyis a jogosultság hiánya ADATMOZGÁSSÁ
+     * fordult volna át. A szerver templomonként ellenőriz: jobb, ha a mentés
+     * elutasításra kerül, mint ha rossz helyre sikerülne.
+     */
+    const tag = this.family.find(t => t.id === churchId);
+    if (!tag) {
+      return this.currentChurch!;
+    }
+
+    return {...this.currentChurch!, id: tag.id, name: tag.name, rite: tag.rite};
+  }
+
+  /**
+   * #506: mi álljon a rokon templomok eseményei előtt a naptárban.
+   *
+   * A szabályt a `MassUtil.familyCalendarLabels` tartja — borazslo kérésére a
+   * település neve az elsődleges, és csak ott jön hozzá a templomnév, ahol egy
+   * településen több érintett misézőhely van.
+   */
+  private otherChurchNames(): Map<number, string> {
+    return MassUtil.familyCalendarLabels(this.family);
+  }
+
+  /** #506: a „Melyik templomban?" választó felirata — mindig település + templomnév. */
+  public churchSelectorLabel(tag: ChurchFamilyMember): string {
+    return MassUtil.familySelectorLabel(tag);
+  }
 
   // Szűrő komponens megjelenítése - kikapcsolt javaslatok oldalon
   showFilterComponent: boolean = true;
@@ -273,7 +388,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
               this.changedMasses,
               this.deletedMasses,
               this.deletedDates,
-              this.translateService
+              this.translateService,
+              this.otherChurchNames()
             );
             
             // Add sensor events to the calendar
@@ -327,7 +443,8 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       [], // changedMasses is empty since we're generating from combined set
       [], // deletedMasses is empty since we've already removed them
       this.deletedDates,
-      this.translateService
+      this.translateService,
+      this.otherChurchNames()
     );
 
     // Add sensor events to the calendar
@@ -861,27 +978,36 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       return;
     }
 
-    const dialogRef = this.dialog.open(AddSimpleEventDialogComponent, {
-      data: {dateTime: this.selectedDate, title: MassUtil.getSimpleTitle4Church(this.currentChurch!)}
-    });
+    // #506: a választható templomokat és az alapértelmezést a dialógus adatában adjuk át.
+    // A dialógus ugyanebbe az objektumba írja vissza a választást — így a meglévő,
+    // enumot visszaadó szerződés nem változik.
+    const simpleData: SimpleDialogData = {
+      dateTime: this.selectedDate,
+      title: MassUtil.getSimpleTitle4Church(this.currentChurch!),
+      churches: this.writableFamily(),
+      selectedChurchId: this.currentChurch!.id,
+    };
+
+    const dialogRef = this.dialog.open(AddSimpleEventDialogComponent, {data: simpleData});
 
     dialogRef.afterClosed().subscribe(result => {
       if (result === DialogResponse.SAVE_SIMPLE) {
-        this.saveSimpleEvent();
+        this.saveSimpleEvent(simpleData.selectedChurchId);
       } else if(result === DialogResponse.MORE_DETAILS) {
         this.dialogEvent = CalendarUtil.generateDialogEvent(this.currentChurch, this.translateService, this.selectedDate);
+        this.dialogEvent.churchId = simpleData.selectedChurchId;
         this.openFullDialog('ADD_NEW_MASS', this.selectedDate);
       }
     });
   }
 
-  private saveSimpleEvent() {
+  private saveSimpleEvent(churchId?: number) {
     if (this.selectedDate === undefined) {
       return;
     }
 
     const newMassId = MassUtil.generateTmpMassId();
-    const simpleMass: Mass = MassUtil.createSimpleMassByDate(this.selectedDate, this.currentChurch!, newMassId, this.translateService);
+    const simpleMass: Mass = MassUtil.createSimpleMassByDate(this.selectedDate, this.targetChurch(churchId), newMassId, this.translateService);
 
     this.changes.set(simpleMass.id!, simpleMass);
 
@@ -914,7 +1040,9 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     }
 
     const dialogRef = this.dialog.open(AddFullEventDialogComponent, {
-      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country}
+      // #506: a választható (írható) templomok. Család módon kívül üres, tehát a
+      // dialógus ugyanúgy néz ki, mint eddig.
+      data: {title: title, event: this.dialogEvent, existingPeriodIds: existingPeriodIds, country: this.currentChurch.country, churches: this.writableFamily()}
     });
 
     dialogRef.afterClosed().subscribe(result => {
@@ -931,7 +1059,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           const newSingleMass: Mass = MassUtil.createMass(
             MassUtil.createEventByType(this.dialogEvent, newMassId, undefined, this.translateService),
             this.dialogEvent,
-            this.currentChurch!,
+            this.targetChurch(this.dialogEvent.churchId),
             newMassId
           );
 
@@ -966,7 +1094,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           const periodWeight = this.dialogEvent.period?.weight;
           const specialPeriodType = this.periodService.getSpecialPeriodType(periodId);
           const calendarEvent: CalendarEvent = MassUtil.createEventByType(this.dialogEvent, newMassId, specialPeriodType, this.translateService);
-          const mass: Mass = MassUtil.createMass(calendarEvent, this.dialogEvent, this.currentChurch!, newMassId);
+          const mass: Mass = MassUtil.createMass(calendarEvent, this.dialogEvent, this.targetChurch(this.dialogEvent.churchId), newMassId);
 
           // #352: ha a felhasználó csak rányomott egy meglévő mise módosítására és semmit nem
           // változtatott, ne tegyük változási javaslattá - nem küldünk fantom javaslatot, és
@@ -1023,6 +1151,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     const proceedWithSave = () => {
       this.spinnerService.show();
       const changesArray = Array.from(this.changes.values());
+      const erintettTemplomok = this.affectedChurchIds(changesArray, this.deletedMasses);
       this.eventService.saveChanges(this.currentChurch!.id, changesArray, this.deletedMasses).subscribe(masses => {
       this.changes.clear();
       this.deletedMasses = [];
@@ -1030,10 +1159,33 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       this.reLoadCalendar();
       this.snackBarService.success('Sikeres mentés!');
 
-      //TODO: EZT MAJD HÁTTÉRBEN
+      /*
+       * #832: az újragenerálás TŰZ-ÉS-FELEJTS — a felület nem vár rá.
+       *
+       * A régi jelzés („EZT MAJD HÁTTÉRBEN") arra célzott, hogy a szerver oldalán
+       * legyen belőle háttérmunka: a `PUT /generate` három év miséit építi újra,
+       * ezalatt a kérés nyitva marad. Az viszont sorkezelést (job queue) igényelne,
+       * ami ennél nagyobb döntés — a felület felől már most sem blokkol.
+       *
+       * Amit itt javítok: a kezelő nélküli `subscribe()`. A szolgáltatás hiba esetén
+       * ÚJRADOBJA a hibát (miután szólt a felhasználónak), és a fel nem dolgozott
+       * hiba elkapatlanul buborékol tovább. A felhasználó ilyenkor egyszerre látja a
+       * „Sikeres mentés!" és a generálási hibaüzenetet — ami pontos: a mentés tényleg
+       * sikerült, csak a kereső indexe nem frissült.
+       */
       const currentYear = new Date().getFullYear();
       const years: number[] = [currentYear - 1, currentYear, currentYear + 1];
-      this.searchService.generateMasses(years, this.currentChurch!.id).subscribe();
+
+      this.searchService.generateMasses(years, this.currentChurch!.id)
+        .subscribe({error: () => { /* a szolgáltatás már jelezte a felhasználónak */ }});
+
+      // #506: MINDEN érintett templom indexét újra kell generálni, nem csak a
+      // szerkesztettét — család módban a fília miserendje is most változott, és
+      // enélkül a keresőben a régi maradna.
+      for (const churchId of erintettTemplomok) {
+        this.searchService.generateMasses(years, churchId).subscribe();
+      }
+
       });
     };
 
@@ -1085,13 +1237,25 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     }
 
     this.eventService.sendToApprove(this.currentChurch!.id, suggestionPackage).subscribe(
-      res => {
+      (res: any) => {
         this.changes.clear();
         this.deletedMasses = [];
         this.deletedDates.clear();
         this.reLoadCalendar();
+
+        /*
+         * #781: a szerver templomonként külön csomagot készít, mert a jóváhagyás is
+         * templomonként történik. Ha több lett, mondjuk meg — a beküldő egyetlen
+         * műveletet élt meg, de több gondnok fogja látni, és jó tudnia, hogy a fília
+         * javaslata is elment.
+         */
+        const csomagok: number = Array.isArray(res?.packages) ? res.packages.length : 1;
+        const uzenet: string = csomagok > 1
+          ? `Javaslatod sikeresen beküldve, ${csomagok} templomhoz. Amint jóváhagyják, megjelenik a naptárban.`
+          : 'Javaslatod sikeresen beküldve! Amint jóváhagyják, megjelenik a naptárban.';
+
         this.dialog.open(AddMessageDialogComponent, {
-          data: {message: "Javaslatod sikeresen beküldve! Amint jóváhagyják, megjelenik a naptárban.", decision: false}
+          data: {message: uzenet, decision: false}
         });
       },
       error => {
@@ -1476,6 +1640,11 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         let changed: boolean = false;
         if (ScriptUtil.isNotNull(m.periodId) && m.periodId === periodId) {
           changed = false;
+        } else if (this.periodCovers(periodId, m.periodId)) {
+          // #747: az új mise időszaka TELJESEN lefedi ezét — a kizárás itt nem
+          // felülírás lenne, hanem kiürítés: ez a mise sehol nem maradna látható.
+          // A szűkebb időszak a specifikusabb, tehát ő nyer a saját tartományában.
+          changed = false;
         } else if (ScriptUtil.isNotNull(m.experiod)) {
           if (!m.experiod.includes(periodId) && m.periodId !== periodId) {
             m.experiod.push(periodId);
@@ -1534,12 +1703,54 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         }
       }
 
+      /*
+       * #747: a másik irány. Ha EZ a mise időszaka fedi le teljesen egy kisebb súlyú
+       * időszakét, akkor a kisebb a specifikusabb: a saját tartományában ő nyer,
+       * tehát őt zárjuk ki EBBŐL a miséből. (Az `excludeNewMassFromLowerPeriodMasses`
+       * párja ezért hagyja békén az ilyen miséket — a döntés itt születik meg.)
+       */
+      const coveredLowerPeriodIds: number[] = [];
+      for (const m of [...this.masses.values(), ...this.changes.values()]) {
+        if (ScriptUtil.isNull(m.periodId) || coveredLowerPeriodIds.includes(m.periodId)) {
+          continue;
+        }
+        const mPeriod = this.periodService.getPeriodById(m.periodId);
+        if (ScriptUtil.isNotNull(mPeriod) && mPeriod.weight < periodWeight
+            && this.periodCovers(periodId, m.periodId)) {
+          coveredLowerPeriodIds.push(m.periodId);
+        }
+      }
+
       let globalChanged: boolean = false;
 
-      if (higherPeriodIds.length > 0 && ScriptUtil.isNull(mass.experiod)) {
+      if ((higherPeriodIds.length > 0 || coveredLowerPeriodIds.length > 0) && ScriptUtil.isNull(mass.experiod)) {
         mass.experiod = [];
       }
+
+      coveredLowerPeriodIds.forEach(lowerPeriodId => {
+        if (!mass.experiod!.includes(lowerPeriodId) && mass.periodId !== lowerPeriodId) {
+          mass.experiod!.push(lowerPeriodId);
+          globalChanged = true;
+        }
+      });
       higherPeriodIds.forEach(higherPeriodId => {
+        /*
+         * #747: ha a nagyobb súlyú időszak teljesen lefedi ezt a misét, akkor NEM őt
+         * zárjuk ki — a szűkebb (ez) nyer a saját tartományában.
+         *
+         * De a kihagyás önmagában kevés: ilyenkor a MÁSIK oldalt kell kizárni,
+         * különben mindkét mise látszik. borazslo pontosan ezt találta meg: a Nyári
+         * szünet 7 órás miséjét 8 órásra írva augusztusban két csütörtöki mise lett
+         * (a nyári szünetes és a nyári időszámításos). Másoláskor azért nem tűnt fel,
+         * mert a másolat ÖRÖKÖLTE a forrás kizárását; szerkesztéskor viszont a mise
+         * tiszta lapról épül újra, és a kizárás nem került vissza.
+         *
+         * A szerveroldali párja ugyanígy fordít (CalMass::applyCollisionAvoidance).
+         */
+        if (this.periodCovers(higherPeriodId, periodId)) {
+          this.excludeNarrowPeriodFromWiderMasses(higherPeriodId, periodId!);
+          return;
+        }
         if (!mass.experiod!.includes(higherPeriodId) && mass.periodId !== higherPeriodId) {
           mass.experiod!.push(higherPeriodId);
           globalChanged = true;
@@ -1832,6 +2043,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     // Clone masses for the new period
     const targetPeriodWeight = this.periodService.getPeriodById(targetPeriodId)?.weight;
     let globalChanged = false;
+    const copiedMasses: Mass[] = [];
 
     massesToCopy.forEach(massToClone => {
       // Create a new mass with the target period ID but without an ID (so API treats it as new)
@@ -1858,23 +2070,33 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
 
       // Add to changes map
       this.changes.set(newMass.id, newMass);
+      copiedMasses.push(newMass);
       globalChanged = true;
     });
 
     if (globalChanged) {
-      // Recalculate excluded periods for the newly copied masses
-      // This ensures proper experiod values based on period weights
-      massesToCopy.forEach(sourceMass => {
-        const newMasses = Array.from(this.changes.values()).filter(m =>
-          m.periodId === targetPeriodId && m.id! < 0 // Temporary IDs are negative
-        );
-        
-        newMasses.forEach(newMass => {
-          const recentlyExclusionSourcePeriodIds = this.excludeNewMassFromLowerPeriodMasses(targetPeriodId, targetPeriodWeight);
-          const recentlyExcludedPeriodIds = this.excludeHigherPeriodMassesFromNewMass(newMass, targetPeriodId, targetPeriodWeight);
-          this.showExclusionDialogIfNeed(targetPeriodId, recentlyExclusionSourcePeriodIds, recentlyExcludedPeriodIds);
-        });
+      // #747: a kizárás-számítás korábban KÉTSZERESEN körbe volt csomagolva
+      // (`massesToCopy` × `newMasses`), pedig a belső lista nem függött a külső
+      // ciklusváltozótól. Következmény: N másolt misénél N-szer futott le
+      // ugyanaz, és a kizárás-párbeszéd is annyiszor ugrott fel. Ráadásul a
+      // szűrő MINDEN negatív id-jű misét felszedett a cél-időszakban, nem csak
+      // a most másoltakat — így a korábban, kézzel felvett, még nem mentett
+      // miséket is újra végigrágta.
+      //
+      // Az `excludeNewMassFromLowerPeriodMasses` amúgy is az egész templomra
+      // dolgozik, tehát elég egyszer meghívni; a másik viszont mise-specifikus,
+      // ezért az csak a ténylegesen most létrehozott másolatokra fut.
+      const exclusionSourcePeriodIds = this.excludeNewMassFromLowerPeriodMasses(targetPeriodId, targetPeriodWeight);
+      const excludedPeriodIds: number[] = [];
+      copiedMasses.forEach(newMass => {
+        this.excludeHigherPeriodMassesFromNewMass(newMass, targetPeriodId, targetPeriodWeight)
+          .forEach(id => {
+            if (!excludedPeriodIds.includes(id)) {
+              excludedPeriodIds.push(id);
+            }
+          });
       });
+      this.showExclusionDialogIfNeed(targetPeriodId, exclusionSourcePeriodIds, excludedPeriodIds);
 
       // IMPROVED: Use refreshCalendarAndMassList() instead of reLoadCalendar() for immediate sync refresh
       this.refreshCalendarAndMassList();
@@ -1941,6 +2163,108 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     return aStart < bEnd && aEnd > bStart;
   }
 
+  /**
+   * #747: teljesen lefedi-e a `coverPeriodId` időszak a `innerPeriodId`-ét?
+   *
+   * A kizárás eddig csak a SÚLYT nézte. Ha a nagyobb súlyú időszak tartománya
+   * teljesen tartalmazza a kisebbét, a kizárás nem felülírás, hanem kiürítés: a
+   * kisebb súlyú mise sehol nem marad látható. Élő adattal ez a Nyári szünet
+   * (súly 3) és a Nyári időszámítás (súly 5) párosa — aki átmásolta a miséit,
+   * annak az eredeti eltűnt.
+   *
+   * Konzervatív: ha bármelyik oldalnak nincs generált tartománya, false — marad
+   * a régi viselkedés. A szerveroldali párja: CalMass::periodCovers().
+   */
+  private periodCovers(coverPeriodId?: number | null, innerPeriodId?: number | null): boolean {
+    if (!coverPeriodId || !innerPeriodId || coverPeriodId === innerPeriodId) {
+      return false;
+    }
+
+    /*
+     * #747: a tartalmazás nem szigorú (<=/>=), tehát két AZONOS tartomány kölcsönösen
+     * lefedi egymást. Ott viszont egyik sem „a szűkebb", nincs mit specifikusabbnak
+     * tekinteni — maradjon a súly. Enélkül a nagyobb súlyú időszak veszítene a vele
+     * azonos tartományú kisebbel szemben, ami a súlyozás értelmét fordítaná meg.
+     * A szerveroldali párja ugyanezt teszi (CalMass::periodCoversInYear).
+     */
+    if (this.rangesContain(innerPeriodId, coverPeriodId)) {
+      return false;
+    }
+
+    return this.rangesContain(coverPeriodId, innerPeriodId);
+  }
+
+  /**
+   * #747: a SZŰKEBB időszakot kizárjuk a lefedő időszak miséiből.
+   *
+   * Ez a „fordítás": ha a nagyobb súlyú időszak teljesen lefedi a kisebbet, nem a
+   * kisebbet zárjuk ki (az kiürítés lenne), hanem a nagyobbat a kisebb tartományában.
+   * Enélkül a lefedett napokon MINDKÉT mise látszana.
+   */
+  private excludeNarrowPeriodFromWiderMasses(widerPeriodId: number, narrowPeriodId: number): void {
+    let changed = false;
+
+    const erintettIds = new Set<number>();
+    for (const m of this.masses.values()) {
+      if (m.periodId === widerPeriodId && ScriptUtil.isNotNull(m.id)) {
+        erintettIds.add(m.id);
+      }
+    }
+    for (const m of this.changes.values()) {
+      if (m.periodId === widerPeriodId && ScriptUtil.isNotNull(m.id)) {
+        erintettIds.add(m.id);
+      }
+    }
+
+    for (const id of erintettIds) {
+      // A folyamatban lévő változás elsőbbséget élvez; a mentett misét klónozzuk,
+      // hogy a betöltött állapotot ne írjuk felül a helyén.
+      const m = this.changes.get(id) ?? ScriptUtil.clone(this.masses.get(id)!);
+      if (!m) {
+        continue;
+      }
+      if (ScriptUtil.isNull(m.experiod)) {
+        m.experiod = [];
+      }
+      if (!m.experiod!.includes(narrowPeriodId)) {
+        m.experiod!.push(narrowPeriodId);
+        this.changes.set(id, m);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.refreshCalendarAndMassList();
+    }
+  }
+
+  /** #747: tisztán tartalmazás-vizsgálat, a kölcsönösség kérdése nélkül. */
+  private rangesContain(coverPeriodId: number, innerPeriodId: number): boolean {
+    const cover = this.periodService.getGeneratedPeriodsByPeriodId(coverPeriodId);
+    const inner = this.periodService.getGeneratedPeriodsByPeriodId(innerPeriodId);
+    if (!cover?.length || !inner?.length) {
+      return false;
+    }
+
+    // A lefedés ÉVENTE változik: a Nagyböjt csak 2026-ban fedi le teljesen a
+    // Márciust. A szerkesztő viszont egyetlen `experiod` listát állít be, ami nem
+    // évfüggő — ezért itt csak akkor fordítunk, ha MINDEN olyan évben teljes a
+    // lefedés, amire van generált tartomány. Így a szerkesztő sosem tesz be olyan
+    // kizárást, amit a szerveroldali, évenkénti számolás egy évben visszavonna.
+    const years = new Set(inner.map(i => new Date(i.startDate).getFullYear()));
+
+    return Array.from(years).every(year => {
+      const innerOfYear = inner.filter(i => new Date(i.startDate).getFullYear() === year);
+      const coverOfYear = cover.filter(c => new Date(c.startDate).getFullYear() === year);
+      if (!coverOfYear.length) {
+        return false;
+      }
+      return innerOfYear.every(i => coverOfYear.some(c =>
+        new Date(c.startDate) <= new Date(i.startDate) && new Date(c.endDate) >= new Date(i.endDate)
+      ));
+    });
+  }
+
   private filterOverlappingPeriodIds(
       currentPeriods: GeneratedPeriod[],
       targetPeriods: GeneratedPeriod[],
@@ -1993,6 +2317,13 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         if (mass && mass.comment) comment = mass.comment;
       }
 
+      /*
+       * #431: az alkalom saját helyszíne. borazslo kérése, hogy a listás, heti és havi
+       * nézetben is LÁTSZÓDJON, ha a mise nem a templomban van — enélkül a szabadtéri
+       * alkalom ugyanúgy néz ki, mint a templomi, és a hívő rossz helyre megy.
+       */
+      const ownLocation = MassUtil.hasOwnLocation(mass) ? MassUtil.locationLabel(mass) : null;
+
       const flagMap: Record<string, string> = { hu: '🇭🇺', en: '🇬🇧', de: '🇩🇪', sk: '🇸🇰', ro: '🇷🇴' };
 
       let flagHtml = '';
@@ -2025,12 +2356,20 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         commentHtml = `<span class="material-icons" title="${escaped}" style="height:22px; font-size:22px; vertical-align:middle;">info</span>`;
       }
 
+      // #431: helyszín-jel. Ugyanaz a ligatúra-technika, mint a megjegyzésnél: nyers
+      // HTML-ben az Angular direktívák (matTooltip) nem futnak le, marad a `title`.
+      let locationHtml = '';
+      if (ownLocation) {
+        const cimke = this.translateService.instant('DIFFERENT_LOCATION_BADGE', {place: ownLocation});
+        locationHtml = `<span class="material-icons mcal-location-icon" title="${escapeAttr(cimke)}" style="height:18px; font-size:18px; vertical-align:top;">place</span>`;
+      }
+
       // For list views build a list-style row (with optional flag)
       if (isListView) {
         // Render the Angular template into DOM nodes and serialize to HTML so translation pipes
         // and other Angular bindings work.
         if (this.eventListTemplateRef && this.eventListTemplateContainer) {
-          const ctx = { timeText: info.timeText || '', title: info.event.title || '', lang: lang, types: types, comment: comment };
+          const ctx = { timeText: info.timeText || '', title: info.event.title || '', lang: lang, types: types, comment: comment, ownLocation: ownLocation };
           const view: EmbeddedViewRef<any> = this.eventListTemplateContainer.createEmbeddedView(this.eventListTemplateRef, ctx);
           view.detectChanges();
           // serialize root nodes
@@ -2080,7 +2419,15 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
           (lang && this.languagesOf(lang).some(l => this.shouldShowFlag(l))) ||
           (Array.isArray(types) && types.length > 0) ||
           !!comment;
-        return { html: shouldShowDetails ? `${monthHtml} ${detailsHtml}` : monthHtml };
+        /*
+         * #431: a helyszín-jel a havi nézetben is KIÜL, nem az `info` mögé bújik.
+         *
+         * A többi ikon (zászló, típus, megjegyzés) itt szándékosan összecsuklik egy
+         * „további információ" jelbe, mert a havi rács szűk. A helyszín viszont nem
+         * árnyalat: aki nem veszi észre, rossz helyre megy. Ezért kap saját jelet.
+         */
+        const monthTail = `${locationHtml}${shouldShowDetails ? ' ' + detailsHtml : ''}`;
+        return { html: monthTail !== '' ? `${monthHtml} ${monthTail}` : monthHtml };
       }
 
       // #358: az ikonok az IDŐ sorába kerülnek, nem a cím mellé.
@@ -2091,7 +2438,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       // levágtuk őket, egyszerűen eltűntek. Az idő („18:00") viszont rövid — ott
       // elférnek mellette, és a cím kap egy saját, teljes sort.
       const combinedHtml =
-        `<span class="mcal-event-head">${timeHtml}${flagHtml}${typesHtml}${commentHtml}</span>`
+        `<span class="mcal-event-head">${timeHtml}${flagHtml}${typesHtml}${commentHtml}${locationHtml}</span>`
         + `<span class="fc-event-title-wrap">${titleHtml}</span>`;
       return { html: combinedHtml };
     } catch (e) {
@@ -2365,6 +2712,10 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         flag: flag,
         types: m.types ? m.types : [],
         comment: m.comment,
+        // #431: az alkalom saját helyszíne — a mise-listában is látszania kell, hogy
+        // a szerkesztő egy pillantásból lássa, melyik alkalom nincs a templomban.
+        ownLocation: MassUtil.hasOwnLocation(m) ? MassUtil.locationLabel(m) : null,
+        ownLocationUrl: MassUtil.hasOwnLocation(m) ? MassUtil.locationOsmUrl(m) : null,
         // #592: külső naptárból importált liturgia — a listában jelöljük, és nem szerkeszthető.
         imported: !!m.imported,
         // #428: a mise-listában az auto + kézi kizárt időszakok UNIÓJA jelenjen meg

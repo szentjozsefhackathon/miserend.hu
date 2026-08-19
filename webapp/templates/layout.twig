@@ -67,12 +67,10 @@
         
 
 
-        <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
-        <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
-        <!--[if lt IE 9]>
-        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
-        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
-        <![endif]-->
+        {# Volt itt egy IE8-as html5shiv/respond.js páros az oss.maxcdn.com-ról. A
+           feltételes komment miatt egyetlen mai böngésző sem kérte le, a kiszolgáló
+           pedig évek óta megszűnt — két halott hivatkozás egy idegen hosztra minden
+           oldalon. #}
 
 
 		
@@ -111,7 +109,13 @@
                         {% if mychurches %}{% include "panel.twig" with {'title':'Módosítás','body': mychurches|raw } %}{% endif %}
                         <!-- {% if selfAdvertisement %}{% include "_panelselfadvertisement.twig"  %}{% endif %} -->
                     </div>
-                    <div class="col-md-{% if columns2 %}9{% else %}6{% endif %} col-sm-6 church-site-main-content">
+                    {#
+                        #822: a kis képernyős szélesség is kövesse az oszlop-számot.
+                        Kétoszlopos módban NINCS jobb oldalsáv, a fő tartalom mégis
+                        `col-sm-6` maradt: 3 + 6 = 9 a 12-ből, tehát tabletnézetben a
+                        szélesség negyede üresen állt. A `col-md` már jól számolt.
+                    #}
+                    <div class="col-md-{% if columns2 %}9{% else %}6{% endif %} col-sm-{% if columns2 %}9{% else %}6{% endif %} church-site-main-content">
                         {% block pageHeader %}
                             <div class="page-header">
                                 <h2>{{ title|raw }}</h2>

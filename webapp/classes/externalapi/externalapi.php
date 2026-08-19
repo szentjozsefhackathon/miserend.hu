@@ -96,6 +96,21 @@ class ExternalApi {
         return false;
     }
 
+    /**
+     * A leszármazott innen tölti fel a `$this->rawQuery`-t.
+     *
+     * A `runQuery()` mindig hívja, ha a `rawQuery` még nincs meg. Eddig itt nem volt
+     * kimondva, csak minden leszármazott véletlenül megvalósította — egy új
+     * szolgáltatás, ami elfelejti, „Call to undefined method"-dal szállt volna el, a
+     * hívási lánc túlsó végén, futásidőben. Most legalább megmondjuk, mi hiányzik.
+     *
+     * Nem `abstract`, mert az ősosztályt magát is példányosítjuk (a cache- és
+     * hibakezelő segédfüggvényei önmagukban is használhatók).
+     */
+    function buildQuery() {
+        throw new \Exception(static::class . ': nincs buildQuery(), és a rawQuery sincs beállítva.');
+    }
+
     function runQuery() {
         // Offline módban meg sem próbálkozunk: se hálózat, se cache-írás. A hívók a
         // szokásos „üres válasz" ágon mennek tovább, pontosan úgy, mintha a külső
@@ -311,19 +326,54 @@ class ExternalApi {
         
     }
 
-    function clearOldCache() {
-        $this->cache;
-        $this->cacheDir;
+    /**
+     * A lejárt cache-fájlok törlése ehhez az API-hoz.
+     *
+     * #791: borazslo kérésére bekötjük a clearAllOldCache()-t, ami ezt hívja minden
+     * API-ra. Ehhez a metódusnak el kell bírnia azt is, ami eddig sosem fordult elő,
+     * mert csak az Overpassra futott:
+     *
+     * - `$cache === false` (Elasticsearch, OpenStreetMap, OSRM): nincs mit lejáratni.
+     *   Eddig ez véletlenül volt ártalmatlan — a `strtotime('now -' . false)` false-ot
+     *   ad, és a `$filemtime < false` PHP 8-ban hamis. Erre nem szabad támaszkodni.
+     * - hiányzó vagy olvashatatlan cache-könyvtár: a `scandir()` false-t ad, a
+     *   `foreach (false)` pedig hibát dob, és megállítaná a TÖBBI API takarítását is.
+     *
+     * @return int hány fájlt töröltünk
+     */
+    function clearOldCache(): int {
+        if (empty($this->cache)) {
+            return 0;
+        }
+
+        $deadline = strtotime('now -' . $this->cache);
+        if ($deadline === false) {
+            return 0;
+        }
+
+        if (!is_dir($this->cacheDir) || !is_readable($this->cacheDir)) {
+            return 0;
+        }
+
         $files = scandir($this->cacheDir);
+        if ($files === false) {
+            return 0;
+        }
+
+        $torolt = 0;
         foreach ($files as $file) {
-            if (preg_match('/^' . $this->name . '_(.*)\.'.$this->format.'/i', $file)) {
-                $filemtime = filemtime($this->cacheDir . $file);
-                $deadline = strtotime('now -' . $this->cache);
-                if ($filemtime < $deadline) {
-                    unlink($this->cacheDir . $file);
-                }
+            if (!preg_match('/^' . preg_quote($this->name, '/') . '_(.*)\.' . preg_quote((string) $this->format, '/') . '/i', $file)) {
+                continue;
+            }
+
+            $utvonal = $this->cacheDir . $file;
+            $filemtime = @filemtime($utvonal);
+            if ($filemtime !== false && $filemtime < $deadline && @unlink($utvonal)) {
+                $torolt++;
             }
         }
+
+        return $torolt;
     }
 
     function loadCacheFilePath() {
@@ -483,13 +533,34 @@ class ExternalApi {
         return $result;
     }
 
-    public static function clearAllOldCache() {
-        $apis = self::collectExternalApis();
-        foreach ($apis as $apiName) {
+    /**
+     * Minden külső API lejárt cache-ét kitakarítja.
+     *
+     * #791: eddig SENKI nem hívta — a cron csak az egy-API-s clearOldCache()-t
+     * futtatta, kizárólag az Overpassra. borazslo: „a ExternalApi::clearAllOldCache()
+     * tényleg jó ötlet bekötni […] És akkor nem is kell a másik clearOldCache."
+     *
+     * API-nként külön kapjuk el a hibát: egy rossz konstruktor vagy jogosultsági
+     * gond ne akadályozza meg a TÖBBI API takarítását. Ez volt a legnagyobb kockázata
+     * annak, hogy egyetlen cronra bízzuk mind a tízet.
+     *
+     * @return array<string,int> API-név => hány fájlt töröltünk
+     */
+    public static function clearAllOldCache(): array {
+        $eredmeny = [];
+
+        foreach (self::collectExternalApis() as $apiName) {
             $className = '\\ExternalApi\\' . $apiName;
-            $apiInstance = new $className();
-            $apiInstance->clearOldCache();
+            try {
+                $apiInstance = new $className();
+                $eredmeny[$apiName] = $apiInstance->clearOldCache();
+            } catch (\Throwable $e) {
+                logThrowable('A(z) ' . $apiName . ' cache-takarítása nem sikerült', $e);
+                $eredmeny[$apiName] = 0;
+            }
         }
+
+        return $eredmeny;
     }   
 
 }

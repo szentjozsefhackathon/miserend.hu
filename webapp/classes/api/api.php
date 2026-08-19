@@ -22,8 +22,34 @@ class Api {
         $this->date = \Request::DatewDefault('datum', $defaultDate);
     }
 
+    /**
+     * #56: a legmagasabb kiadott API-verzió.
+     *
+     * Az v5 ugyanaz a boríték és ugyanazok a végpontok, mint a v4 — csak a mise-adat
+     * lesz strukturált, és a képek rövid úton jönnek. A régebbi verziók válasza
+     * VÁLTOZATLAN, hogy a meglévő kliensek (KAPP) a saját ütemükben állhassanak át.
+     */
+    const LEGUJABB_VERZIO = 5;
+
+    /**
+     * #800: a KURRENSNEK hirdetett verzió — ez nem feltétlenül a legmagasabb.
+     *
+     * borazslo a #778-hoz: „még éppen szerintem az api v4 maradhat a kurrensnek
+     * kikiálltot, mert a v5 sqlite még nagyon változnia kell".
+     *
+     * A két szám SZÁNDÉKOSAN külön: a `LEGUJABB_VERZIO` a validálás felső korlátja
+     * (a v5 kéréseket el kell fogadni), az `AJANLOTT_VERZIO` pedig az, amit a
+     * dokumentáció aktuálisként mutat és amire új klienst építeni javaslunk. Amíg a
+     * v5 sqlite mise-formátuma alakul, a kettő nem eshet egybe.
+     *
+     * Ha a v5 megszilárdul, itt egyetlen szám átírása a teendő.
+     */
+    const AJANLOTT_VERZIO = 4;
+
     public function validateVersionMain() {
-        if (!in_array($this->version, array(1, 2, 3, 4))) {
+        // Laza összehasonlítás: a \Request::IntegerRequired() sztringet ad vissza, és a
+        // szigorú változat emiatt a meglévő verziókat is elutasítaná.
+        if (!in_array($this->version, range(1, self::LEGUJABB_VERZIO))) {
             throw new \Exception("Invalid API version.");
         }
 
@@ -59,11 +85,30 @@ class Api {
 
 
         
-        // Check for unknown fields
-        // Be aware that $this->fields can contain 'field/subfield' - that is, hierarchical fields. But we are not checking that here.
-        // TODO: We should check hierarchical fields too. Even though "lorawan.php" has a lot of such fields, it does not use this check.
+        /*
+         * #832: ismeretlen mezők kiszűrése — a hierarchikus mezőket is figyelembe véve.
+         *
+         * A `$this->fields` tartalmazhat `'mezo/almezo'` alakot. A régi ellenőrzés
+         * csak a pontos kulcsot nézte, tehát egy olyan végpont, ami CSAK `'a/b'`-t
+         * deklarál, elutasította volna a beküldött `a`-t „ismeretlen mező"-ként. Ma
+         * ez véletlenül nem fordul elő (a `lorawan.php` a gyökereit külön is
+         * deklarálja), de csapda: aki legközelebb csak alárendelt mezőt vesz fel,
+         * annak a végpontja némán elhasal.
+         *
+         * A régi jelzés ennél többet kért: az ALMEZŐK ellenőrzését is. Azt
+         * szándékosan nem vezetem be. A LoRaWAN-átjárók a saját metaadataikat is
+         * beleteszik a küldeménybe (jelerősség, átjáró-azonosító, és ami a
+         * belső verziójuktól függ) — szigorú almező-ellenőrzésnél ezek MIND
+         * elutasítást okoznának, és a szenzoradat némán elveszne. Egy ismeretlen
+         * almező elhagyása ártalmatlan; egy elutasított küldemény nem az.
+         */
+        $gyokerek = [];
+        foreach (array_keys($this->fields ?? []) as $mezo) {
+            $gyokerek[explode('/', $mezo)[0]] = true;
+        }
+
         foreach ($this->input as $key => $value) {
-            if (!isset($this->fields[$key])) {
+            if (!isset($gyokerek[$key])) {
                 throw new \Exception("Unknown field '".$key."' in JSON input.");
             }
         }
@@ -154,6 +199,10 @@ class Api {
             // 2023-02-29-et, a 2023-02-31-et és a 2026-04-31-et is — miközben ugyanezeket
             // a \Request naptár-tudatos ellenőrzése helyesen visszautasította.
             $this->throwIf($name, \Validate::dateError($input));
+        } elseif($type == 'timestamp') {
+            $this->throwIf($name, \Validate::timestampError($input));
+        } elseif($type == 'email') {
+            $this->throwIf($name, \Validate::emailError($input));
         } elseif($type == 'float') {
             $this->validateFloat($name, $details, $input);
         } elseif($type == 'string') {

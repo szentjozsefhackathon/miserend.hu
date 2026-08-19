@@ -3,13 +3,35 @@
 {% set title = 'API dokumentáció' %}
 {% set columns2 = true %}
 
-{% set currentVersion = 4 %}
+{# #56: a verziószám a kódból jön, nem sablonba írva — így az v6-nál nem marad el.
+   #800: az AJÁNLOTT verziót mutatjuk, nem a legmagasabbat. A v5 létezik és
+   használható, de a mise-formátuma még alakul, ezért a v4 marad a kurrens. #}
+{% set currentVersion = constant('Api\\Api::AJANLOTT_VERZIO') %}
+{% set newestVersion = constant('Api\\Api::LEGUJABB_VERZIO') %}
 
 {% block content %}
 
-<p>Az aktuális API verzió az <strong>API v{{ currentVersion }}</strong>. Az API v3 még támogatott, de kevesebb/pontatlanabb adatokat tartalmaz a misékről. A már nem támogatott API verziók mindenre a „2” szöveges értékkel térnek vissza.</p>
+<p>
+    Az aktuális API verzió az <strong>API v{{ currentVersion }}</strong> — új klienst erre érdemes építeni.
+    A v{{ newestVersion }} már elérhető, de még kísérleti (lásd lentebb).
+    Az API v3 továbbra is támogatott, és a v{{ currentVersion }} válasza változatlan marad.
+    A már nem támogatott API verziók mindenre a „2” szöveges értékkel térnek vissza.
+</p>
 <p>Természetesen https a megfelelő kommunikációs csatorna.</p>
-<p>Figyelem az API v4 alatt olykor bővülnek funkciók, és adatok. Az <a href="https://github.com/borazslo/miserend.hu/issues/56">API v5</a> tervezése már folyik.</p>
+
+<h4>Mi új az API v{{ newestVersion }}-ben? <em>(kísérleti)</em></h4>
+<p>
+    A <strong>v{{ newestVersion }}</strong> már használható, de <strong>még nem ez a kurrens verzió</strong>:
+    a miserend sqlite-formátuma még változni fog. Új klienst egyelőre a
+    v{{ currentVersion }}-re érdemes építeni; a v{{ newestVersion }}-öt kipróbálni jó,
+    de számíts rá, hogy a mise-adat szerkezete még alakul.
+</p>
+<p>A v5 <strong>bővítés, nem csere</strong>: minden mező megmarad, ami a v4-ben volt, és mellé jönnek az újak. Így a meglévő kliensek mezőnként állhatnak át.</p>
+<ul>
+    <li><strong>Strukturált mise-adat.</strong> A v4-ben a mise két mező volt: <code>idopont</code> és <code>informacio</code> — az utóbbi egy előre összerakott magyar mondat („Római katolikus Szentmise”). Ebből nem lehetett szűrni és fordítani sem. A v5 mellétesz: <code>mise_id</code>, <code>ritus</code>, <code>megnevezes</code>, <code>nyelvek</code>, <code>tipusok</code>, <code>megjegyzes</code>, <code>hossz_perc</code>. Az <code>informacio</code> a v5-ben is megmarad.</li>
+    <li><strong>A nyelv mindig lista.</strong> Egy misének több nyelve is lehet (például szlovák-latin), ezért a <code>nyelvek</code> akkor is tömb, ha csak egy elem van benne.</li>
+    <li><strong>Rövidebb képútvonal.</strong> A <code>photos</code> a v5-ben <code>{templomid}/{fájlnév}</code> alakú; a teljes cím ebből <code>{{ constant('DOMAIN') }}/kepek/templomok/</code> előtaggal áll össze.</li>
+</ul>
 <p><strong>Kérünk minden API használót, hogy vegye fel velünk a kapcsolatot!</strong></p>
 
 

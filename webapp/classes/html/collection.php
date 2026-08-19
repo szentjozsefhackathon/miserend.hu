@@ -34,8 +34,15 @@ class Collection extends Html {
                 ->select('church_id')
                 ->pluck('church_id');
         
-        // FIXME for Issue #257
-        $churches = \Eloquent\Church::whereIn('id',$churchIds)
+        /*
+         * #257: a MEGJELENÍTETT név az OSM-halmazból jön (a sablon a `names`-t olvassa),
+         * a RENDEZÉS viszont a helyi `nev` oszlopon marad. Az OSM-név külön táblában él,
+         * több sorban templomonként — SQL-ből rendezni rá csak alkérdéssel lehetne, és a
+         * sorrend attól függene, melyik nyelvi változat nyer. A helyi oszlop stabil, és
+         * a betűrend így is nagyjából ugyanaz.
+         */
+        $churches = \Eloquent\Church::with('attributes')
+                ->whereIn('id',$churchIds)
                 ->where('ok','i')
                 ->orderBy('nev')
                 ;

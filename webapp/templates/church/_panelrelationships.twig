@@ -32,14 +32,35 @@
                     <a href="/templom/{{ item.church.id }}">{{ item.church.names.0 }}</a>
                 {% endif %}
                 
-                {% if item.church.varos and item.church.varos != city.name  %}
-                    <span style="color: #666;">({{ item.church.varos }})</span>
+                {# #496/#497/#498: a település az OSM-határokból; a `varos` oszlopot a #805 eldobja. #}
+                {% set telepules = item.church.locationCityName() %}
+                {% if telepules and telepules != city.name %}
+                    <span style="color: #666;">({{ telepules }})</span>
                 {% endif %}
                 
                 
             </li>
             {% endfor %}
         </ul>
+
+        {#
+            #506: átjáró a család közös miserendjéhez (borazslo kérése).
+
+            A megnevezés a hálózat GYÖKERÉNEK a rangja — az mondja meg, mi ez az
+            egész, nem az, ahol épp állunk. Ha nincs rögzítve, „plébánia": az a
+            tipikus eset, és jobb, mint az „ismeretlen".
+
+            A hivatkozás a MOSTANI templomra mutat, nem a gyökérre: a látogató ott
+            marad, ahol van, csak a naptár bővül ki a rokon templomokéval.
+
+            #830: a saját útvonalat használjuk (`/plebania/:id`) a `?csalad=1` helyett.
+            A paraméteres alak továbbra is működik — a régi linkek nem törnek el.
+        #}
+        {% set gyoker = fullNetwork|first %}
+        {% set rang = gyoker.church['church:type'] ? ('CHURCH_RANK.' ~ gyoker.church['church:type'])|trans : 'plébánia' %}
+        <a href="/{{ csaladUtvonal }}/{{ church.id }}" class="btn btn-default btn-block" style="margin-top: 10px;">
+            A teljes {{ rang }} közös miserendje
+        </a>
     </div>
 </div>
 {% endif %}

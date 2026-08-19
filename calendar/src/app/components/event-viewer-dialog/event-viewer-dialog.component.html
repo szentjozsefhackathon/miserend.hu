@@ -65,6 +65,22 @@
       }
     </p>
 
+    <!--
+      #431: ha az alkalom nem a templomban van, azt itt is ki KELL írni.
+      A fejlécben a templom neve áll — enélkül a felugró ablak azt állítaná, hogy a
+      szabadtéri mise a templomban lesz. A hivatkozás az OpenStreetMap-re visz, a
+      koordinátára kitett jelölővel (borazslo kérése).
+    -->
+    @if (ownLocation) {
+      <p class="own-location">
+        <mat-icon class="mcal-location-icon">place</mat-icon>
+        <span>{{ ownLocation }}</span>
+        <a [href]="ownLocationUrl" target="_blank" rel="noopener">
+          {{ 'DIFFERENT_LOCATION_SHOW_ON_MAP' | translate }}
+        </a>
+      </p>
+    }
+
     @if (data.mass.comment && data.mass.comment.length > 0) {
       <p class="comment">
         {{ data.mass.comment }}

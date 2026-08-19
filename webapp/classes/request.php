@@ -150,25 +150,6 @@ class Request {
         return $value;
     }
 
-    static function StringArrayRequired($name) {
-         $value = self::get($name);
-         
-         if (!$value) {
-             throw new Exception("Required '$name' is missing.");
-         }
-         
-         if (!is_array($value)) {
-             throw new Exception("Required '$name' is not an Array.");
-         }
-         
-         foreach ($value as $item) {
-             if (!is_string($item)) {
-                 throw new Exception("Required Array '$name' contains non-string values.");
-             }
-         }
-         
-         return $value;
-     }
 
     static function ArrayArray($name) {
         $value = self::get($name);
@@ -187,21 +168,6 @@ class Request {
         return $value;
     }
 
-    static function ArrayArraywDefault($name, $default = []) {
-        $value = self::getwDefault($name, $default);
-        
-        if (!is_array($value)) {
-            throw new Exception("'$name' is not an Array.");
-        }
-        
-        foreach ($value as $item) {
-            if (!is_array($item)) {
-                throw new Exception("Array '$name' contains non-array values.");
-            }
-        }
-        
-        return $value;
-    }
 
     static function Boolean($name) {
         $value = self::get($name);

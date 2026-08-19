@@ -67,7 +67,11 @@ class Map extends Html {
             $cacheTime = '1 week';
 
 			//Az általunk rögzített egyházmegyék osm azonosítói
-			// TODO: Sajna mindet veszi, pedig azt írjuk ki, hogy római katolikus egyházmegyék. Upsz.
+			// A jegyzet, ami itt állt („sajna mindet veszi"), időközben elavult: a `(gk)`
+			// szűrő pontosan a görögkatolikus egyházmegyéket hagyja ki — az adatbázisban
+			// mindhárom ilyen (Hajdúdorogi metropólia, Miskolci, Nyíregyházi) a nevében
+			// viseli a jelölést, és minden más, OSM-azonosítóval rendelkező egyházmegye
+			// latin szertartású. A réteg felirata tehát fedi a tartalmát.
             $results = DB::table('egyhazmegye')
                 ->where('nev', 'not like', '%(gk)%')
                 ->whereNotNull('osm_relation')

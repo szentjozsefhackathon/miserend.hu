@@ -16,6 +16,15 @@ class Edit extends \Html\Html {
     public const PARENT_INVALID = 'invalid';
 
     /**
+     * #157: a templom aktív külső naptárai (név, url, utolsó import).
+     *
+     * Szándékosan NEM a többi property mellett, hanem a konstansok után: ott a #819
+     * is szúr be egy mezőt (`$derivedHolders`), és a git a két független hozzáadást
+     * ütközésnek látná. Egy sor odébb — és a két PR bármilyen sorrendben mehet.
+     */
+    public $externalCalendars = [];
+
+    /**
      * #639: a legördülő "0" értéke a placeholder-opció ("– válassz templomot –"), vagyis
      * "nincs ellátó plébánia". Ezt korábban se nem mentettük kapcsolatként, se nem
      * töröltük vele a meglévőt — így a beállított ellátó plébániát nem lehetett
@@ -74,8 +83,14 @@ class Edit extends \Html\Html {
             return; // Nincs church form, nincs mit menteni
         }
 
-        $allowedFields = ['adminmegj', 'nev',
-            'orszag', 'megye', 'varos', 'cim',
+        /*
+         * #496 / #497 / #498: az `orszag`, `megye` és `varos` KIKERÜLT a menthető
+         * mezők közül. A helyet a koordináta és az OSM-határok adják; a szerkesztő
+         * kaszkádos ország/megye/város választója ezért megszűnt, és ha itt bent
+         * maradnának, egy beküldött űrlap felülírhatná a származtatott adatot azzal,
+         * ami a böngészőben ragadt.
+         */
+        $allowedFields = ['adminmegj', 'nev', 'cim',
             'egyhazmegye', 'espereskerulet', 'plebania', 'pleb_eml',
             'megjegyzes', 'miseaktiv', 'misemegj', 'leiras', 'ok', 'frissites',
             'lat','lon'];
@@ -118,10 +133,9 @@ class Edit extends \Html\Html {
             \Eloquent\ChurchRelationship::where('child_church_id', $this->tid)->delete();
         }
 
-        // Handle external calendar URL
+        // #157: soronként egy külső naptár — templomonként több is lehet.
         if (isset($churchFields['external_calendar_url'])) {
-            $newUrl = trim($churchFields['external_calendar_url']);
-            \ExternalCalendarImporter::saveCalendarUrl((int)$this->tid, $newUrl);
+            \ExternalCalendarImporter::saveCalendarUrls((int)$this->tid, $churchFields['external_calendar_url']);
         }
 
         // #484: a részletes beállítások mentése + a származtatott OSM-címke azonnali
@@ -183,27 +197,33 @@ class Edit extends \Html\Html {
         }
    
 
-        $this->addFormAdministrative();
+        // #833: az `addFormAdministrative()` a kaszkádos helyválasztót építette; a
+        // kivezetés után nem maradt benne semmi, ezért megszűnt.
         $this->addFormReligiousAdministration();
         $this->addFormParentChurch();
 
         // Meglévő kapcsolatok betöltése (szülő irányban)
         $this->church->load('parentRelationships.parent');
         
-        $externalCalendar = $this->getExternalCalendar();
-        $lastImport = $externalCalendar && $externalCalendar->last_import_at
-            ? $externalCalendar->last_import_at
-            : 'még nem futott le sikeresen';
+        $externalCalendars = $this->getExternalCalendars();
 
         $this->form['external_calendar_url'] = [
-            'type' => 'text',
+            'type' => 'textarea',
             'name' => 'church[external_calendar_url]',
             'id' => 'external_calendar_url',
             'class' => 'form-control',
-            'placeholder' => 'https://calendar.google.com/calendar/ical/...',
-            'value' => $externalCalendar ? $externalCalendar->url : '',
-            'labelback' => 'Külső naptár (publikus HTTPS iCalendar URL). Napi automatikus szinkron; utolsó sikeres import: ' . $lastImport
+            'rows' => 3,
+            'placeholder' => "https://calendar.google.com/calendar/ical/...\nhttps://…/masik-naptar.ics",
+            'value' => $externalCalendars->pluck('url')->implode("\n"),
+            'labelback' => 'Külső naptárak, soronként egy publikus HTTPS iCalendar URL. Napi automatikus szinkron.'
         ];
+
+        // A naptárak állapota külön, mert több sorról van szó.
+        $this->externalCalendars = $externalCalendars->map(fn($n) => [
+            'nev' => $n->name,
+            'url' => $n->url,
+            'utolso_import' => $n->last_import_at ?: 'még nem futott le sikeresen',
+        ])->all();
 
         foreach ([
             'gluten_free_holidays' => [\GlutenFreeCommunion::HOLIDAYS_KEY, 'Ünnepnapokon'],
@@ -265,92 +285,31 @@ class Edit extends \Html\Html {
         }
     }
 
-    private function getExternalCalendar(): ?\Eloquent\ExternalCalendar {
+    /** @return \Illuminate\Support\Collection<int,\Eloquent\ExternalCalendar> */
+    private function getExternalCalendars(): \Illuminate\Support\Collection {
         return \Eloquent\ExternalCalendar::where('church_id', $this->tid)
             ->where('active', 1)
-            ->first();
+            ->orderBy('id')
+            ->get();
     }
     
-    function addFormAdministrative() {
-        $options = [0 => 'Válassz/Nem tudom'];
-        $countries = \Illuminate\Database\Capsule\Manager::table('orszagok')
-                        ->select('id', 'nev')
-                        ->orderBy('nev')->get();
-        foreach ($countries as $selectibleCountry) {
-            $options[$selectibleCountry->id] = $selectibleCountry->nev;
-        }
-        $this->form['country'] = array(
-            'type' => 'select',
-            'name' => 'church[orszag]',
-            'id' => 'selectOrszag',
-            'options' => $options,
-            'selected' => $this->church->orszag
-        );
-
-        foreach ($countries as $selectibleCountry) {
-            $options = [0 => 'Válassz/Nem tudom'];
-            $counties = \Illuminate\Database\Capsule\Manager::table('megye')
-                            ->select('id', 'megyenev', 'orszag')
-                            ->where('orszag', $selectibleCountry->id)
-                            ->orderBy('megyenev')->get();
-
-            foreach ($counties as $selectibleCounty) {
-                $options[$selectibleCounty->id] = $selectibleCounty->megyenev . " megye";
-                $allCounties[] = $selectibleCounty;
-            }
-
-            $this->form['counties'][$selectibleCountry->id] = array(
-                'type' => 'select',
-                'name' => 'church[megye]',
-                'id' => 'selectMegyeCountry' . $selectibleCountry->id,
-                'class' => 'selectMegyeCountry',
-                'data' => $selectibleCountry->id,
-                'options' => $options,
-                'selected' => $this->church->megye
-            );
-            if ($selectibleCountry->id == $this->church->orszag) {
-                $this->form['counties'][$selectibleCountry->id]['style'] = 'display: inline';
-            } else {
-                $this->form['counties'][$selectibleCountry->id]['style'] = 'display: none';
-                $this->form['counties'][$selectibleCountry->id]['disabled'] = 'disabled';
-            }
-
-            if (count($counties) < 1) {
-                $extra = new \stdClass();
-                $extra->id = 0;
-                $extra->megyenev = '(Nincs megadva)';
-                $extra->orszag = $selectibleCountry->id;
-                $allCounties[] = $extra;
-            }
-        }
-
-        foreach ($allCounties as $selectibleCounty) {
-            $options = [0 => 'Válassz/Nem tudom'];
-            $cities = \Illuminate\Database\Capsule\Manager::table('varosok')
-                            ->select('id', 'nev')
-                            ->where('orszag', $selectibleCounty->orszag)
-                            ->where('megye_id', $selectibleCounty->id)
-                            ->orderBy('nev')->get();
-            foreach ($cities as $selectibleCity) {
-                $options[$selectibleCity->nev] = $selectibleCity->nev;
-            }
-            $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id] = array(
-                'type' => 'select',
-                'name' => 'church[varos]',
-                'id' => 'selectVarosCounty' . $selectibleCounty->orszag . "-" . $selectibleCounty->id,
-                'class' => 'selectVarosCounty',
-                'options' => $options,
-                'selected' => $this->church->varos
-            );
-            if ($selectibleCounty->id == $this->church->megye AND $this->church->orszag == $selectibleCounty->orszag) {
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['style'] = 'display: inline';
-            } else {
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['style'] = 'display: none';
-                $this->form['cities'][$selectibleCounty->orszag . "-" . $selectibleCounty->id]['disabled'] = 'disabled';
-            }
-        }
-    }
-
+    /**
+     * #833: az egyházmegye/esperesi kerület választó.
+     *
+     * A #496/#497/#498 kivezette innen a kaszkádos ország -> megye -> város választót
+     * (75 sor, három egymásba ágyazott ciklussal). A hely azóta a koordinátából és az
+     * OSM-határokból jön: a `church/edit.twig` a származtatott elhelyezkedést írja ki.
+     *
+     * A törlés viszont az `addFormReligiousAdministration()` FEJLÉCÉT is elvitte, a
+     * TÖRZSÉT nem — az beolvadt az akkori `addFormAdministrative()`-be, a rá mutató
+     * hívás pedig ottmaradt. A fájl így is értelmezhető maradt (a `php -l` nem szólt),
+     * de a szerkesztő oldal minden jogosult felhasználónak végzetes hibával elszállt:
+     *
+     *     Call to undefined method Html\Church\Edit::addFormReligiousAdministration()
+     *
+     * Az egyházmegye MARAD választható: az nem OSM-adat, a koordinátából nem
+     * származtatható — épp ezért nem is került a kivezetés hatálya alá.
+     */
     function addFormReligiousAdministration() {
         $selected = ['diocese' => $this->church->egyhazmegye, 'deanery' => $this->church->espereskerulet];
         $selectReligiousAdministration = \Form::religiousAdministrationSelection($selected);
@@ -414,14 +373,14 @@ class Edit extends \Html\Html {
                 ->get();
 
             foreach ($nearbyChurches as $nearby) {
-                $options[$nearby->id] = $nearby->varos . ' – ' . $nearby->names[0] . ' (~' . round($nearby->distance_km, 1) . ' km)';
+                $options[$nearby->id] = $nearby->locationCityName() . ' – ' . $nearby->names[0] . ' (~' . round($nearby->distance_km, 1) . ' km)';
             }
 
             // Ha van meglévő parent kapcsolat de nincs a common listában, hozzáadunk
             if ($currentParentId && !isset($options[$currentParentId])) {
                 $parentChurch = \Eloquent\Church::find($currentParentId);
                 if ($parentChurch) {
-                    $options[$currentParentId] = '⭐ ' . $parentChurch->varos . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
+                    $options[$currentParentId] = '⭐ ' . $parentChurch->locationCityName() . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
                 }
             }
         } else {
@@ -429,7 +388,7 @@ class Edit extends \Html\Html {
             if ($currentParentId) {
                 $parentChurch = \Eloquent\Church::find($currentParentId);
                 if ($parentChurch) {
-                    $options[$currentParentId] = '⭐ ' . $parentChurch->varos . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
+                    $options[$currentParentId] = '⭐ ' . $parentChurch->locationCityName() . ' – ' . $parentChurch->names[0] . ' (kiválasztott)';
                 }
             }
         }
@@ -440,11 +399,11 @@ class Edit extends \Html\Html {
         // Így JS nélkül is elérhető minden templom (a combobox csak a gépelést adja rá).
         $allActive = \Eloquent\Church::where('ok', 'i')
             ->where('id', '!=', $this->tid)
-            ->orderBy('varos')->orderBy('nev')
-            ->get(['id', 'varos', 'nev']);
+            ->orderByCity()->orderBy('nev')
+            ->get(['id', 'nev']);
         foreach ($allActive as $c) {
             if (!isset($options[$c->id])) {
-                $options[$c->id] = $c->varos . ' – ' . $c->nev;
+                $options[$c->id] = $c->locationCityName() . ' – ' . $c->nev;
             }
         }
 

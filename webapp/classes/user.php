@@ -16,6 +16,14 @@ class User {
     public $becenev;
     public $nev;
     public $volunteer;
+
+    /**
+     * #568: a közelgő búcsú dátuma a levélsablonnak.
+     *
+     * Deklarálva, nem dinamikusan: a PHP 8.2 óta a dinamikus property deprecated,
+     * és a napi cron minden futásnál kiírná a naplóba.
+     */
+    public $bucsuDatum;
     
     // Derived/computed properties
     public $username;
@@ -51,13 +59,7 @@ class User {
                 foreach ($user as $key => $value) {
                     $this->$key = $value;
                 }
-                $this->username = $user->login;
-                $this->nickname = $user->becenev;
-                $this->name = $user->nev;
-                $this->roles = explode('-', trim($this->jogok, " \t\n\r\0\x0B-"));
-                foreach($this->roles as $k => $v)
-                    if($v == '')
-                        unset($this->roles[$k]);                
+                $this->refreshDerivedFields();
                 $this->getResponsabilities();
                 if ($this->checkRole('miserend')) {
                     $this->isadmin = true;
@@ -65,10 +67,16 @@ class User {
                 return true;   
 
             } else {
-                 //TODO: kitalálni mit csináljon, ha  nincs megfelelő azobosítójú user. Legyen vendég?
-                // There is no user with this uid;
+                /*
+                 * #829: nincs ilyen azonosítójú felhasználó -> VENDÉG.
+                 *
+                 * A kód eddig is ezt csinálta (lentebb a vendég-ág fut le), csak
+                 * kérdésként állt itt egy TODO. A viselkedés szándékos: egy törölt vagy
+                 * elavult munkamenet-azonosítótól ne haljon meg az oldal, a látogató
+                 * pedig lássa a nyilvános tartalmat. A `false` visszatérés azt jelentené,
+                 * hogy a hívónak kellene kezelnie — de egyetlen hívó sem teszi.
+                 */
                 $uid = 0;
-                //return false;
             }        
         }
         //Lássuk a vendégeket
@@ -191,11 +199,16 @@ class User {
             'notifications' => 'Email értesítések engedélyezése körül hiba lépett fel!',
         );
 
+        // #829: a mezőnkénti általános mondat helyett a KONKRÉT ok, ha tudjuk.
+        // A régi szöveg mindent egybemosott („Nem megfelelő email cím! Talán már
+        // használatban van?"), így a felhasználó találgathatott, mit rontott el.
+        $this->presaveErrors = [];
+
         foreach (array('uid', 'username', 'nickname', 'name', 'email', 'volunteer', 'roles','notifications') as $input) {
             if (isset($vars[$input])) {
                 if (!$this->presave($input, $vars[$input])) {
                     $return = false;
-                    addMessage($dangers[$input], 'danger');
+                    addMessage($this->presaveErrorFor($input) ?? $dangers[$input], 'danger');
                 }
             }
         }
@@ -240,28 +253,94 @@ class User {
         return true;
     }
 
+    /**
+     * #829: mezőnkénti hibaokok az utolsó `presave()`/`modify()` körből.
+     *
+     * A `presave()` `false`-t ad vissza, ha valami nem stimmel — de eddig nem mondta
+     * meg, mi. A felület ezért mezőnként egyetlen, mindent lefedő mondatot írt ki, és
+     * a „kötelező mező üres" ugyanúgy nézett ki, mint a „már foglalt".
+     *
+     * @var array<string,string>
+     */
+    public $presaveErrors = [];
+
+    /** #829: hibaok rögzítése egy mezőhöz. Az utolsó ok marad meg — az a legszűkebb. */
+    private function presaveError(string $key, string $reason): void {
+        $this->presaveErrors[$key] = $reason;
+    }
+
+    /** #829: mi volt a baj ezzel a mezővel? `null`, ha semmi. */
+    public function presaveErrorFor(string $key): ?string {
+        return $this->presaveErrors[$key] ?? null;
+    }
+
+    /**
+     * #829: a felhasználó-objektum származtatott mezőinek felfrissítése.
+     *
+     * Ugyanez a négy értékadás állt a konstruktorban és a `save()` végén is — a régi
+     * TODO („ezt már egyszer leírtam") pontosan erre mutatott. Két példány közül az
+     * egyik előbb-utóbb lemarad: a `name` mező például a `save()`-ből hiányzott is.
+     */
+    private function refreshDerivedFields(): void {
+        $this->username = $this->login ?? null;
+        $this->nickname = $this->becenev ?? null;
+        $this->name = $this->nev ?? null;
+
+        $this->roles = isset($this->jogok)
+            ? array_values(array_filter(
+                explode('-', trim((string) $this->jogok, " \t\n\r\0\x0B-")),
+                fn($jog) => $jog !== ''
+            ))
+            : [];
+    }
+
     function presave($key, $val) {
         if (!isset($this->presaved))
             $this->presaved = array();
-        //TODO: check duplicate for: logn + email
-        //TODO: van, amit ne engedjen, csak, amikor még tök új a cuccos.
-        //TODO: a nickname - becenev / name - nev esetén ez nem segít, bár nem sok dupla munka azért
-        //TODO: elrontja ...
-        //if($this->$key == $val) return true;
-        //TODO: szóljon vissza a kötelező
-        if ($val == '' AND in_array($key, array('username', 'login', 'email'))) {
-            return false;
+        /*
+         * #829: a régi TODO-k feloldása.
+         *
+         *  - „check duplicate for: login + email" — MEGVAN. A loginé a `checkUsername()`
+         *    (`new User($username)`, és ha van uid, elutasít), az e-mailé az
+         *    `isEmailInUse()` lentebb. Ami NINCS: adatbázis-szintű egyedi index, tehát
+         *    két egyszerre érkező regisztráció elvben átcsúszhat. Lásd #829 leírását.
+         *  - „van, amit ne engedjen, csak amikor még tök új" — MEGVAN: a login csak
+         *    `uid == 0` mellett állítható, utána a `$this->username != $val` elutasít.
+         *  - „a nickname/becenev esetén ez nem segít" — a becenév és a név szabad
+         *    szöveg, nincs is mihez képest ütköznie; a `sanitize()` elég rá.
+         *
+         * Ami tényleg hiányzott: a hívó nem tudta meg, MIÉRT bukott el a mentés. A
+         * `presave()` néma `false`-t adott, a felület pedig mezőnként EGYETLEN, mindent
+         * lefedő mondatot írt ki („Nem megfelelő email cím! Talán már használatban
+         * van?"). A „kötelező mező üres" és a „már foglalt" tehát ugyanúgy nézett ki.
+         * Ezért gyűjtjük az okokat, és a hívó azokat mutatja meg.
+         */
+        if ($val === '' OR $val === null) {
+            if (in_array($key, array('username', 'login', 'email'))) {
+                $this->presaveError($key, 'Ezt a mezőt kötelező kitölteni.');
+                return false;
+            }
         }
 
         if ($key == 'uid') {
-            if ($this->uid != $val)
+            if ($this->uid != $val) {
+                $this->presaveError($key, 'Az azonosító nem egyezik a bejelentkezettével.');
                 return false;
+            }
         } elseif (in_array($key, array('username', 'login'))) {
             if ($this->uid == 0) {
-                if (!checkUsername($val))
-                    return false;                    
+                if (!checkUsername($val)) {
+                    // A `checkUsername()` formára ÉS foglaltságra is néz — a kettőt
+                    // szétválasztva a felhasználó tudja, mit kell másképp csinálnia.
+                    $letezo = new User($val);
+                    $this->presaveError($key, $letezo->uid > 0
+                        ? 'Ez a felhasználónév már foglalt.'
+                        : 'A felhasználónév csak betűt és számot tartalmazhat, legfeljebb 20 karaktert.');
+                    return false;
+                }
                 $this->presaved['login'] = sanitize($val);
             } elseif ($this->username != $val) {
+                $this->presaveError($key, 'A felhasználónevet később nem lehet megváltoztatni.');
                 return false;
             }
         } elseif (in_array($key, array('jelszo', 'password'))) {
@@ -286,8 +365,10 @@ class User {
                 $this->presaved[$key] = 0;
             elseif (in_array($val, array(0, 1)))
                 $this->presaved[$key] = $val;
-            else
-                return false;       
+            else {
+                $this->presaveError($key, 'Az önkéntesség csak be- vagy kikapcsolt lehet.');
+                return false;
+            }
         } elseif (in_array($key, array('regdatum', 'lastlogin', 'lastactive'))) {
             if (is_numeric($val)) {
                 $this->presaved[$key] = date('Y-m-d H:i:s', $val);
@@ -297,17 +378,24 @@ class User {
                 return false;
         } elseif ($key == 'email') {
             if (!filter_var($val, FILTER_VALIDATE_EMAIL)) {
+                $this->presaveError($key, 'Ez nem érvényes email cím.');
                 return false;
             }
             if ($this->isEmailInUse($val) AND ( !isset($this->email) OR $val != $this->email )) {
+                $this->presaveError($key, 'Ezzel az email címmel már regisztráltak.');
                 return false;
             }
             $this->presaved[$key] = $val;
         } elseif ($key == 'notifications') {
-            if(!in_array($val,[0,1])) return false;            
+            if(!in_array($val,[0,1])) {
+                $this->presaveError($key, 'Az értesítés csak be- vagy kikapcsolt lehet.');
+                return false;
+            }
             $this->presaved[$key] = $val;
-        } else
+        } else {
+            $this->presaveError($key, 'Ismeretlen mező, nem menthető.');
             return false;
+        }
 
         return true;
     }
@@ -342,14 +430,8 @@ class User {
         foreach ($this->presaved as $key => $val)
             $this->$key = $val;
 
-        //TODO: ezt már egyszer leírtam
-        $this->username = $this->login;
-        $this->nickname = $this->becenev;
-        $this->name = $this->nev;
-        if(isset($this->jogok))
-            $this->roles = explode('-', trim($this->jogok, " \t\n\r\0\x0B-"));
-        else
-            $this->roles = [];
+        // #829: a származtatott mezők közös helyen — a konstruktor is ezt hívja.
+        $this->refreshDerivedFields();
 
         unset($this->presaved);
 
@@ -576,9 +658,12 @@ class User {
                 $user2delete = new User($result->uid);
                 $user2delete->delete();
                 $countDeleted++;
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
+                // \Throwable, nem \Exception: PHP 8-ban a TypeError és társai \Error-ok,
+                // amiket a szűkebb catch nem fog el — ez a job pont ilyentől állt hónapokig
+                // (#239). A hibát naplózzuk is, különben a cron-oldalon kívül nyoma sem marad.
+                logThrowable('deleteNonActivatedUsers (uid: '.$result->uid.')', $e);
                 addMessage('Nem sikerül törölni a felhasználót: '.$result->uid, 'error');
-                echo "Nem sikerült törölni a felhasználót: ".$result->uid." ".$result->email." ".$result->nev." ".$result->regdatum." ".$result->lastlogin." ".$result->jogok." ".print_r($result,1)." ";                
                 continue;
             }
             
@@ -589,6 +674,8 @@ class User {
 			
 		}
 
+		$countDeleted += self::deleteUnreachableNonActivatedUsers($waitingBeforeDelete);
+
 		// #239/#171: itt régen egy `whereIn('uid', $ids2delete)->delete()` állt, de a
 		// $ids2delete változó SEHOL nem kapott értéket — a törlést a fenti ciklus végzi
 		// egyesével. PHP 8 alatt a whereIn(null) TypeError-t dob, ami \Error, nem
@@ -597,7 +684,78 @@ class User {
 		// került success-be. Éles: 2026-03-27 óta nem futott le sikeresen.
 		return $countDeleted;
 	}
-	
+
+	/**
+	 * Az elérhetetlen című, soha be nem lépett fiókok takarítása.
+	 *
+	 * A fenti törlés feltétele egy SIKERESEN kiküldött `user_pleaseactivate` — tehát
+	 * pont azok maradnak bent örökre, akiknek a levele sosem ment ki. Élesben ez a
+	 * robot-regisztrációk halmaza: hamis címmel jönnek, a levél elhasal, belépni sosem
+	 * lépnek be, a sor meg marad. Ezek adják a `user_pleaselogin`/`user_pleaseactivate`
+	 * hibás leveleinek a zömét, és közben szemetelik az adatbázist.
+	 *
+	 * Csak akkor törlünk, ha a fiók MINDHÁROM feltételt teljesíti:
+	 *   - soha nem lépett be,
+	 *   - régebbi a türelmi időnél,
+	 *   - és bizonyítottan elérhetetlen: vagy eleve használhatatlan a címe, vagy több
+	 *     kísérlet után sem sikerült kézbesíteni — és sosem ment ki neki levél sikeresen.
+	 *
+	 * A búcsúlevél itt szándékosan elmarad: oda küldenénk, ahova az előző néhány sem
+	 * jutott el, csak újabb hibás sorokat termelve.
+	 *
+	 * @param  string $waitingBeforeDelete strtotime-kompatibilis türelmi idő
+	 * @return int    a törölt fiókok száma
+	 */
+	static function deleteUnreachableNonActivatedUsers(string $waitingBeforeDelete = '2 weeks'): int {
+		$candidates = DB::table('user')
+			->where('lastlogin', '0000-00-00 00:00:00')
+			->where('regdatum', '<', date('Y-m-d H:i:s', strtotime('-' . $waitingBeforeDelete)))
+			->orderByRaw('RAND()')
+			// Ugyanaz az óvatosság, mint a fenti ágon: egy futás ne söpörjön túl sokat.
+			->limit(20)
+			->get();
+
+		$countDeleted = 0;
+		foreach ($candidates as $candidate) {
+			if (!self::isUnreachable('user_pleaseactivate', $candidate->email)) {
+				continue;
+			}
+
+			try {
+				(new User($candidate->uid))->delete();
+			} catch (\Throwable $e) {
+				logThrowable('deleteUnreachableNonActivatedUsers (uid: ' . $candidate->uid . ')', $e);
+				continue;
+			}
+
+			$countDeleted++;
+			error_log('[miserend] törlöm a(z) ' . $candidate->uid
+				. ' azonosítójú, soha be nem lépett felhasználót: az aktiváló levél nem kézbesíthető.');
+		}
+
+		return $countDeleted;
+	}
+
+	/**
+	 * Bizonyítottan elérhetetlen-e a cím ezen a levéltípuson?
+	 *
+	 * Az „egyetlen sikeres kiküldés sem volt" feltétel a lényeg: ha valaha kiment neki
+	 * levél, akkor a cím működött, tehát nem ez a takarítás dolga.
+	 */
+	static function isUnreachable(string $type, ?string $email): bool {
+		if (!self::isEmailUsable($email)) {
+			return true;
+		}
+
+		$everSent = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'sent')
+			->exists();
+
+		return !$everSent && self::isUndeliverable($type, $email);
+	}
+
 
 	static function sendActivationNotification() {
 		$lastEmailDiff = '-1 week';
@@ -611,6 +769,10 @@ class User {
 			
 
 		foreach($users2notify as $user) {					
+			if (self::skipUnnotifiable('user_pleaseactivate', $user)) {
+				continue;
+			}
+
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaseactivate')
 				->where('to',$user->email)
@@ -642,6 +804,86 @@ class User {
 		return true;
 	}
 	
+	/**
+	 * Hány sikertelen kísérlet után tekintjük kézbesíthetetlennek a címet.
+	 *
+	 * A leggyakoribb ritmus háromhetente egy próba, tehát három hiba nagyjából két
+	 * hónapnyi sikertelenség — egy átmeneti SMTP-kiesés nem éri el.
+	 */
+	const UNDELIVERABLE_ATTEMPTS = 3;
+
+	/**
+	 * Van-e egyáltalán olyan címünk, amire érdemes megpróbálni a kiküldést?
+	 *
+	 * A régi fiókok egy részének nincs használható email-címe. A kiküldés ilyenkor
+	 * biztosan elhasal, csak épp két különböző ágon: NULL-nál az `Email::send()`
+	 * `isset($this->to)` feltétele bukik ("Kevés az adat"), üres vagy hibás sztringnél
+	 * a PHPMailer dob ("Invalid address").
+	 *
+	 * A PHPMailer is FILTER_VALIDATE_EMAIL-lel ellenőriz, tehát amit ez elutasít, azt
+	 * ő is elutasítaná: nem szűrünk ki olyan címet, ami egyébként kimenne.
+	 */
+	static function isEmailUsable(?string $email): bool {
+		return $email !== null
+			&& filter_var(trim($email), FILTER_VALIDATE_EMAIL) !== false;
+	}
+
+	/**
+	 * Kézbesíthetetlennek bizonyult-e már a cím ezen a levéltípuson?
+	 *
+	 * Egyetlen hiba még lehet átmeneti (SMTP-kiesés), ezért csak több, hetekre elnyúló
+	 * sikertelen kísérlet után mondjuk ki.
+	 *
+	 * A sikeres kézbesítés NULLÁZZA a számlálót, és ez nem szépészeti kérdés: az
+	 * inaktivitási értesítő törlés-ága csak akkor fut le, ha a felhasználó előbb átmegy
+	 * ezen a vizsgálaton. Ha a régi hibákat egy azóta bizonyítottan működő cím mellett is
+	 * beszámítanánk, az ilyen fiókok némán kimaradnának a törlésből.
+	 */
+	static function isUndeliverable(string $type, string $email): bool {
+		$errors = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'error');
+
+		$lastSuccess = DB::table('emails')
+			->where('type', $type)
+			->where('to', $email)
+			->where('status', 'sent')
+			->max('updated_at');
+		if ($lastSuccess !== null) {
+			$errors->where('updated_at', '>', $lastSuccess);
+		}
+
+		return $errors->count() >= self::UNDELIVERABLE_ATTEMPTS;
+	}
+
+	/**
+	 * Kihagyandó-e ez a felhasználó, mert úgysem érnénk el?
+	 *
+	 * Mindkét értesítő cron ugyanabba a körbe futott bele: a levél elhasal, a fiók
+	 * marad, a következő futás pedig újra próbálkozik — örökre. Az inaktivitási
+	 * értesítőnél ez különösen látszik, mert a törlés ága KIZÁRÓLAG `sent` státuszra
+	 * fut: akinek nem megy ki a levél, az sosem jut el a törlésig. Az éles /health
+	 * ezt mutatta: a `user_pleaselogin` típusnál 131 hibás és 48 sikeres levél
+	 * 30 nap alatt, messze a legrosszabb arány.
+	 *
+	 * Törölni emiatt nem törlünk: a kézbesíthetetlenség nem bizonyítja, hogy a fiók
+	 * elhagyott — a törlés viszont visszafordíthatatlan.
+	 */
+	private static function skipUnnotifiable(string $type, $user): bool {
+		if (!self::isEmailUsable($user->email ?? null)) {
+			error_log('[miserend] ' . $type . ': a(z) ' . $user->uid
+				. ' azonosítójú felhasználónak nincs használható email-címe, kihagyom.');
+			return true;
+		}
+		if (self::isUndeliverable($type, $user->email)) {
+			error_log('[miserend] ' . $type . ': a(z) ' . $user->email
+				. ' címre több kísérlet után sem sikerült kézbesíteni, nem próbálkozom tovább.');
+			return true;
+		}
+		return false;
+	}
+
 	static function sendInactivityNotification() {
 		$lastEmailDiff = '-3 week';
 		$inactivityPeriod = '-5 years';
@@ -654,6 +896,10 @@ class User {
 			
 
 		foreach($users2notify as $user) {					
+			if (self::skipUnnotifiable('user_pleaselogin', $user)) {
+				continue;
+			}
+
 			$lastEmail = DB::table('emails')
 				->where('type','user_pleaselogin')
 				->where('to',$user->email)
@@ -705,7 +951,15 @@ class User {
 	
 
 			$users2notify = DB::table('templomok')
-				->select('templomok.id as tid','templomok.nev','templomok.ismertnev','templomok.varos','templomok.frissites')
+				// #497: a `varos` alias a levélsablonnak kell. Tömeges lekérdezés, ezért
+				// nem templomonként kérdezünk, hanem korrelált alkérdéssel.
+				//
+				// #824: a `templomok.varos`-ra való visszaesés KIKERÜLT. Az oszlopot a
+				// kivezetés eldobta, tehát a `COALESCE` egy nem létező oszlopra
+				// hivatkozott — a lekérdezés az éles migráció után azonnal elhasalt
+				// volna, és vele az egész „frissítsd az adataidat" értesítő.
+				->select('templomok.id as tid','templomok.nev','templomok.ismertnev','templomok.frissites')
+				->selectRaw(\Eloquent\Church::citySubquerySql('templomok.id') . ' AS varos')
 				->join('church_holders','templomok.id','=','church_holders.church_id')
 				->addSelect('church_holders.description')
 				->join('user','user.uid','=','church_holders.user_id')
@@ -744,6 +998,22 @@ class User {
 		// $tmp = new stdClass(); $tmp->uid = 1595; $users2notify = [ $tmp ];
 				
 		foreach($users2notify as $user2notify) {
+			/*
+			 * #823: a kézbesíthetetlen címeket itt is kihagyjuk.
+			 *
+			 * A másik két értesítő (`user_pleaseactivate`, `user_pleaselogin`) már így
+			 * működik, ez viszont kimaradt — pedig ugyanabba a körbe fut: a levél
+			 * elhasal, a fiók marad, a következő futás újra próbálkozik. A fenti SQL
+			 * csak KÉT HÉTIG véd (a `NOT EXISTS` ablak), utána újraindul a kör.
+			 *
+			 * Ráadásul minden sikertelen kísérlet előtt tokent is írunk a
+			 * `church_update_tokens`-be — vagyis a hiábavaló próbálkozás nem csak
+			 * levélszemét, hanem adatbázis-szemét is.
+			 */
+			if (self::skipUnnotifiable('user_pleaseupdate', $user2notify)) {
+				continue;
+			}
+
 			$user = new User($user2notify->uid);
 			$user->getResponsabilities();
 
@@ -887,6 +1157,12 @@ class User {
 			$email->addToQueue();
 		}
 	}
+
+	/*
+	 * #568: itt állt a sendBucsuReminder(). borazslo javaslatára átkerült a
+	 * \Eloquent\Church osztályba: „Szerintem sokkal inkább valami church osztályhoz
+	 * tartozik, mert a közelgő búcsúval rendelkező templomnak értesítjük a gondnokait."
+	 */
 
 	/**
 	 * #290: Kell-e ünnep-emlékeztetőt küldeni erre a (templom, ünnep) párra? Tiszta logika.

@@ -171,6 +171,14 @@
             &nbsp;<a href="#" onclick="document.getElementById('cal-full-{{ id }}').style.display='none'; document.getElementById('cal-preview-{{ id }}').style.display='inline'; return false;" title="Bezárás">bezár</a>
         </span>
     </small>
+    {# #36: nyomtatható miserend. Szándékosan NEM a naptár-legördülőben: a plébániai
+       titkárok és az idős atyák nem legördülőkben keresgélnek, és pont ez a funkció
+       készült nekik. Külön gomb, ikon MELLETT szöveggel. #}
+    <a class="btn btn-default btn-sm" style="margin-left:10px;"
+       href="{{ constant('DOMAIN') }}/templom/{{ id }}/nyomtat"
+       title="Nyomtatható miserend (A4)">
+        <i class="fa fa-print" aria-hidden="true"></i> Nyomtatás
+    </a>
     <div class="btn-group btn-group-sm" style="margin-left:10px;">
         <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Naptár">
             <i class="fa fa-calendar" aria-hidden="true"></i> Naptár <span class="caret"></span>
@@ -256,7 +264,8 @@
     {% include 'church/_panelrelationships.twig' with {
         fullNetwork: fullNetwork,
         churchType: church['church:type'],
-        city: location.city
+        city: location.city,
+        csaladUtvonal: csaladUtvonal
     } %}
     {# FAB – lebegő hívás gomb, csak ha van telefonszám, csak mobilon látható #}
     <!--
@@ -278,7 +287,7 @@
         {% include "panel.twig" with {title:'Jó tudni','body': megjegyzes } %}
     {% endif %}
 		
-    {% if neighbours|length > 1 %}
+    {% if neighbours|length > 0 %}
         {% include 'church/_panelneighbours.twig' %}
     {% endif %}
     

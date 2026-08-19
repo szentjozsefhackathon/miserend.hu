@@ -41,11 +41,30 @@ class Path {
             // hogy a kliens-oldali kód ne törjön a refactor után.
             ["^calendar\/(.+)$", "ajax/calendar/$1"],
             ["^templom\/([0-9]{1,5})\/widget$", "church/widget/$1"],
+            // #36: nyomtatható miserend a templom ajtajára / plébániai sokszorosításra.
+            ["^templom\/([0-9]{1,5})\/nyomtat$", "church/nyomtat/$1"],
             ["^templom\/([0-9]{1,5})\/javaslatok$", "church/suggestionpackages/$1"],
             ["^templom\/([0-9]{1,5})\/eszrevetelek$", "remark/list/$1"],
             ["^templom\/([0-9]{1,5})\/ujeszrevetel$", "remark/addform/$1"],
             ["^templom\/([0-9]{1,5})\/ujkep$", "uploadimage/$1"],
             ["^templom\/([0-9]{1,5})\/hierarchia$", "church/hierarchia/$1"],
+            /*
+             * #830: a plébánia-család közös miserendje saját útvonalon.
+             *
+             * Ugyanaz a lap, mint a `/templom/:id` — csak a naptár a fíliák miséit is
+             * mutatja. borazslo kérése volt, hogy ne query-paraméter legyen belőle
+             * („kéne egy szó hogy miserend.hu/[valami ügyes szó]/:id"), mert a
+             * `?csalad=1` nem osztható meg jól és nem is beszédes.
+             *
+             * A SZÓ a `Church::CSALAD_UTVONAL` konstansban áll: ha a `kozosseg` vagy a
+             * `hierarchy` nyer, ott egyetlen sort kell átírni, és a régi linkek sem
+             * törnek el, mert a `?csalad=1` továbbra is működik.
+             *
+             * A gyökér nem mindig plébánia (olykor fília vagy oldallagosan ellátott),
+             * de az URL nem adatmodell: a `/templom/:id` sem attól helyes, hogy minden
+             * misézőhely templom.
+             */
+            ["^" . \Html\Church\Church::CSALAD_UTVONAL . "\/([0-9]{1,5})$", "church/$1"],
             ["^templom\/([0-9]{1,5})", "church/$1"],
             ["^templom\/list$", "church/catalogue"],
             ["^templom\/new", "church/edit"],

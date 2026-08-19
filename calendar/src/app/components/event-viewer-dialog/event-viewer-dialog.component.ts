@@ -56,6 +56,17 @@ export class EventViewerDialogComponent {
   readonly data = inject<EventViewerDialogData>(MAT_DIALOG_DATA);
 
   public readonly start = DateTimeUtil.getReadableDateTime(this.data.start);
+
+  /**
+   * #431: az alkalom saját helyszíne, ha nem a templomban van.
+   *
+   * `null`, amíg nincs mindkét koordináta — a fejlécben ilyenkor a templom neve áll,
+   * és az a helyes.
+   */
+  public readonly ownLocation: string | null =
+    MassUtil.hasOwnLocation(this.data.mass) ? MassUtil.locationLabel(this.data.mass) : null;
+  public readonly ownLocationUrl: string | null =
+    MassUtil.hasOwnLocation(this.data.mass) ? MassUtil.locationOsmUrl(this.data.mass) : null;
   // User must confirm editing via the confirmation dialog before edit/delete controls are shown
   public confirmedEdit: boolean = false;
 

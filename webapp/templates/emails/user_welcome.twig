@@ -1,6 +1,6 @@
 Miserend – Regisztráció
 
-Kedves {% if nickname %}{{ nickname }}{% elseif nev %}{{ nev }}{% else %}{{ username }}{% endif %}!<br/>
+Kedves {% include 'emails/_megszolitas.twig' %}!<br/>
 <br/>
 Köszöntünk a <a href="{{ domain }}">Miserend.hu</a> felhasználói között!<br/>
 <br/>

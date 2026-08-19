@@ -1,61 +1,6 @@
 <?php
 
-/**
- * Detect and convert content to UTF-8
- * Handles charset from headers and validates UTF-8
- *
- * @param string $content Raw content from download
- * @param string $contentType HTTP Content-Type header (optional)
- * @return string UTF-8 encoded content
- * @throws \Exception
- */
-function ensureUtf8($content, $contentType = '') {
-    // 1. Extract charset from Content-Type header if provided
-    $charset = 'UTF-8';
-    if (!empty($contentType) && preg_match('/charset\s*=\s*([^\s;]+)/i', $contentType, $matches)) {
-        $charset = strtoupper(trim($matches[1], '"\''));
-    }
-    
-    // 2. Remove UTF-8 BOM if present
-    if (substr($content, 0, 3) === "\xEF\xBB\xBF") {
-        $content = substr($content, 3);
-    }
-    
-    // 3. Convert to UTF-8 if not already
-    if ($charset !== 'UTF-8' && $charset !== 'UTF8') {
-        $content = iconv($charset, 'UTF-8//IGNORE', $content);
-        if ($content === false) {
-            throw new \Exception("Failed to convert charset from $charset to UTF-8");
-        }
-    }
-    
-    // 4. Validate and sanitize UTF-8
-    if (!mb_check_encoding($content, 'UTF-8')) {
-        // Remove invalid UTF-8 sequences
-        $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8');
-    }
-    
-    return $content;
-}
 
-/**
- * Sanitize string for database storage
- * Ensures valid UTF-8 encoding without null bytes or control characters
- *
- * @param string $text
- * @return string
- */
-function sanitizeUtf8($text) {
-    // Remove null bytes
-    $text = str_replace("\0", '', $text);
-    
-    // Validate/fix UTF-8
-    if (!mb_check_encoding($text, 'UTF-8')) {
-        $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
-    }
-    
-    return trim($text);
-}
 
 /**
  * External Calendar Importer
@@ -80,7 +25,7 @@ class ExternalCalendarImporter {
         }
 
         $import = $calendarImporter ?? static function ($calendar): void {
-            self::importFromUrl($calendar->url, (int)$calendar->church_id);
+            self::importFromUrl($calendar->url, (int)$calendar->church_id, (int)$calendar->id, $calendar);
         };
         $failures = [];
 
@@ -132,7 +77,7 @@ class ExternalCalendarImporter {
      * 3. Parse iCalendar and create new CalMass objects
      * 4. Refresh Elasticsearch index
      */
-    private static function importFromUrl($url, $churchId) {
+    private static function importFromUrl($url, $churchId, ?int $calendarId = null, ?\Eloquent\ExternalCalendar $calendar = null) {
         // 1. Download ICS content
         $icsContent = self::downloadIcsFromUrl($url);
         
@@ -140,9 +85,26 @@ class ExternalCalendarImporter {
             throw new \Exception("Failed to download iCalendar from URL: " . substr($url, 0, 50) . "...");
         }
         
+        /*
+         * #157: a naptár NEVE magából a feedből.
+         *
+         * Több naptárnál a szerkesztőnek el kell tudnia igazodni köztük, viszont
+         * nevet kitalálni fölösleges munka — a Google minden exportba beleírja az
+         * `X-WR-CALNAME`-et. Csak az ideiglenes („Naptár 1") nevet cseréljük le, a
+         * kézzel adottat nem írjuk felül.
+         */
+        if ($calendar !== null) {
+            $feedNev = self::calendarNameFromIcs($icsContent);
+            if ($feedNev !== null && preg_match('/^(Naptár \d+|Google Calendar)$/u', (string) $calendar->name)) {
+                $calendar->name = $feedNev;
+                $calendar->save();
+                echo "  Naptár neve a feedből: " . htmlspecialchars($feedNev) . "<br>\n";
+            }
+        }
+
         // 2-3. Parse the complete feed, then replace only earlier imported masses atomically.
         $feedModifiedOn = null;
-        $eventsCreated = self::replaceFromIcs($icsContent, $churchId, $feedModifiedOn);
+        $eventsCreated = self::replaceFromIcs($icsContent, $churchId, $calendarId, $feedModifiedOn);
 
         echo "  Created $eventsCreated masses from iCalendar<br>\n";
 
@@ -168,7 +130,7 @@ class ExternalCalendarImporter {
      * Manually entered one-off masses also have a null period_id, so ownership is identified
      * exclusively by IMPORT_MARKER.
      */
-    public static function replaceFromIcs(string $icsContent, int $churchId, ?string &$feedModifiedOn = null): int {
+    public static function replaceFromIcs(string $icsContent, int $churchId, ?int $calendarId = null, ?string &$feedModifiedOn = null): int {
         if (!preg_match('/BEGIN:VCALENDAR/i', $icsContent) || !preg_match('/END:VCALENDAR/i', $icsContent)) {
             throw new \InvalidArgumentException('Invalid iCalendar document.');
         }
@@ -176,15 +138,45 @@ class ExternalCalendarImporter {
         $events = self::parseIcsEvents($icsContent);
         $masses = [];
         foreach ($events as $event) {
-            $masses[] = self::createCalMassFromEvent($event, $churchId);
+            $mass = self::createCalMassFromEvent($event, $churchId, $calendarId);
+            // #157: az elmaradást jelző bejegyzésből nem lesz mise.
+            if ($mass !== null) {
+                $masses[] = $mass;
+            }
         }
         $feedModifiedOn = self::lastModifiedDate($events);
 
         $connection = \Eloquent\CalMass::getConnectionResolver()->connection();
-        $connection->transaction(function () use ($churchId, $masses): void {
-            \Eloquent\CalMass::where('church_id', $churchId)
-                ->where('comment', self::IMPORT_MARKER)
-                ->delete();
+        $connection->transaction(function () use ($churchId, $calendarId, $masses): void {
+            /*
+             * #157: CSAK ENNEK A NAPTÁRNAK a korábbi importját töröljük.
+             *
+             * Eddig a templom minden jelölt miséje ment, tehát két naptárnál a második
+             * import kitörölte az elsőét — templomonként egyetlen naptár működhetett.
+             * borazslo példája pont ez: „Több külső naptárat is meg lehessen vele
+             * etetni. Pl. Szegeden a szentségimádásosat vagy a kápolnát."
+             *
+             * A régi, `external_calendar_id` nélküli sorokat is ez a naptár viszi el,
+             * ha ő az egyetlen — különben a migráció előtti import örökre ottragadna.
+             */
+            $torles = \Eloquent\CalMass::where('church_id', $churchId);
+
+            if ($calendarId !== null) {
+                $egyetlen = \Eloquent\ExternalCalendar::where('church_id', $churchId)->count() <= 1;
+                $torles->where(function ($q) use ($calendarId, $egyetlen) {
+                    $q->where('external_calendar_id', $calendarId);
+                    if ($egyetlen) {
+                        $q->orWhere(function ($r) {
+                            $r->whereNull('external_calendar_id')
+                              ->where('comment', self::IMPORT_MARKER);
+                        });
+                    }
+                });
+            } else {
+                $torles->whereNull('external_calendar_id')->where('comment', self::IMPORT_MARKER);
+            }
+
+            $torles->delete();
 
             foreach ($masses as $mass) {
                 $mass->save();
@@ -354,19 +346,91 @@ class ExternalCalendarImporter {
     }
 
     public static function saveCalendarUrl(int $churchId, string $url, ?array $resolvedIps = null): ?\Eloquent\ExternalCalendar {
-        $url = trim($url);
-        if ($url === '') {
-            \Eloquent\ExternalCalendar::where('church_id', $churchId)->update(['active' => 0]);
-            return null;
-        }
-        if (!self::isAllowedCalendarUrl($url, $resolvedIps)) {
-            throw new \InvalidArgumentException('Csak publikus HTTPS iCalendar URL adható meg.');
+        $naptarak = self::saveCalendarUrls($churchId, $url, $resolvedIps);
+
+        return $naptarak[0] ?? null;
+    }
+
+    /**
+     * #157: templomonként TÖBB külső naptár.
+     *
+     * borazslo kérése: „Több külső naptárat is meg lehessen vele etetni. Pl. Szegeden
+     * a szentségimádásosat vagy a kápolnát."
+     *
+     * Soronként egy URL. Ez a legkevesebb, amit a szerkesztőnek meg kell tanulnia, és
+     * a naptár NEVÉT sem kell kitalálnia: az import a feed `X-WR-CALNAME` mezőjéből
+     * veszi (a Google minden exportba beleírja).
+     *
+     * Ami kimarad a listából, az `active = 0` lesz, nem törlődik: így a korábbi
+     * importok nyomon követhetők maradnak, és egy véletlen törlés visszavonható.
+     *
+     * @param  string     $urls        soronként egy URL
+     * @param  array|null $resolvedIps teszthez: a feloldott IP-k, hálózat nélkül
+     * @return \Eloquent\ExternalCalendar[] a mostantól aktív naptárak
+     */
+    public static function saveCalendarUrls(int $churchId, string $urls, ?array $resolvedIps = null): array {
+        $lista = [];
+        foreach (preg_split('/\R/', $urls) ?: [] as $sor) {
+            $sor = trim($sor);
+            if ($sor !== '' && !in_array($sor, $lista, true)) {
+                $lista[] = $sor;
+            }
         }
 
-        return \Eloquent\ExternalCalendar::updateOrCreate(
-            ['church_id' => $churchId, 'name' => 'Google Calendar'],
-            ['url' => $url, 'active' => 1]
-        );
+        foreach ($lista as $url) {
+            if (!self::isAllowedCalendarUrl($url, $resolvedIps)) {
+                throw new \InvalidArgumentException('Csak publikus HTTPS iCalendar URL adható meg: ' . htmlspecialchars($url));
+            }
+        }
+
+        // Ami kimaradt, az elalszik. Előbb, hogy a listában maradó azonos URL utána
+        // biztosan aktívra álljon vissza.
+        \Eloquent\ExternalCalendar::where('church_id', $churchId)
+            ->when($lista !== [], fn($q) => $q->whereNotIn('url', $lista))
+            ->update(['active' => 0]);
+
+        $eredmeny = [];
+        foreach ($lista as $i => $url) {
+            $eredmeny[] = \Eloquent\ExternalCalendar::updateOrCreate(
+                ['church_id' => $churchId, 'url' => $url],
+                ['active' => 1, 'name' => self::calendarNameFor($churchId, $url, $i)]
+            );
+        }
+
+        return $eredmeny;
+    }
+
+    /**
+     * A naptár megjelenített neve.
+     *
+     * A meglévőét nem írjuk felül (az importból már lehet valódi neve), újnál pedig
+     * ideiglenes sorszámot adunk — az első sikeres import cseréli le a feed
+     * `X-WR-CALNAME` értékére.
+     */
+    private static function calendarNameFor(int $churchId, string $url, int $index): string {
+        $meglevo = \Eloquent\ExternalCalendar::where('church_id', $churchId)->where('url', $url)->first();
+        if ($meglevo && trim((string) $meglevo->name) !== '') {
+            return $meglevo->name;
+        }
+
+        return 'Naptár ' . ($index + 1);
+    }
+
+    /**
+     * A feed saját neve (`X-WR-CALNAME`), ha megadta.
+     *
+     * A Google minden exportba beleírja — a #157-ben megadott minta-naptáré
+     * „Szent József templom - Miserend". Ettől a szerkesztőnek nem kell nevet
+     * kitalálnia ahhoz, hogy több naptár közt eligazodjon.
+     */
+    public static function calendarNameFromIcs(string $icsContent): ?string {
+        if (!preg_match('/^X-WR-CALNAME(?:;[^:]*)?:(.*)$/im', $icsContent, $m)) {
+            return null;
+        }
+
+        $nev = \IcalEventProperties::unescapeText($m[1]);
+
+        return ($nev ?? '') === '' ? null : mb_substr($nev, 0, 255);
     }
 
     /** @return string[] */
@@ -406,6 +470,12 @@ class ExternalCalendarImporter {
                 // exportáláskor tölti ki, tehát minden lekérésnél mai — attól minden
                 // naptár örökké "frissnek" látszana, akkor is, ha évek óta hozzá se nyúltak.
                 'LAST-MODIFIED' => null,
+                // #157: amit eddig eldobtunk.
+                'SUMMARY_LANGUAGE' => null,
+                'LOCATION' => null,
+                'DESCRIPTION' => null,
+                'GEO' => null,
+                'STATUS' => null,
             ];
             
             // Parse EXDATE (capture the full parameter+value part, e.g. ;TZID=Europe/Budapest:20241222T183000)
@@ -416,9 +486,35 @@ class ExternalCalendarImporter {
                 }
             }
 
-            // Parse SUMMARY
-            if (preg_match('/^SUMMARY:(.*)$/im', $eventData, $m)) {
-                $event->SUMMARY = trim(preg_replace('/\\\\,/', ', -', $m[1]));
+            /*
+             * #157: a SUMMARY-nak LEHETNEK paraméterei (RFC 5545), és van is: a
+             * `SUMMARY;LANGUAGE=en:Holy Mass` alak korábban egyáltalán NEM illeszkedett,
+             * tehát az ilyen bejegyzés címe elveszett, és „External Calendar Event"
+             * néven jött be.
+             *
+             * A `\,` visszafejtése is hibás volt: `', -'`-ra cserélte, tehát minden
+             * escape-elt vesszős címbe beszúrt egy fölösleges kötőjelet. A
+             * minta-naptárban ez 100+ misét érint („P. Elek, - gyóntat: -").
+             */
+            if (preg_match('/^SUMMARY(;[^:]*)?:(.*)$/im', $eventData, $m)) {
+                $event->SUMMARY = \IcalEventProperties::unescapeText($m[2]);
+                if (($m[1] ?? '') !== '' && preg_match('/LANGUAGE=([^;:]+)/i', $m[1], $lang)) {
+                    $event->SUMMARY_LANGUAGE = trim($lang[1]);
+                }
+            }
+
+            // #157: a helyszín, a leírás, a koordináta és az állapot — mind eldobva eddig.
+            if (preg_match('/^LOCATION(?:;[^:]*)?:(.*)$/im', $eventData, $m)) {
+                $event->LOCATION = \IcalEventProperties::unescapeText($m[1]);
+            }
+            if (preg_match('/^DESCRIPTION(?:;[^:]*)?:(.*)$/im', $eventData, $m)) {
+                $event->DESCRIPTION = \IcalEventProperties::unescapeText($m[1]);
+            }
+            if (preg_match('/^GEO(?:;[^:]*)?:(.*)$/im', $eventData, $m)) {
+                $event->GEO = trim($m[1]);
+            }
+            if (preg_match('/^STATUS(?:;[^:]*)?:(.*)$/im', $eventData, $m)) {
+                $event->STATUS = trim($m[1]);
             }
             
             // Parse DTSTART
@@ -536,9 +632,21 @@ class ExternalCalendarImporter {
     /**
      * Convert iCalendar VEVENT to CalMass object
      */
-    private static function createCalMassFromEvent($event, $churchId) {
+    private static function createCalMassFromEvent($event, $churchId, ?int $calendarId = null) {
         
         $summary = isset($event->SUMMARY) ? (string)$event->SUMMARY : 'External Calendar Event';
+
+        /*
+         * #157: ami épp azt mondja, hogy NINCS alkalom, az nem alkalom.
+         *
+         * A minta-naptárban 17 ilyen van („NINCS Szentmise", „ELMARAD! Szentségimádás").
+         * Ezeket eddig miseként vettük fel, tehát a miserend PONT AZ ELLENKEZŐJÉT
+         * állította annak, amit a naptár gazdája kiírt — és épp azon a napon, amikor a
+         * hívő hiába megy el.
+         */
+        if (\IcalEventProperties::isCancelled($summary, $event->STATUS ?? null)) {
+            return null;
+        }
         $startDate = self::extractStartDate($event);        
         $duration = self::extractDuration($event);
         $rrule = null;
@@ -563,17 +671,37 @@ class ExternalCalendarImporter {
             echo "  ⚠ A cím túl hosszú volt, levágtam: " . htmlspecialchars($title) . "<br>\n";
         }
 
+        $geo = \IcalEventProperties::parseGeo($event->GEO ?? null);
+
         $calMass = \Eloquent\CalMass::make([
             'church_id' => $churchId,
+            'external_calendar_id' => $calendarId,
             'title' => $title,
             'start_date' => $startDate,
             'rrule' => $rrule,
             'exdate' => !empty($exdates) ? $exdates : null,
             'duration' => $duration,
-            'rite' => 'ROMAN_CATHOLIC',  // Default rite
-            'lang' => 'hu',     // Default language
+            // #157: eddig mindkettő be volt drótozva. A nyelvet a szabványos
+            // `LANGUAGE=` paraméter, ennek híján a cím adja; a rítust a cím.
+            'rite' => \IcalEventProperties::detectRite($summary),
+            'lang' => \IcalEventProperties::detectLanguage($summary, $event->SUMMARY_LANGUAGE ?? null),
+            'types' => \IcalEventProperties::detectTypes($summary),
             'period_id' => null,  // External calendars don't belong to periods
-            'comment' => self::IMPORT_MARKER,
+            /*
+             * #157: a `comment` felszabadult — a tulajdonost mostantól az
+             * `external_calendar_id` mondja meg, nem ez a szövegkonstans. Így a
+             * naptár LEÍRÁSA is átjön, ahogy borazslo kérte.
+             *
+             * Naptár-azonosító NÉLKÜL viszont semmi nem kötné a misét a forrásához:
+             * a szinkron nem tudná többé kicserélni, a szerkesztő pedig engedné
+             * szerkeszteni. Ilyenkor marad a régi jelölés — a leírás árán, mert az
+             * azonosíthatóság a fontosabb.
+             */
+            'comment' => $calendarId === null ? self::IMPORT_MARKER : ($event->DESCRIPTION ?? ''),
+            // A helyszínt a #431 óta tudja a mise; az iCal `LOCATION`-je pont ez.
+            'location_name' => ($event->LOCATION ?? '') !== '' ? $event->LOCATION : null,
+            'location_lat' => $geo['lat'] ?? null,
+            'location_lon' => $geo['lon'] ?? null,
         ]);
 
         return $calMass;

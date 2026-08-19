@@ -1,32 +1,46 @@
-import { TestBed } from '@angular/core/testing';
-import { AppComponent } from './app.component';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {provideRouter} from '@angular/router';
+import {TranslateService, provideTranslateService} from '@ngx-translate/core';
 
-// TODO #436: ez a stub az Angular CLI által generált, valódi TestBed mock-okat
-// nem tartalmaz. Amíg ki nem egészítjük, xdescribe-bal pendingben hagyjuk, hogy a
-// 'ng test' ne essen miatta piros. Promóció: vissza describe-ra + DI providerek.
-xdescribe('AppComponent', () => {
+import {AppComponent} from './app.component';
+import {SpinnerService} from './services/spinner.service';
+
+/**
+ * #436: CLI-generált csonk volt (`should create`), `xdescribe`-bal kikapcsolva.
+ *
+ * A gyökérkomponensnek egyetlen saját dolga van, és az nem mindegy: MAGYARRA állítja a
+ * felületet. A naptárat plébániai gondnokok és idős atyák használják — ha a nyelv nem
+ * áll be, angol kulcsokat vagy nyers azonosítókat látnak.
+ */
+describe('AppComponent', () => {
+
+  let fixture: ComponentFixture<AppComponent>;
+  let translate: TranslateService;
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService(),
+        SpinnerService,
+      ],
     }).compileComponents();
+
+    fixture = TestBed.createComponent(AppComponent);
+    translate = TestBed.inject(TranslateService);
   });
 
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
+  it('magyarra állítja a felületet', () => {
+    // Az ngx-translate ebben a verzióban szignálként adja a nyelvet.
+    const nyelv = typeof translate.currentLang === 'function'
+      ? (translate.currentLang as () => string)()
+      : translate.currentLang;
+
+    expect(nyelv).toBe('hu');
   });
 
-  it(`should have the 'mcal' title`, () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.componentInstance;
-    expect(app.title).toEqual('mcal');
-  });
-
-  it('should render title', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, mcal');
+  it('a töltésjelző szolgáltatás elérhető a felületnek', () => {
+    expect(fixture.componentInstance.spinnerService).toBeInstanceOf(SpinnerService);
   });
 });

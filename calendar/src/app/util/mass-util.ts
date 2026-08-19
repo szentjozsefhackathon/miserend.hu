@@ -5,7 +5,7 @@ import {Rite, RITE_DEFINITIONS} from '../enum/rites';
 import {LanguageCode} from '../enum/language-code';
 import {CalendarEvent} from '../model/calendar/calendar-event';
 import {RecurrenceRule} from '../model/calendar/recurrence-rule';
-import {Church} from '../model/church';
+import {Church, ChurchFamilyMember} from '../model/church';
 import {DialogEvent} from '../model/dialog-event';
 import {GeneratedPeriod} from '../model/generated-period';
 import {ScriptUtil} from './script-util';
@@ -69,7 +69,15 @@ export class MassUtil {
       // Az auto `experiod`-ot ezután az exclude*PeriodMasses* helper-ek építik fel.
       ...(dialogEvent.manualExperiod && dialogEvent.manualExperiod.length > 0 && {manualExperiod: [...dialogEvent.manualExperiod]}),
       lang: MassUtil.languageCodesToLang(dialogEvent.language),
-      comment: dialogEvent.comment
+      comment: dialogEvent.comment,
+      // #431: az alkalom saját helyszíne. Csak akkor küldjük, ha MINDKÉT koordináta
+      // megvan — fél koordinátával nem lehet térképre tenni, és a féligkész adat
+      // rosszabb, mint a hiányzó.
+      ...(dialogEvent.locationLat != null && dialogEvent.locationLon != null && {
+        locationLat: dialogEvent.locationLat,
+        locationLon: dialogEvent.locationLon,
+        locationName: dialogEvent.locationName ?? null,
+      })
     };
   }
 
@@ -164,10 +172,26 @@ export class MassUtil {
     return calEvents;
   }
 
-  public static createCalendarEvents(masses: Mass[], periods: GeneratedPeriod[], changes: number[], deletedMasses: number[], deletedDates:Map<number, string[]>, translate?: TranslateService): CalendarEvent[] {
+  /**
+   * #506: `otherChurchNames` a rokon templomok neve — család módban ebből derül ki a
+   * naptárban, melyik esemény melyik templomé.
+   *
+   * A saját templom miséin SEMMI nem változik: a térkép csak a rokon templomokat
+   * tartalmazza, tehát az egy-templomos szerkesztő ugyanazt a címet mutatja, mint eddig.
+   */
+  public static createCalendarEvents(masses: Mass[], periods: GeneratedPeriod[], changes: number[], deletedMasses: number[], deletedDates:Map<number, string[]>, translate?: TranslateService, otherChurchNames?: Map<number, string>): CalendarEvent[] {
     const calEvents: CalendarEvent[] = [];
     masses.forEach(mass   => {
       const calendarEvents = this.createCalendarEvent(mass, periods, deletedDates.get(mass.id), translate );
+
+      const otherChurch = otherChurchNames?.get(mass.churchId);
+      if (otherChurch) {
+        calendarEvents.forEach(event => {
+          event.title = otherChurch + ' — ' + event.title;
+          event.extendedProps = { ...(event.extendedProps ?? {}), churchId: mass.churchId, churchName: otherChurch };
+        });
+      }
+
       if(mass.id < 0){
         calendarEvents.forEach(event =>{
           event.color = "#32CD32FF"
@@ -319,7 +343,20 @@ export class MassUtil {
       exdate: mass.exdate,
       experiod: mass.experiod,
       // #428: a kézi kivétel-időszakok visszatöltése a dialógus multiselectjébe
-      manualExperiod: mass.manualExperiod
+      manualExperiod: mass.manualExperiod,
+      // #431: a saját helyszín visszatöltése a szerkesztőbe
+      locationLat: mass.locationLat ?? null,
+      locationLon: mass.locationLon ?? null,
+      locationName: mass.locationName ?? null,
+      /*
+       * #506: a mise SAJÁT templomát is vissza kell adni.
+       *
+       * Enélkül a „Melyik templomban?" választó a lista első elemére esett vissza, és
+       * mentéskor a mise NÉMÁN átkerült oda. Család módban ez adatvesztés: egy fília
+       * miséjét a plébánia felől megnyitva a plébániához íródott volna.
+       * (borazslo: „ott »Bicsérd« szerepel, nem a helyes templom".)
+       */
+      churchId: mass.churchId
     };
   }
 
@@ -456,6 +493,104 @@ export class MassUtil {
   public static languageCodesToLang(codes: LanguageCode[] | null | undefined): string {
     const unique = Array.from(new Set(codes ?? []));
     return unique.length > 0 ? unique.join(',') : LanguageCode.HU;
+  }
+
+  /**
+   * #431: van-e az alkalomnak SAJÁT helyszíne, a templomtól eltérő koordinátával?
+   *
+   * Fél koordináta nem helyszín: térképre sem lehet tenni, és a féligkész adatból
+   * félrevezető jelzés lenne. A szerver ugyanezt a szabályt alkalmazza mentéskor.
+   */
+  public static hasOwnLocation(mass: Mass | null | undefined): boolean {
+    return mass?.locationLat != null && mass?.locationLon != null;
+  }
+
+  /**
+   * #431: mit írjunk a helyszín-jelre — a megadott nevet, ha van, egyébként a
+   * koordinátát. Név nélkül is meg kell tudni különböztetni két szabadtéri alkalmat.
+   */
+  public static locationLabel(mass: Mass): string {
+    const nev = (mass.locationName ?? '').trim();
+    if (nev !== '') {
+      return nev;
+    }
+    return `${Number(mass.locationLat).toFixed(5)}, ${Number(mass.locationLon).toFixed(5)}`;
+  }
+
+  /**
+   * #431: OpenStreetMap-hivatkozás a helyszín koordinátáira (borazslo kérése).
+   *
+   * Az `mlat`/`mlon` teszi ki a jelölőt, a `#map=` pedig odazoomol — jelölő nélkül a
+   * link csak egy térképkivágás lenne, ami pont a lényeget, a PONTOT hagyja el.
+   */
+  public static locationOsmUrl(mass: Mass): string {
+    const lat = Number(mass.locationLat).toFixed(6);
+    const lon = Number(mass.locationLon).toFixed(6);
+    return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`;
+  }
+
+  /**
+   * #506: mit írjunk a naptárban a ROKON templomok eseményei elé?
+   *
+   * borazslo szabálya: „gyakran jobb a település nevét kiírni mint a templomét".
+   * Igaza van — egy plébánia fíliái jellemzően különböző falvakban vannak, és a
+   * hívőnek a falu mond valamit, nem a titulus. De ha KÉT misézőhely is ugyanabban a
+   * faluban van, a falunév már nem különböztet meg.
+   *
+   *   - a szerkesztett templom:                       nincs előtag
+   *   - azonos településen másik misézőhely:          a templom neve
+   *   - másik település, ott EGY érintett hely:       a település neve
+   *   - másik település, ott TÖBB érintett hely:      település + templom neve
+   *
+   * A számolás az ÉRINTETT (családban lévő) helyekre megy, nem a település összes
+   * templomára: a naptárban is csak ezek jelennek meg, tehát csak ezeket kell
+   * megkülönböztetni.
+   *
+   * A szerkesztett templom szándékosan kimarad a térképből, hogy az egy-templomos
+   * szerkesztő címei bitre ugyanazok maradjanak, mint eddig.
+   */
+  public static familyCalendarLabels(family: ChurchFamilyMember[]): Map<number, string> {
+    const sajatVaros = (family.find(tag => tag.isCurrent)?.city ?? '').trim();
+
+    const helyekVarosonkent = new Map<string, number>();
+    for (const tag of family) {
+      const varos = (tag.city ?? '').trim();
+      helyekVarosonkent.set(varos, (helyekVarosonkent.get(varos) ?? 0) + 1);
+    }
+
+    const cimkek = new Map<number, string>();
+    for (const tag of family) {
+      if (tag.isCurrent) {
+        continue;
+      }
+      const varos = (tag.city ?? '').trim();
+
+      // Település nélkül (hiányzó határlánc) a templomnév az egyetlen fogódzó.
+      if (varos === '' || varos === sajatVaros) {
+        cimkek.set(tag.id, tag.name);
+        continue;
+      }
+
+      cimkek.set(tag.id, (helyekVarosonkent.get(varos) ?? 0) > 1
+        ? `${varos}, ${tag.name}`
+        : varos);
+    }
+
+    return cimkek;
+  }
+
+  /**
+   * #506: a szerkesztő „Melyik templomban?" választójának feliratai.
+   *
+   * Itt SZÁNDÉKOSAN nem a naptár rövidítő szabálya megy, hanem mindig település +
+   * templomnév. A választó döntési pont: ha félreértjük, a mise rossz templomhoz
+   * íródik. Egy rövidebb, de kétértelmű felirat itt drágább, mint a hosszabb.
+   * (borazslo mindkettőt felajánlotta — ez a „fixen mindegyik település + templom
+   * név" ága.)
+   */
+  public static familySelectorLabel(tag: ChurchFamilyMember): string {
+    const varos = (tag.city ?? '').trim();
+    return varos !== '' ? `${varos}, ${tag.name}` : tag.name;
   }
 
   public static getRenumByMass(mass: Mass): Renum {

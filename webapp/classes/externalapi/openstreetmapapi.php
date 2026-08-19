@@ -25,6 +25,18 @@ class OpenstreetmapApi extends \ExternalApi\ExternalApi {
 	public $format = 'xml';
 	public $testQuery = '/api/0.6/user/details';
 	public $redirect_uri = 'urn:ietf:wg:oauth:2.0:oob';
+
+	/*
+	 * #791: a konstruktor a config összes kulcsát rámásolja az objektumra
+	 * ($this->$key = $value), és ezek eddig DINAMIKUS property-ként jöttek létre —
+	 * ami PHP 8.2 óta deprecated. Eddig nem tűnt fel, mert ezt az osztályt senki nem
+	 * példányosította a szokásos futásokban; a clearAllOldCache() bekötésével viszont
+	 * minden cron-futás négy figyelmeztetést írna a naplóba.
+	 */
+	public $client_id;
+	public $client_secret;
+	public $application_code;
+	public $access_token;
 	public $cache = false; // Ezt bizony csak olyan helyen használjuk leginkább ahol frissen kell minden.
 	
 	

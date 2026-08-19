@@ -46,6 +46,50 @@ class Health extends Html {
 			['mail/debug', $config['mail']['debug'] ]
 		];
 		
+		/*
+		 * #496: a határ-lefedettség hiánya eddig SEHOL nem látszott. A tünete az, hogy
+		 * egy település alatt nem jön ki a templom — a szerkesztő ilyenkor a saját
+		 * adatát hibáztatja, pedig a boundary-szinkron nem ért oda. Élesben a szlovák
+		 * minta 23%-ának egyáltalán nincs határa.
+		 */
+		$hatarNelkul = \Crons::churchesWithoutBoundaryCount();
+		if ($hatarNelkul === 0) {
+			$this->infos[] = ['Határ nélküli templomok', '<span class="text-success">✅ nincs ilyen</span>'];
+		} else {
+			$this->infos[] = ['Határ nélküli templomok',
+				'<span class="text-warning">⚠️ ' . $hatarNelkul . ' aktív, koordinátás templomnak nincs '
+				. 'administratív határa — a települési keresés nem találja meg őket. '
+				. 'A boundary-szinkron (cron 42) fokozatosan pótolja; a régen ellenőrzötteket '
+				. 'a cron 497 állítja vissza a sor elejére.</span>'];
+		}
+
+		/*
+		 * #568: meddig kell még a szabad szöveges búcsú-mező elemzője?
+		 *
+		 * borazslo kérése: „ha a /health megmutatja, hogy még mennyi régi módi búcsú
+		 * adatot találtunk, és akkor ha az egyszer csak elfogy, akkor kiírhatja, hogy
+		 * »Megszűnt ennek a búcsú szöveget feldolgozó scriptnek a létjogosultsága.
+		 * Vegyél fel rá egy issue-t és ki lehet vezetni.«"
+		 */
+		$bucsuForras = \Bucsu::forrasStatisztika();
+		if ($bucsuForras['szoveges'] === 0) {
+			$this->infos[] = ['Búcsú-adat forrása',
+				'<span class="text-success">✅ Megszűnt ennek a búcsú szöveget feldolgozó '
+				. 'scriptnek a létjogosultsága. Vegyél fel rá egy issue-t és ki lehet vezetni. '
+				. '(' . $bucsuForras['patron_day'] . ' templomnál OSM <code>patron_day</code>.)</span>'];
+		} else {
+			$this->infos[] = ['Búcsú-adat forrása',
+				'<span class="text-muted">' . $bucsuForras['szoveges'] . ' templomnál még a régi, '
+				. 'szabad szöveges mezőből olvassuk ki a búcsút; '
+				. $bucsuForras['patron_day'] . ' templomnál van OSM <code>patron_day</code>. '
+				. 'Amíg ez a szám nem nulla, az elemző kell.'
+				. ($bucsuForras['ertelmezhetetlen'] > 0
+					? ' (További ' . $bucsuForras['ertelmezhetetlen'] . ' templomnál van kitöltött mező, '
+					  . 'de nem tudjuk értelmezni — ezek javítható adatok.)'
+					: '')
+				. '</span>'];
+		}
+
 		// Check GD extension specifically
 		if (!extension_loaded('gd')) {
 			$this->infos[] = ['GD Extension', '<span class="text-danger">⚠️ HIÁNYZIK! A képfeltöltés nem fog működni.</span>'];
@@ -66,12 +110,31 @@ class Health extends Html {
 		}
 		
 		
+		/*
+		 * #822: az sqlite-fájlok állapota.
+		 *
+		 * A ciklus `1..4` volt, kézzel beírva. Két baja volt ezzel:
+		 *
+		 *  - a v5 (#56/#778) EGYÁLTALÁN nem látszott, pedig a `LEGUJABB_VERZIO`
+		 *    kiadott verzió — épp arról nem tudtuk meg, hogy elkészült-e;
+		 *  - a v1–v3 örökké PIROSAN állt, mert azokat évek óta nem generáljuk. Az
+		 *    állandó, tennivaló nélküli piros arra tanít, hogy a lapot ne vegyük
+		 *    komolyan — pont az ellenkezőjét éri el, mint amiért van.
+		 *
+		 * Mostantól a `Sqlite::GENERALT_VERZIOK` a forrás: azokat mérjük, amiket
+		 * tényleg építünk. A régebbieket felsoroljuk, de „befagyasztva" jelöléssel,
+		 * hibajelzés nélkül.
+		 */
 		$results = [];
-		for($i=1;$i<=4;$i++) {		
+		$generalt = \Api\Sqlite::GENERALT_VERZIOK;
+		$osszes = range(1, max($generalt));
+
+		foreach($osszes as $i) {
 			$tables = [];
 			$sqlite = new \Api\Sqlite();
-			$sqlite->version = $i;			
-			
+			$sqlite->version = $i;
+			$befagyasztott = !in_array($i, $generalt, true);
+
 			if(!$tables = $sqlite->checkSqliteFile()) {
 				$alert = 'danger';
 			} else 
@@ -83,8 +146,14 @@ class Health extends Html {
 				$alert = 'danger';
 				$filemtime = false;
 			}
-								
+
+			// A befagyasztott verzióknál a hiba nem tennivaló: nem is generáljuk őket.
+			if($befagyasztott && $alert == 'danger') {
+				$alert = 'secondary';
+			}
+
 			$tmp = " <a class=\"alert-".$alert."\" href=\"$sqlite->folder$sqlite->sqliteFileName\">".$sqlite->sqliteFileName."</a> ";
+			if($befagyasztott) $tmp .= "<small class=\"text-muted\">(befagyasztva, nem generáljuk)</small> ";
 			if($filemtime) $tmp .= "(".$filemtime.") ";
 			
 			if($alert == "success") {	
@@ -147,6 +216,25 @@ class Health extends Html {
 		 */
 		try {
 			$this->churchesMissingLocation = $elastic->churchesMissingLocation();
+
+			/*
+			 * #826: a hiányzó `location` két, teljesen különböző okból állhat elő, és
+			 * az eddigi tanács („teljes újraindexelés kell") csak az egyikre igaz.
+			 *
+			 * Élesben MIND a 15 hiányzó olyan templom volt, amelynek nincs koordinátája
+			 * az adatbázisban — azoknak a dokumentumában soha nem is lesz `location`,
+			 * akárhányszor indexeljük újra. Az ő bajuk adatbaj (#497), nem index-baj.
+			 * A lap eddig tehát olyan műveletre küldte az embert, ami nem segít.
+			 */
+			$hianyzoIds = $elastic->churchIdsMissingLocation();
+			if (is_array($hianyzoIds) && $hianyzoIds !== []) {
+				$indexelheto = \Eloquent\Church::whereIn('id', $hianyzoIds)
+						->whereNotNull('lat')->where('lat', '!=', 0)
+						->whereNotNull('lon')->where('lon', '!=', 0)
+						->count();
+				$this->churchesMissingLocation['reindexable'] = $indexelheto;
+				$this->churchesMissingLocation['no_coordinates'] = count($hianyzoIds) - $indexelheto;
+			}
 		} catch (\Throwable $e) {
 			$this->churchesMissingLocation = null;
 		}
@@ -282,12 +370,38 @@ class Health extends Html {
 			->distinct()
 			->count('lookup_boundary_church.church_id');
 
+		/*
+		 * #827: KÖZIGAZGATÁSI határ — ez külön szám, és ez a fontosabbik.
+		 *
+		 * A fenti sor BÁRMILYEN kapcsolatot beszámít. Csakhogy az OSM sokféle határt
+		 * ad vissza (`postal_code`, `judicial`, `wine_community`, `timezone`…), és a
+		 * `religious_administration` határokat ráadásul MI hozzuk létre minden
+		 * templomhoz az egyházmegyéjéből. Egy templom tehát „100%-ban kereshető"-nek
+		 * látszhat úgy, hogy egyetlen közigazgatási határa sincs.
+		 *
+		 * Márpedig a HELYNEVEK kizárólag közigazgatási határból jönnek
+		 * (`locationCityName()` és társai). Ez a szám dönti el, hogy a `templomok.varos`
+		 * eldobása (#496/#497/#498) hány templomot hagyna helynév nélkül — épp ezért
+		 * nem szabad összemosni a kettőt.
+		 */
+		$churchesWithAdminBoundary = DB::table('lookup_boundary_church')
+			->join('templomok', 'templomok.id', '=', 'lookup_boundary_church.church_id')
+			->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+			->where('templomok.ok', 'i')
+			->whereNull('templomok.deleted_at')
+			->where('boundaries.boundary', 'administrative')
+			->distinct()
+			->count('lookup_boundary_church.church_id');
+
 		$this->boundariesStats = [
 			'with_osm' => [
 				'count' => $churchBoundaryStats->count ?? 0,
 				'never_checked_count' => $churchBoundaryStats->never_checked_count ?? 0,
 				'with_boundary_count' => $churchesWithBoundary,
 				'without_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithBoundary),
+				// #827: a helynevekhez ez a szám kell, nem a fenti.
+				'with_admin_boundary_count' => $churchesWithAdminBoundary,
+				'without_admin_boundary_count' => max(0, ($churchBoundaryStats->count ?? 0) - $churchesWithAdminBoundary),
 				'avg_days_old' => $churchBoundaryStats->avg_days_old ? round($churchBoundaryStats->avg_days_old, 2) : 0,
 				'newest' => $churchBoundaryStats->newest ?? null,
 				'oldest' => $churchBoundaryStats->oldest ?? null
@@ -301,6 +415,29 @@ class Health extends Html {
 			->count();
 		
 		$this->boundariesStats['orphan_count'] = $orphanBoundaries;
+
+		/*
+		 * #825: nem csak a SZÁMUKAT mutatjuk meg, hanem magukat a sorokat is.
+		 *
+		 * Eddig egy piros szám állt itt, tennivaló nélkül. Egy szám alapján viszont nem
+		 * lehet eldönteni, hogy baj-e: az árva határ lehet ártalmatlan maradék (a
+		 * templom átkerült egy másik határ alá), lehet egy elrontott szinkron nyoma, és
+		 * lehet olyan egyházmegye-határ is, amit MI hozunk létre — utóbbi teljesen
+		 * szabályos, csak épp nincs alatta templom.
+		 *
+		 * Törölni szándékosan NEM törlünk: a határ-sor eldobása visszafordíthatatlan,
+		 * és egy ma árva határ holnap újra kötődhet. Előbb látni kell, mik ezek.
+		 */
+		$this->boundariesStats['orphan_list'] = DB::table('boundaries')
+			->leftJoin('lookup_boundary_church', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+			->whereNull('lookup_boundary_church.church_id')
+			->select('boundaries.id', 'boundaries.name', 'boundaries.boundary',
+				'boundaries.admin_level', 'boundaries.osmtype', 'boundaries.osmid',
+				'boundaries.updated_at')
+			->orderBy('boundaries.boundary')
+			->orderBy('boundaries.admin_level')
+			->limit(200)
+			->get();
 		
 		// 3. Templomok száma, amiknek nincs olyan boundary, aminek van osmid és osmtype
 		$churchesWithoutOsmBoundary = DB::table('templomok')
