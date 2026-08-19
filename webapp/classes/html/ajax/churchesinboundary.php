@@ -58,9 +58,20 @@ class ChurchesInBoundary extends Ajax {
                 preg_match('#(?<!uj\.)miserend\.hu/?\??templom(?:=|/)(\d+)#i', $element->tags->{'url:miserend'} ?? '', $match);
                 if(!isset($match[1])) {
                     /*
-                    * TODO: Van url:miserend, de az értéke vacak.
-                    */
-                    //printr($element);
+                     * #832: van `url:miserend` tag, de az értékéből nem jön ki
+                     * templom-azonosító. Eddig NÉMÁN kimaradt: a `printr()` ki volt
+                     * kommentelve, tehát a hibás OSM-adat nyom nélkül elveszett.
+                     *
+                     * Javítani nem tudjuk — az OSM-ben kell átírni. De legalább
+                     * derüljön ki, MELYIK elemről van szó, különben csak annyit
+                     * látunk, hogy „ez a határ kevesebb templomot kapott", és nincs
+                     * mihez nyúlni.
+                     */
+                    error_log(sprintf(
+                        '[miserend] Értelmezhetetlen url:miserend (%s/%s): %s',
+                        $element->type ?? '?', $element->id ?? '?',
+                        $element->tags->{'url:miserend'} ?? ''
+                    ));
                 } else {
                     $churchIds[] = $match[1];
                 }

@@ -85,11 +85,30 @@ class Api {
 
 
         
-        // Check for unknown fields
-        // Be aware that $this->fields can contain 'field/subfield' - that is, hierarchical fields. But we are not checking that here.
-        // TODO: We should check hierarchical fields too. Even though "lorawan.php" has a lot of such fields, it does not use this check.
+        /*
+         * #832: ismeretlen mezők kiszűrése — a hierarchikus mezőket is figyelembe véve.
+         *
+         * A `$this->fields` tartalmazhat `'mezo/almezo'` alakot. A régi ellenőrzés
+         * csak a pontos kulcsot nézte, tehát egy olyan végpont, ami CSAK `'a/b'`-t
+         * deklarál, elutasította volna a beküldött `a`-t „ismeretlen mező"-ként. Ma
+         * ez véletlenül nem fordul elő (a `lorawan.php` a gyökereit külön is
+         * deklarálja), de csapda: aki legközelebb csak alárendelt mezőt vesz fel,
+         * annak a végpontja némán elhasal.
+         *
+         * A régi jelzés ennél többet kért: az ALMEZŐK ellenőrzését is. Azt
+         * szándékosan nem vezetem be. A LoRaWAN-átjárók a saját metaadataikat is
+         * beleteszik a küldeménybe (jelerősség, átjáró-azonosító, és ami a
+         * belső verziójuktól függ) — szigorú almező-ellenőrzésnél ezek MIND
+         * elutasítást okoznának, és a szenzoradat némán elveszne. Egy ismeretlen
+         * almező elhagyása ártalmatlan; egy elutasított küldemény nem az.
+         */
+        $gyokerek = [];
+        foreach (array_keys($this->fields ?? []) as $mezo) {
+            $gyokerek[explode('/', $mezo)[0]] = true;
+        }
+
         foreach ($this->input as $key => $value) {
-            if (!isset($this->fields[$key])) {
+            if (!isset($gyokerek[$key])) {
                 throw new \Exception("Unknown field '".$key."' in JSON input.");
             }
         }

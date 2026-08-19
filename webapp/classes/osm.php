@@ -163,8 +163,47 @@ class OSM {
         if (empty($overpass->jsonData->elements)) {
             return [];
         }
-         
-        foreach($overpass->jsonData->elements as $element) {            
+
+        return self::saveBoundaryElements($overpass->jsonData->elements);
+    }
+
+    /**
+     * #821: az Overpass-tól kapott határ-elemek mentése.
+     *
+     * Külön metódus, mert a `downloadBoundaries()` maga építi a HTTP-klienst, tehát a
+     * mentési logikát csak élő hálózattal lehetne mérni. Márpedig épp ez a rész
+     * szállt el élesben egyetlen rossz elemtől, és állította meg az egész cront.
+     *
+     * @param  iterable $elements az Overpass válaszának `elements` tömbje
+     * @return int[] a mentett/megtalált határok azonosítói
+     */
+    static function saveBoundaryElements($elements): array {
+        $return = [];
+
+        foreach($elements as $element) {
+            /*
+             * #821: a `boundary` TAG nélküli elemeket kihagyjuk.
+             *
+             * A lekérdezés az OSM `type=boundary` RELÁCIÓ-TÍPUSRA szűr, ami nem
+             * ugyanaz, mint a `boundary=*` tag: van olyan elem, amin az előbbi ott
+             * van, az utóbbi viszont nincs (élesben a 18357156-os reláció, a „Dublin
+             * Metropolitan District Court"). A `boundaries.boundary` oszlop NOT NULL,
+             * alapérték nélkül — a mentés tehát kivétellel elszállt:
+             *
+             *   Field 'boundary' doesn't have a default value
+             *
+             * És mivel a kivételt senki nem fogta el, EGYETLEN ilyen elem megállította
+             * az egész cront: élesben 21 órán át egyetlen templom határa sem frissült.
+             *
+             * Az ilyen elem amúgy sem használható: minden fogyasztó `boundary`-re
+             * szűr (`where('boundary','administrative')`), tehát egy besorolás nélküli
+             * sor csak szemét lenne — épp az, ami az „Orphan Boundaries" számlálót hizlalja.
+             */
+            $boundaryTag = trim((string) ($element->tags->boundary ?? ''));
+            if ($boundaryTag === '') {
+                continue;
+            }
+
             $boundary = \Eloquent\Boundary::firstOrNew(['osmtype' => $element->type, 'osmid' => $element->id]);
             
             $changed = false;
@@ -199,12 +238,28 @@ class OSM {
                 $changed = true;
             }
 
-            if ($changed) {
-                $boundary->save();
-            } else {
-                // Az OSM adat nem változott, de jelezzük, hogy most is ellenőriztük.
-                // Ez biztosítja, hogy a boundaries.updated_at tükrözze az utolsó ellenőrzés idejét.
-                $boundary->touch();
+            /*
+             * #821: egyetlen rossz elem ne állítsa meg az egész cront.
+             *
+             * A fenti kihagyás a MOST ismert okot szünteti meg, de az OSM szabadon
+             * szerkeszthető: bármikor jöhet olyan adat, amit a séma nem fogad el (túl
+             * hosszú név, ismeretlen mező). Ezért a mentés köré védőháló kerül — a
+             * hibás elemet kihagyjuk és naplózzuk, a többi templom határa frissül.
+             */
+            try {
+                if ($changed) {
+                    $boundary->save();
+                } else {
+                    // Az OSM adat nem változott, de jelezzük, hogy most is ellenőriztük.
+                    // Ez biztosítja, hogy a boundaries.updated_at tükrözze az utolsó ellenőrzés idejét.
+                    $boundary->touch();
+                }
+            } catch (\Throwable $e) {
+                error_log(sprintf(
+                    '[miserend] Nem menthető határ (%s/%s): %s',
+                    $element->type, $element->id, $e->getMessage()
+                ));
+                continue;
             }
 
             $return[] = $boundary->id;

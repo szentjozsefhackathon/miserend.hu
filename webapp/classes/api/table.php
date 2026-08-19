@@ -162,13 +162,11 @@ class Table extends Api {
      * @return string beilleszthető SQL-részlet (a külső lekérdezésben `t` a templom)
      */
     private static function boundaryNameSql(array $szintek): string {
-        $lista = implode(', ', array_map('intval', $szintek));
-
-        return "(SELECT b.name FROM lookup_boundary_church lbc"
-            . " JOIN boundaries b ON b.id = lbc.boundary_id"
-            . " WHERE lbc.church_id = t.id AND b.boundary = 'administrative'"
-            . " AND b.admin_level IN ($lista)"
-            . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
+        // #824: a definíció a `Church`-ben él, hogy ne legyen belőle három változat.
+        // Egy ilyen másolat már el is csúszott: a `User::sendUpdateNotification()`
+        // `ORDER BY admin_level DESC`-et használt `FIELD()` helyett, és visszaesett a
+        // közben eldobott `templomok.varos` oszlopra.
+        return \Eloquent\Church::boundaryNameSubquerySql($szintek, 't.id');
     }
 
     function mapTemplomok() {

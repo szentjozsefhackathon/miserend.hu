@@ -4,6 +4,15 @@ namespace Html;
 
 class Api extends Html {
 
+    /**
+     * #829: a kiszolgáló API-végpont objektuma (pl. `\Api\Table`).
+     *
+     * Eddig dinamikusan keletkezett, amit a PHP 8.2 elavultnak jelöl — a naplóba
+     * figyelmeztetés került minden API-híváskor. Deklarálva egyben az is látszik,
+     * hogy a `render*()` metódusok mire épülnek.
+     */
+    public $api;
+
     public function __construct() {
         ini_set('memory_limit', '256M');
         //printr($_SERVER['REQUEST_URI']);
@@ -115,14 +124,45 @@ class Api extends Html {
         $this->html = json_encode($this->api->return);
     }
 
+    /**
+     * #829: egy CSV-mező idézőjelezése, ha kell (RFC 4180).
+     *
+     * A régi kód nyersen fűzte össze a mezőket, és ott állt mellette a figyelmeztetés:
+     * „a szöveg nem tartalmazhatja az elválasztó karaktert, különben gond van". Csak
+     * épp tartalmazza. Élő adaton mérve, az alapértelmezett `;` elválasztóval:
+     *
+     *     leírás pontosvesszővel:  2646
+     *     leírás idézőjellel:      3059
+     *     leírás sortöréssel:       499
+     *
+     * Vagyis a leírást is tartalmazó export gyakorlatilag használhatatlan volt: az
+     * oszlopok elcsúsztak, a sortörés pedig új sort nyitott a táblázatban. És némán —
+     * a fájl letöltődött, csak rossz volt benne az adat.
+     *
+     * Tömbérték is előfordul (pl. a több nevű templom `names` mezője); azt szóközzel
+     * fűzzük össze, mert a CSV-nek egy cella egy érték.
+     */
+    private function csvField($value): string {
+        if (is_array($value)) {
+            $value = implode(' ', array_map(fn($elem) => is_scalar($elem) ? (string) $elem : '', $value));
+        }
+        $text = (string) $value;
+
+        // Idézőjel csak ott, ahol muszáj: a felesleges idézőjelezés is elrontaná a
+        // meglévő fogyasztók dolgát, ha eddig ékezet nélküli, sima adatot kaptak.
+        if (strpbrk($text, $this->api->delimiter . "\"\r\n") === false) {
+            return $text;
+        }
+
+        return '"' . str_replace('"', '""', $text) . '"';
+    }
+
     public function renderCsv() {
         if (is_array($this->api->return)) {
-
-            //TODO: a szöveg nem tartalmazhatja az elválasztó karaktert, különben gond van.
             $columnNames = array_keys($this->api->return[$this->api->tableName][0]);
-            $this->html = implode($this->api->delimiter, $columnNames) . ";\n";
+            $this->html = implode($this->api->delimiter, array_map([$this, 'csvField'], $columnNames)) . ";\n";
             foreach ($this->api->return[$this->api->tableName] as $row) {
-                $this->html .= implode($this->api->delimiter, $row) . ";\n";
+                $this->html .= implode($this->api->delimiter, array_map([$this, 'csvField'], $row)) . ";\n";
             }
         } else {
             $this->html = $this->api->return;

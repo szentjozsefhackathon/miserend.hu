@@ -63,10 +63,32 @@ jobs:
             exit 1
           fi
 
-          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # A `2>/dev/null` + `set -e` együtt NÉMA halált adott: a 2026-08-17-i futás
+          # hat másodperc alatt, egyetlen sor kimenet nélkül bukott el. Ha a szerver
+          # nem érhető el, azt mondjuk is meg — nem a futó dolga kitalálni.
+          if ! ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/tmp/keyscan.err; then
+            echo "✗ Az ssh-keyscan nem érte el a szervert (port: $SSH_PORT):"
+            sed 's/^/    /' /tmp/keyscan.err
+            exit 1
+          fi
 
           # BatchMode: sose próbáljon jelszót kérni, inkább bukjon el azonnal, érthetően.
-          SSH="ssh -i $HOME/.ssh/deploy_key -p $SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+          SSH="ssh -i $HOME/.ssh/deploy_key -p $SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+
+          # Hálózati kimaradás miatt ne bukjon a heti mentés: háromszor próbálkozunk.
+          # A szerver ugyanazon a gépen futtatja a stagingot is, és a deploy is ütközhet vele.
+          for probalkozas in 1 2 3; do
+            if $SSH -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" true 2>/tmp/ssh.err; then
+              break
+            fi
+            if [ "$probalkozas" = 3 ]; then
+              echo "✗ Három próbálkozásból sem sikerült beloginolni SSH-val:"
+              sed 's/^/    /' /tmp/ssh.err
+              exit 1
+            fi
+            echo "… $probalkozas. próbálkozás nem sikerült, várok 30 másodpercet."
+            sleep 30
+          done
 
           # A konténer neve a compose projekt-prefixtől függ (pl. miserend-elasticsearch-1),
           # ezért nem drótozzuk be "elasticsearch"-nek. FONTOS: ugyanazon a gépen fut a

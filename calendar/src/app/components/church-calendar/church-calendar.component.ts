@@ -1164,15 +1164,33 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
       this.reLoadCalendar();
       this.snackBarService.success('Sikeres mentés!');
 
-      //TODO: EZT MAJD HÁTTÉRBEN
+      /*
+       * #832: az újragenerálás TŰZ-ÉS-FELEJTS — a felület nem vár rá.
+       *
+       * A régi jelzés („EZT MAJD HÁTTÉRBEN") arra célzott, hogy a szerver oldalán
+       * legyen belőle háttérmunka: a `PUT /generate` három év miséit építi újra,
+       * ezalatt a kérés nyitva marad. Az viszont sorkezelést (job queue) igényelne,
+       * ami ennél nagyobb döntés — a felület felől már most sem blokkol.
+       *
+       * Amit itt javítok: a kezelő nélküli `subscribe()`. A szolgáltatás hiba esetén
+       * ÚJRADOBJA a hibát (miután szólt a felhasználónak), és a fel nem dolgozott
+       * hiba elkapatlanul buborékol tovább. A felhasználó ilyenkor egyszerre látja a
+       * „Sikeres mentés!" és a generálási hibaüzenetet — ami pontos: a mentés tényleg
+       * sikerült, csak a kereső indexe nem frissült.
+       */
       const currentYear = new Date().getFullYear();
       const years: number[] = [currentYear - 1, currentYear, currentYear + 1];
+
+      this.searchService.generateMasses(years, this.currentChurch!.id)
+        .subscribe({error: () => { /* a szolgáltatás már jelezte a felhasználónak */ }});
+
       // #506: MINDEN érintett templom indexét újra kell generálni, nem csak a
       // szerkesztettét — család módban a fília miserendje is most változott, és
       // enélkül a keresőben a régi maradna.
       for (const churchId of erintettTemplomok) {
         this.searchService.generateMasses(years, churchId).subscribe();
       }
+
       });
     };
 

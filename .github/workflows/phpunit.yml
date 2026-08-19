@@ -2,6 +2,14 @@ name: PHPUnit
 
 on:
   pull_request:
+  # A masteren 2026. június 5. óta NEM futott le a tesztsor. A `workflow_run` az
+  # app-image buildhez van kötve, az viszont csak TAG-re indul — tehát a beolvasztott
+  # állapotot senki nem próbálta ki. Minden PR a SAJÁT fejére zöld; hogy a merge után
+  # mi lesz belőlük együtt, arról eddig semmit nem tudtunk.
+  #
+  # Ez nem elméleti: a #833-ban javított végzetes hiba pont így élt túl a masteren.
+  push:
+    branches: [master]
   workflow_run:
     workflows: ["🐳 Build & publish app image"]
     types:
@@ -91,6 +99,18 @@ jobs:
       - name: Wait for Elasticsearch
         run: |
             timeout 300 bash -c 'until curl -fsS "http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s" > /dev/null 2>&1; do sleep 3; done'
+
+      # #833: a `/templom/:id/edit` napokig végzetes hibával szállt el élesben, mert egy
+      # átalakítás egy metódus fejlécét elvitte, a törzsét nem — a hívás ottmaradt. A
+      # `php -l` nem szólt (a fájl ép maradt), a metódusnév csak futásidőben dől el, a
+      # lap pedig jogosultság nélkül el sem jut a hibás sorig. Ez a lépés a valódi
+      # öröklődési láncot nézi, és másodpercek alatt lefut.
+      - name: Nemlétező metódushívások
+        env:
+          COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
+        run: |
+            docker compose $COMPOSE_FILES cp scripts/check-undefined-methods.php miserend:/tmp/check-undefined-methods.php
+            docker compose $COMPOSE_FILES exec -T miserend php /tmp/check-undefined-methods.php /miserend/webapp
 
       - name: Run PHPUnit tests
         env:

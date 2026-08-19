@@ -74,7 +74,7 @@ class CampaignVolunteerTest extends TestCase {
     private function makeStaleChurch(): int {
         // #496: a `where('orszag', 12)` szűrő megszűnt az oszloppal együtt.
         $minta = (array) DB::table('templomok')->where('ok', 'i')->first();
-        $id = (int) DB::table('templomok')->max('id') + 1;
+        $id = szabadTemplomId();
 
         $minta['id'] = $id;
         $minta['nev'] = 'Teszt templom ' . $id;
@@ -200,5 +200,77 @@ class CampaignVolunteerTest extends TestCase {
         \Campaign::clearoutVolunteers();
 
         $this->assertTrue($this->isVolunteer($user->uid));
+    }
+
+    // ---- #824: a heti levél tényleg kimegy ------------------------------------
+
+    /**
+     * A kiosztható templomokat `DB::table()` kérdezi le, tehát nyers `stdClass` sorok
+     * jönnek. A levélösszeállítás mégis `$c->locationCityName()`-t hívott rajtuk:
+     *
+     *   Call to undefined method stdClass::locationCityName()
+     *
+     * Ettől a levél SOHA nem ment ki. A templomok addigra viszont már ki voltak
+     * osztva (az `updates` sorok bementek), tehát az önkéntes nem értesült a
+     * munkájáról, a templom pedig hónapokra kiesett az újraosztásból — a hiba tehát
+     * nem csak egy elmaradt levél volt, hanem elveszett munka is.
+     */
+    public function testAKiosztasNemHibazikEl(): void {
+        $this->makeVolunteer();
+        $this->makeStaleChurch();
+
+        $stats = \Campaign::assignUpdates();
+
+        self::assertSame([], $stats['errors'],
+            'A kiosztásnak hiba nélkül végig kell futnia — enélkül a levél sem megy ki.');
+    }
+
+    public function testAKiosztasElKuldiALevelet(): void {
+        $this->makeVolunteer();
+        $this->makeStaleChurch();
+
+        $stats = \Campaign::assignUpdates();
+
+        self::assertSame(1, $stats['emails_sent']);
+    }
+
+    /** A település a határláncból jön — a `templomok.varos` oszlop már nincs meg. */
+    public function testATelepulesAHatarlancbolJon(): void {
+        $this->makeVolunteer();
+        $churchId = $this->makeStaleChurch();
+        $this->boundaryhozKot($churchId, 'Tesztfalu');
+
+        \Campaign::assignUpdates();
+
+        $level = DB::table('emails')->where('type', 'volunteer_weekly')
+            ->orderBy('id', 'desc')->first();
+
+        self::assertNotNull($level, 'kellett volna levelet írnia');
+        self::assertStringContainsString('Tesztfalu', (string) $level->body);
+    }
+
+    /** Település-határ nélkül se hasaljon el: üres marad, de a levél kimegy. */
+    public function testHatarNelkulIsKimegyALevel(): void {
+        $this->makeVolunteer();
+        $this->makeStaleChurch();
+
+        $stats = \Campaign::assignUpdates();
+
+        self::assertSame(1, $stats['emails_sent']);
+    }
+
+    /** 8-as szintű (település) határt köt a templomhoz. */
+    private function boundaryhozKot(int $churchId, string $nev): void {
+        $boundaryId = DB::table('boundaries')->insertGetId([
+            'boundary'    => 'administrative',
+            'admin_level' => 8,
+            'name'        => $nev,
+            'osmtype'     => 'relation',
+            'osmid'       => 970000 + $churchId,
+        ]);
+        DB::table('lookup_boundary_church')->insert([
+            'boundary_id' => $boundaryId,
+            'church_id'   => $churchId,
+        ]);
     }
 }
