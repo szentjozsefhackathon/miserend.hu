@@ -5,6 +5,7 @@ import {
 import {CommonModule} from '@angular/common';
 import {TranslatePipe} from '@ngx-translate/core';
 import {LeafletLoaderService} from '../../services/leaflet-loader.service';
+import {CSEMPE_BEALLITAS, CSEMPE_URL} from '../../map-tiles';
 
 export interface PickedLocation {
   lat: number;
@@ -135,10 +136,16 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
     const kozep = this.kiindulopont();
     this.map = this.L.map(elem).setView([kozep.lat, kozep.lon], this.lat != null ? 16 : 14);
 
-    this.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(this.map);
+    /*
+     * #817: a site kanonikus csempeforrása, nem a direkt OSM.
+     *
+     * borazslo tünete („a térkép még mindig ilyen foltos") nem a Leafletből jött: az
+     * OpenStreetMap a blokkolt kérésre HTTP 200-at ad és egy valódi PNG-t, amire az van
+     * írva, hogy „Access blocked". A Leaflet ezt nem tudja hibának látni, kirakja
+     * csempeként. A #376 óta a site többi térképe ezért CARTO Voyagert használ — ezt
+     * a #816 jegy szövege külön kérte, én meg elnéztem.
+     */
+    this.L.tileLayer(CSEMPE_URL, CSEMPE_BEALLITAS).addTo(this.map);
 
     this.map.on('click', (e: any) => this.valaszt(e.latlng.lat, e.latlng.lng));
 

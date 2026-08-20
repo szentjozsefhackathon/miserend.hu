@@ -3,6 +3,7 @@ import {provideTranslateService} from '@ngx-translate/core';
 
 import {LocationPickerComponent} from './location-picker.component';
 import {LeafletLoaderService} from '../../services/leaflet-loader.service';
+import {CSEMPE_URL} from '../../map-tiles';
 
 /**
  * #816: helyszínválasztás térképen.
@@ -250,6 +251,42 @@ describe('LocationPickerComponent (#816)', () => {
 
       expect(L.map).toHaveBeenCalledTimes(1);
       expect(map.invalidateSize).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #817: a csempeforrás.
+   *
+   * A kém eddig is megvolt, csak nem állítottunk rá semmit — ezért került be zöld futam
+   * mellett a direkt OSM-forrás. Az OSM a blokkolt kérésre HTTP 200-at ad és egy valódi
+   * PNG-t „Access blocked" felirattal, amit a Leaflet szabályos csempeként rak ki: ez
+   * borazslo „foltos" térképe. Ilyen hibát csak forrás-szinten lehet megfogni.
+   */
+  describe('csempeforrás (#817)', () => {
+
+    it('a kanonikus CARTO Voyager forrást használja', async () => {
+      await inditsd();
+
+      expect(L.tileLayer).toHaveBeenCalledWith(
+        CSEMPE_URL,
+        jasmine.objectContaining({subdomains: 'abcd', maxZoom: 19}),
+      );
+    });
+
+    it('NEM a direkt OpenStreetMap-csempeszervert hívja', async () => {
+      await inditsd();
+
+      expect(L.tileLayer.calls.mostRecent().args[0]).not.toContain('tile.openstreetmap.org');
+    });
+
+    /** A #816 kérése: ugyanaz a licenc-feltüntetés, mint a site többi térképén. */
+    it('mindkét kötelező attribúciót feltünteti', async () => {
+      await inditsd();
+
+      const attribution = L.tileLayer.calls.mostRecent().args[1].attribution;
+
+      expect(attribution).toContain('openstreetmap.org/copyright');
+      expect(attribution).toContain('carto.com/attributions');
     });
   });
 });
