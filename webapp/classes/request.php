@@ -133,7 +133,18 @@ class Request {
         
         foreach ($value as $item) {
             if (!is_numeric($item)) {
-                printr($item);
+                /*
+                 * #860: itt egy `printr($item)` állt — a NYERS, escape-eletlen felhasználói
+                 * bemenetet echózta a válaszba, a kivétel eldobása ELŐTT. Három baj egyszerre:
+                 *
+                 *   1. reflected XSS, `text/html` válaszban, bejelentkezés nélkül, sima GET-tel;
+                 *   2. a JSON-válasz szemét-prefixet kapott, tehát a kliens `JSON.parse`-a
+                 *      elhasalt — pont a „mindig tiszta JSON hibaválasz" szabályt ütötte ki;
+                 *   3. a státusz 200 lett 400 helyett, mert a fejléc a kimenettel már elment.
+                 *
+                 * Hogy hibakeresés-maradék volt és nem szándék: az iker metódus, az
+                 * `IntegerArray()` fentebb BETŰRE ugyanez — csak `printr` nélkül.
+                 */
                 throw new Exception("Required Array '$name' contains non-integer values.");
             }
         }

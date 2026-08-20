@@ -22,7 +22,11 @@
 		function fetchNearby(position) {
 			setStatus('Templomokat keresünk a környéken...', 'info');
 			$.ajax({
-				url: '/api/v4/nearby',
+				// #854: a SAJÁT ajax-végpontunk, nem a nyilvános API. Amíg a főoldal az
+				// api/v4/nearby-t hívta, minden helymeghatározásunk API-használatnak
+				// számított a statisztikában, és a publikus szerződést sem lehetett
+				// szabadon alakítani. A lekérdezés közös maradt (Church::nearestQuery).
+				url: '/ajax/nearby',
 				type: 'POST',
 				dataType: 'json',
 				data: JSON.stringify({'lat': position.coords.latitude, 'lon': position.coords.longitude}),

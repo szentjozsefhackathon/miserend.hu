@@ -578,7 +578,9 @@ class User {
         if (!isset($_COOKIE['token'])) 
             return new \User();
                         
-        $token = \Eloquent\Token::where('name',$_COOKIE['token'])->first();
+        // #862: típusbiztos keresés. A süti értéke mindig sztring, tehát itt a hiba nem
+        // volt kiváltható — de a minta legyen egységes, hogy ne lehessen visszacsempészni.
+        $token = \Eloquent\Token::findByName($_COOKIE['token'] ?? null);
         if(!$token or !$token->isValid) {
             \Token::delete();
             return new \User();
