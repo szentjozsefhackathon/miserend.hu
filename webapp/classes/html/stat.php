@@ -92,7 +92,39 @@ class Stat extends Html {
          */
         $this->s4 = ['data'=>[],'labels'=>[]];
         
-        $data = \Eloquent\ChurchHolder::select('user_id',DB::raw('count(*) as count'))->groupBy('user_id')->orderBy('count')->get();
+        /*
+         * #819: két hiba volt egy sorban.
+         *
+         * Egy: a lekérdezés SE `status`-ra, SE `deleted_at`-re nem szűrt, tehát a függő
+         * kérelmeket és a törölt gondnokságokat is beleszámolta. A grafikon így nem azt
+         * mutatta, hány templomot gondoz valaki, hanem azt, hányszor szerepel a
+         * `church_holders` táblában — borazslo szavaival „egy elég vacak graph".
+         *
+         * Kettő: csak a KÖZVETLEN gondnokságokat számolta. A plébános, aki tíz fíliát
+         * gondoz a plébániáján keresztül, egyetlen templommal szerepelt.
+         */
+        $osTerkep = \Eloquent\Church::ancestorMap();
+
+        $kozvetlen = \Eloquent\ChurchHolder::where('status', 'allowed')
+            ->whereNull('deleted_at')
+            ->get(['user_id', 'church_id']);
+
+        // Felhasználónként: a saját templomai + minden alattuk lévő, származtatott templom.
+        $templomokFelhasznalonkent = [];
+        foreach ($kozvetlen as $sor) {
+            $templomokFelhasznalonkent[(int) $sor->user_id][(int) $sor->church_id] = true;
+        }
+        foreach ($osTerkep as $gyerek => $osok) {
+            foreach ($kozvetlen as $sor) {
+                if (in_array((int) $sor->church_id, $osok, true)) {
+                    $templomokFelhasznalonkent[(int) $sor->user_id][(int) $gyerek] = true;
+                }
+            }
+        }
+
+        $data = collect($templomokFelhasznalonkent)->map(function ($templomok, $userId) {
+            return (object) ['user_id' => $userId, 'count' => count($templomok)];
+        })->sortBy('count')->values();
         $tmp = [];
         foreach($data as $uid => $count ) {
             if(isset($tmp[$count->count]))

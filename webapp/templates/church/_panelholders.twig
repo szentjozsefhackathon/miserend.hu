@@ -74,6 +74,40 @@
             {% endfor %}
             </table>
         {% endfor %}
+        {#
+            #819: származtatott gondnokok — akik egy ős-templom gondnokaként férnek
+            hozzá. Nem szerkeszthetők innen: a viszony az ős-templomnál keletkezik, ott
+            is kell megszüntetni. Ha itt kapnának engedélyez/tilt gombot, az azt
+            ígérné, hogy ezen a lapon elvehető — pedig nem.
+        #}
+        {% if derivedHolders|length > 0 %}
+            <table class="table">
+                <tr class="bg-primary">
+                    <td colspan="2">Származtatott felelősök</td>
+                </tr>
+                {% for holder in derivedHolders %}
+                    <tr class="bg-secondary">
+                        <td colspan="2" bgcolor="#efefef">
+                            <a href="/user/{{ holder.user.uid }}/edit">
+                                <strong>{{ holder.user.username }}</strong> ({{ holder.user.nev }})
+                            </a>
+                            <div style="float:right">
+                                <i class="{{ ICONS_GRANT_ACCESS }} green" title="Ős-templom gondnokaként szerkesztheti ezt a templomot is."></i>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="col-md-6">Innen örökli:</td>
+                        <td><a href="/templom/{{ holder.church_id }}">{{ holder.church.nev }}</a></td>
+                    </tr>
+                    <tr>
+                        <td class="col-md-6">Utoljára aktív:</td>
+                        <td>{% if holder.user.lastactive %}{{ holder.user.lastactive|date('Y. m. d.') }}{% endif %}</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        {% endif %}
+
         <FORM ENCTYPE='multipart/form-data' action="/templom/{{ church.id }}/changeholders" method=post>
             <table class="table">
                 <tr class="bg-primary">
