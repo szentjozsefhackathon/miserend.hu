@@ -9,6 +9,18 @@ class OSM {
      * tartozik.
      */
 
+    /**
+     * #842: ennyi ideig tekintjük frissnek egy templom határ-adatát.
+     *
+     * A közigazgatási határok évekig nem mozdulnak — egy templom hovatartozását nem kell
+     * havonta újrakérdezni. Enélkül a köteg (50 db / 3 óra = 400 hívás/nap) folyamatosan
+     * körbeér az ötezer templomon, és ez a legnagyobb tétel az Overpass-forgalmunkban:
+     * élesben 34 423 hívás egy hónap alatt.
+     *
+     * 180 nappal a fenntartó forgalom ~5052/180 ≈ 28 hívás/nap — tizennegyed annyi.
+     */
+    const BOUNDARY_FRESHNESS = '180 days';
+
     function checkBoundaries($limit = 50) {
         $this->deleteOrphanBoundaries();
 
@@ -20,6 +32,19 @@ class OSM {
             ->where('lat', '!=', 0)
             ->whereNotNull('lon')
             ->where('lon', '!=', 0)
+            /*
+             * #842: a frissen ellenőrzöttet ne kérdezzük újra.
+             *
+             * Eddig nem volt ilyen feltétel: a köteg egyszerűen a legrégebben ellenőrzöttel
+             * folytatta, tehát a sor körbeért, és kezdte elölről. A munka SOHA nem fogyott
+             * el — nem azért, mert lett volna mit csinálni, hanem mert nem volt megállási
+             * feltétel.
+             */
+            ->where(function ($q) {
+                $q->whereNull('boundaries_checked_at')
+                  ->orWhere('boundaries_checked_at', '<',
+                        date('Y-m-d H:i:s', strtotime('-' . self::BOUNDARY_FRESHNESS)));
+            })
             ->orderByRaw('ISNULL(boundaries_checked_at) DESC, boundaries_checked_at ASC')
             ->take($limit)
             ->get();
