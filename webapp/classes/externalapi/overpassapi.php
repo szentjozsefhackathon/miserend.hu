@@ -14,6 +14,17 @@ class OverpassApi extends \ExternalApi\ExternalApi {
     /** #766: a próbálandó végpontok, a beállítottal az élen. @var string[] */
     public $fallbackUrls = [];
 
+    /**
+     * #840: hány elem alatt tekintjük a választ HIÁNYOSNAK, nem üresnek?
+     *
+     * A hívó állítja be, ha tudja, mit vár. 0 = nincs elvárás (az üres találat érvényes
+     * válasz marad — ez a #766 szándéka).
+     */
+    public $minElements = 0;
+
+    /** #840: melyik végpont válaszolt végül. Naplózáshoz és teszthez. */
+    public $usedUrl;
+
     function __construct() {
         global $config;
         // #376: az Overpass-endpoint mostantól konfigurálható. borazslo tapasztalata
@@ -26,6 +37,9 @@ class OverpassApi extends \ExternalApi\ExternalApi {
 
         $this->fallbackUrls = self::buildEndpointList($this->apiUrl, $config['overpass']['fallbackUrls'] ?? null);
     }
+
+    /** #840: ennyivel várunk tovább a válaszra, mint a szerveroldali keret. Másodperc. */
+    const TRANSFER_GRACE = 30;
 
     /**
      * #766: tartalék végpontok.
@@ -47,10 +61,31 @@ class OverpassApi extends \ExternalApi\ExternalApi {
      * @return string[]
      */
     public static function buildEndpointList(string $primary, ?array $extra = null): array {
+        /*
+         * #840: az `overpass.osm.ch` INNEN KIKERÜLT, és ez a jegy lényege.
+         *
+         * Svájci példány: csak svájci adatot tartalmaz. Mérve (2026-08-20), ugyanaz a
+         * lekérdezés, csak a hoszt más:
+         *   node["place"="city"]["name"="Budapest"];out count;
+         *     overpass-api.de            -> 1
+         *     overpass.openstreetmap.fr  -> 1
+         *     overpass.osm.ch            -> 0     <-- nincs benne Magyarország
+         *
+         * Élesben ezért futott a napi szinkron másfél hónapon át „sikeresen" EGYETLEN
+         * elemmel: a beállított végpont elérhetetlen volt, a private.coffee HTTP 500-at
+         * adott a nagy lekérdezésre, az osm.ch pedig 200-at — a világ töredékéről.
+         *
+         * A helyére a globális `overpass.openstreetmap.fr` kerül; mérve ugyanarra a
+         * teljes `url:miserend` lekérdezésre HTTP 200, 5035 elem, 3,17 MB, 24,1 mp.
+         *
+         * TANULSÁG, ami a listán túl is érvényes: földrajzilag korlátozott tükör ide
+         * nem való, mert a hiányos válasza formailag tökéletes. A `rejectionReason()`
+         * ezért nem is a listában bízik.
+         */
         $alap = $extra ?? [
             'https://overpass-api.de/api/interpreter',
             'https://overpass.private.coffee/api/interpreter',
-            'https://overpass.osm.ch/api/interpreter',
+            'https://overpass.openstreetmap.fr/api/interpreter',
         ];
 
         $lista = [];
@@ -84,6 +119,15 @@ class OverpassApi extends \ExternalApi\ExternalApi {
     function run() {
         $vegpontok = !empty($this->fallbackUrls) ? $this->fallbackUrls : [$this->apiUrl];
         $utolsoHiba = null;
+        $this->usedUrl = null;
+
+        /*
+         * #840: a válaszra tovább várunk, mint amennyi keretet az Overpassnak adtunk.
+         * Itt számoljuk, nem a konstruktorban: a hívó a `queryTimeout`-ot menet közben
+         * is átállíthatja (a napi szinkron például jóval nagyobb keretet kér), és a
+         * kettőnek együtt kell mozognia.
+         */
+        $this->transferTimeout = $this->queryTimeout + self::TRANSFER_GRACE;
 
         foreach ($vegpontok as $index => $url) {
             $this->apiUrl = $url;
@@ -92,6 +136,7 @@ class OverpassApi extends \ExternalApi\ExternalApi {
             parent::run();
 
             if (!$this->hasError()) {
+                $this->usedUrl = $url;
                 if ($index > 0) {
                     error_log('[miserend] Overpass: a(z) ' . $vegpontok[0] . ' nem válaszolt, '
                         . $url . ' válaszolt helyette.');
@@ -102,9 +147,54 @@ class OverpassApi extends \ExternalApi\ExternalApi {
             $utolsoHiba = $this->error;
         }
 
-        // Mindegyik elhasalt: az utolsó hiba marad kint, hogy a /health és a napló
-        // valódi okot mutasson, ne csak annyit, hogy „nem sikerült".
+        /*
+         * Mindegyik elhasalt: az utolsó hiba marad kint, hogy a /health és a napló
+         * valódi okot mutasson, ne csak annyit, hogy „nem sikerült".
+         *
+         * #840: a `jsonData`-t is KIÜRÍTJÜK. Eddig az utolsó — visszautasított —
+         * végpont hiányos válasza ottmaradt, és a hívók egy része csak azt nézte, van-e
+         * `elements` (l. `OSM::syncUrlMiserendFromOSM`), a hibát nem. Így egy elutasított
+         * válasz mégis feldolgozásra került volna.
+         */
         $this->error = $utolsoHiba;
+        $this->jsonData = json_decode('{"elements":[]}');
+    }
+
+    /**
+     * #840: érdemi-e a válasz? A HTTP 200 önmagában nem bizonyíték.
+     *
+     * KÉT dolgot szűrünk, és egyiket sem lehet a listával kiváltani:
+     *
+     * 1. `remark` — az Overpass a szerveroldali időtúllépésre és futásidejű hibára is
+     *    HTTP 200-at ad, üres vagy részleges `elements`-szel és egy `remark` mezővel.
+     *    Mérve: `[out:json][timeout:1]` a teljes url:miserend lekérdezéssel ->
+     *    HTTP 200, elements: 0, remark: "runtime error: Query timed out in query...".
+     *    Ez sikernek látszott, és egy hétre bekerült a cache-be.
+     *
+     * 2. HIÁNYOS válasz — ha a hívó megmondta, mennyit vár (`minElements`), és ennél
+     *    lényegesen kevesebb jött, az nem üres találat, hanem rossz forrás. Az ÜRES
+     *    találat továbbra is érvényes válasz marad: aki nem állít `minElements`-t,
+     *    annál semmi nem változik (ez a #766 szándéka).
+     */
+    protected function rejectionReason(): ?string {
+        if (!is_object($this->jsonData)) {
+            return null;
+        }
+
+        $remark = trim((string) ($this->jsonData->remark ?? ''));
+        if ($remark !== '') {
+            return 'Az Overpass hibát jelzett a válaszban (' . $this->apiUrl . '): ' . $remark;
+        }
+
+        if ($this->minElements > 0) {
+            $darab = is_array($this->jsonData->elements ?? null) ? count($this->jsonData->elements) : 0;
+            if ($darab < $this->minElements) {
+                return 'Az Overpass válasza hiányos (' . $this->apiUrl . '): ' . $darab
+                    . ' elem érkezett, legalább ' . $this->minElements . ' kellene.';
+            }
+        }
+
+        return null;
     }
 
     function buildQuery() {
