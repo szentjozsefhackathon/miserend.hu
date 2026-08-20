@@ -42,7 +42,8 @@ class User extends Api {
     public function run() {
         parent::run();
         $this->getInputJson();
-        $token = \Eloquent\Token::where('name',$this->input['token'])->first();
+        // #862: típusbiztos keresés — l. Token::findByName().
+        $token = \Eloquent\Token::findByName($this->input['token'] ?? null);
         if(!$token or !$token->isValid) {
             throw new \Exception("Invalid token.");
         }    

@@ -1,0 +1,35 @@
+.location-picker { width: 100%; }
+
+/*
+ * #816: a térkép doboza.
+ *
+ * A `position: relative` és az `overflow: hidden` NEM díszítés: ezek tartják bent a
+ * csempéket. A Leaflet a csempéket abszolút pozícióval rakja a helyükre, és ha a
+ * `leaflet.css` késik vagy hiányzik, a doboznak nincs pozicionálási kontextusa —
+ * ilyenkor a csempék a LAPRA kerülnek ki, szétszóródva az űrlapon. borazslo pontosan
+ * ezt kapta: „össze-vissza ugrál és elmászkál". A Leaflet ugyan maga is beállítja a
+ * `position`-t induláskor, de csak akkor, ha a doboz addigra a DOM-ban van és
+ * `static` — a saját szabályunk ettől független, és nem múlik időzítésen.
+ *
+ * A fix magasság szintén kell: a Leaflet a szülő magasságából számol, és egy 0
+ * magasságú konténerben néma marad — nem hibázik, csak nem látszik semmi.
+ */
+.map {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 260px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  /* A Leaflet vezérlői (zoom gombok) a dialógus fölé kerülnének. */
+  z-index: 0;
+}
+
+.map-hint,
+.map-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8em;
+  color: #666;
+  line-height: normal;
+}
