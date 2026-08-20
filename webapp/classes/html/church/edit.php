@@ -18,6 +18,15 @@ class Edit extends \Html\Html {
     public const PARENT_INVALID = 'invalid';
 
     /**
+     * #157: a templom aktív külső naptárai (név, url, utolsó import).
+     *
+     * Szándékosan NEM a többi property mellett, hanem a konstansok után: ott a #819
+     * is szúr be egy mezőt (`$derivedHolders`), és a git a két független hozzáadást
+     * ütközésnek látná. Egy sor odébb — és a két PR bármilyen sorrendben mehet.
+     */
+    public $externalCalendars = [];
+
+    /**
      * #639: a legördülő "0" értéke a placeholder-opció ("– válassz templomot –"), vagyis
      * "nincs ellátó plébánia". Ezt korábban se nem mentettük kapcsolatként, se nem
      * töröltük vele a meglévőt — így a beállított ellátó plébániát nem lehetett
@@ -126,10 +135,9 @@ class Edit extends \Html\Html {
             \Eloquent\ChurchRelationship::where('child_church_id', $this->tid)->delete();
         }
 
-        // Handle external calendar URL
+        // #157: soronként egy külső naptár — templomonként több is lehet.
         if (isset($churchFields['external_calendar_url'])) {
-            $newUrl = trim($churchFields['external_calendar_url']);
-            \ExternalCalendarImporter::saveCalendarUrl((int)$this->tid, $newUrl);
+            \ExternalCalendarImporter::saveCalendarUrls((int)$this->tid, $churchFields['external_calendar_url']);
         }
 
         // #484: a részletes beállítások mentése + a származtatott OSM-címke azonnali
@@ -206,20 +214,25 @@ class Edit extends \Html\Html {
         // Meglévő kapcsolatok betöltése (szülő irányban)
         $this->church->load('parentRelationships.parent');
         
-        $externalCalendar = $this->getExternalCalendar();
-        $lastImport = $externalCalendar && $externalCalendar->last_import_at
-            ? $externalCalendar->last_import_at
-            : 'még nem futott le sikeresen';
+        $externalCalendars = $this->getExternalCalendars();
 
         $this->form['external_calendar_url'] = [
-            'type' => 'text',
+            'type' => 'textarea',
             'name' => 'church[external_calendar_url]',
             'id' => 'external_calendar_url',
             'class' => 'form-control',
-            'placeholder' => 'https://calendar.google.com/calendar/ical/...',
-            'value' => $externalCalendar ? $externalCalendar->url : '',
-            'labelback' => 'Külső naptár (publikus HTTPS iCalendar URL). Napi automatikus szinkron; utolsó sikeres import: ' . $lastImport
+            'rows' => 3,
+            'placeholder' => "https://calendar.google.com/calendar/ical/...\nhttps://…/masik-naptar.ics",
+            'value' => $externalCalendars->pluck('url')->implode("\n"),
+            'labelback' => 'Külső naptárak, soronként egy publikus HTTPS iCalendar URL. Napi automatikus szinkron.'
         ];
+
+        // A naptárak állapota külön, mert több sorról van szó.
+        $this->externalCalendars = $externalCalendars->map(fn($n) => [
+            'nev' => $n->name,
+            'url' => $n->url,
+            'utolso_import' => $n->last_import_at ?: 'még nem futott le sikeresen',
+        ])->all();
 
         foreach ([
             'gluten_free_holidays' => [\GlutenFreeCommunion::HOLIDAYS_KEY, 'Ünnepnapokon'],
@@ -281,10 +294,12 @@ class Edit extends \Html\Html {
         }
     }
 
-    private function getExternalCalendar(): ?\Eloquent\ExternalCalendar {
+    /** @return \Illuminate\Support\Collection<int,\Eloquent\ExternalCalendar> */
+    private function getExternalCalendars(): \Illuminate\Support\Collection {
         return \Eloquent\ExternalCalendar::where('church_id', $this->tid)
             ->where('active', 1)
-            ->first();
+            ->orderBy('id')
+            ->get();
     }
     
     /**

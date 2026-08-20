@@ -1640,6 +1640,11 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         let changed: boolean = false;
         if (ScriptUtil.isNotNull(m.periodId) && m.periodId === periodId) {
           changed = false;
+        } else if (this.periodCovers(periodId, m.periodId)) {
+          // #747: az új mise időszaka TELJESEN lefedi ezét — a kizárás itt nem
+          // felülírás lenne, hanem kiürítés: ez a mise sehol nem maradna látható.
+          // A szűkebb időszak a specifikusabb, tehát ő nyer a saját tartományában.
+          changed = false;
         } else if (ScriptUtil.isNotNull(m.experiod)) {
           if (!m.experiod.includes(periodId) && m.periodId !== periodId) {
             m.experiod.push(periodId);
@@ -1698,12 +1703,54 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
         }
       }
 
+      /*
+       * #747: a másik irány. Ha EZ a mise időszaka fedi le teljesen egy kisebb súlyú
+       * időszakét, akkor a kisebb a specifikusabb: a saját tartományában ő nyer,
+       * tehát őt zárjuk ki EBBŐL a miséből. (Az `excludeNewMassFromLowerPeriodMasses`
+       * párja ezért hagyja békén az ilyen miséket — a döntés itt születik meg.)
+       */
+      const coveredLowerPeriodIds: number[] = [];
+      for (const m of [...this.masses.values(), ...this.changes.values()]) {
+        if (ScriptUtil.isNull(m.periodId) || coveredLowerPeriodIds.includes(m.periodId)) {
+          continue;
+        }
+        const mPeriod = this.periodService.getPeriodById(m.periodId);
+        if (ScriptUtil.isNotNull(mPeriod) && mPeriod.weight < periodWeight
+            && this.periodCovers(periodId, m.periodId)) {
+          coveredLowerPeriodIds.push(m.periodId);
+        }
+      }
+
       let globalChanged: boolean = false;
 
-      if (higherPeriodIds.length > 0 && ScriptUtil.isNull(mass.experiod)) {
+      if ((higherPeriodIds.length > 0 || coveredLowerPeriodIds.length > 0) && ScriptUtil.isNull(mass.experiod)) {
         mass.experiod = [];
       }
+
+      coveredLowerPeriodIds.forEach(lowerPeriodId => {
+        if (!mass.experiod!.includes(lowerPeriodId) && mass.periodId !== lowerPeriodId) {
+          mass.experiod!.push(lowerPeriodId);
+          globalChanged = true;
+        }
+      });
       higherPeriodIds.forEach(higherPeriodId => {
+        /*
+         * #747: ha a nagyobb súlyú időszak teljesen lefedi ezt a misét, akkor NEM őt
+         * zárjuk ki — a szűkebb (ez) nyer a saját tartományában.
+         *
+         * De a kihagyás önmagában kevés: ilyenkor a MÁSIK oldalt kell kizárni,
+         * különben mindkét mise látszik. borazslo pontosan ezt találta meg: a Nyári
+         * szünet 7 órás miséjét 8 órásra írva augusztusban két csütörtöki mise lett
+         * (a nyári szünetes és a nyári időszámításos). Másoláskor azért nem tűnt fel,
+         * mert a másolat ÖRÖKÖLTE a forrás kizárását; szerkesztéskor viszont a mise
+         * tiszta lapról épül újra, és a kizárás nem került vissza.
+         *
+         * A szerveroldali párja ugyanígy fordít (CalMass::applyCollisionAvoidance).
+         */
+        if (this.periodCovers(higherPeriodId, periodId)) {
+          this.excludeNarrowPeriodFromWiderMasses(higherPeriodId, periodId!);
+          return;
+        }
         if (!mass.experiod!.includes(higherPeriodId) && mass.periodId !== higherPeriodId) {
           mass.experiod!.push(higherPeriodId);
           globalChanged = true;
@@ -1996,6 +2043,7 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     // Clone masses for the new period
     const targetPeriodWeight = this.periodService.getPeriodById(targetPeriodId)?.weight;
     let globalChanged = false;
+    const copiedMasses: Mass[] = [];
 
     massesToCopy.forEach(massToClone => {
       // Create a new mass with the target period ID but without an ID (so API treats it as new)
@@ -2022,23 +2070,33 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
 
       // Add to changes map
       this.changes.set(newMass.id, newMass);
+      copiedMasses.push(newMass);
       globalChanged = true;
     });
 
     if (globalChanged) {
-      // Recalculate excluded periods for the newly copied masses
-      // This ensures proper experiod values based on period weights
-      massesToCopy.forEach(sourceMass => {
-        const newMasses = Array.from(this.changes.values()).filter(m =>
-          m.periodId === targetPeriodId && m.id! < 0 // Temporary IDs are negative
-        );
-        
-        newMasses.forEach(newMass => {
-          const recentlyExclusionSourcePeriodIds = this.excludeNewMassFromLowerPeriodMasses(targetPeriodId, targetPeriodWeight);
-          const recentlyExcludedPeriodIds = this.excludeHigherPeriodMassesFromNewMass(newMass, targetPeriodId, targetPeriodWeight);
-          this.showExclusionDialogIfNeed(targetPeriodId, recentlyExclusionSourcePeriodIds, recentlyExcludedPeriodIds);
-        });
+      // #747: a kizárás-számítás korábban KÉTSZERESEN körbe volt csomagolva
+      // (`massesToCopy` × `newMasses`), pedig a belső lista nem függött a külső
+      // ciklusváltozótól. Következmény: N másolt misénél N-szer futott le
+      // ugyanaz, és a kizárás-párbeszéd is annyiszor ugrott fel. Ráadásul a
+      // szűrő MINDEN negatív id-jű misét felszedett a cél-időszakban, nem csak
+      // a most másoltakat — így a korábban, kézzel felvett, még nem mentett
+      // miséket is újra végigrágta.
+      //
+      // Az `excludeNewMassFromLowerPeriodMasses` amúgy is az egész templomra
+      // dolgozik, tehát elég egyszer meghívni; a másik viszont mise-specifikus,
+      // ezért az csak a ténylegesen most létrehozott másolatokra fut.
+      const exclusionSourcePeriodIds = this.excludeNewMassFromLowerPeriodMasses(targetPeriodId, targetPeriodWeight);
+      const excludedPeriodIds: number[] = [];
+      copiedMasses.forEach(newMass => {
+        this.excludeHigherPeriodMassesFromNewMass(newMass, targetPeriodId, targetPeriodWeight)
+          .forEach(id => {
+            if (!excludedPeriodIds.includes(id)) {
+              excludedPeriodIds.push(id);
+            }
+          });
       });
+      this.showExclusionDialogIfNeed(targetPeriodId, exclusionSourcePeriodIds, excludedPeriodIds);
 
       // IMPROVED: Use refreshCalendarAndMassList() instead of reLoadCalendar() for immediate sync refresh
       this.refreshCalendarAndMassList();
@@ -2103,6 +2161,108 @@ export class ChurchCalendarComponent implements OnInit, AfterViewInit, OnChanges
     const bStart = new Date(b.startDate);
     const bEnd = new Date(b.endDate);
     return aStart < bEnd && aEnd > bStart;
+  }
+
+  /**
+   * #747: teljesen lefedi-e a `coverPeriodId` időszak a `innerPeriodId`-ét?
+   *
+   * A kizárás eddig csak a SÚLYT nézte. Ha a nagyobb súlyú időszak tartománya
+   * teljesen tartalmazza a kisebbét, a kizárás nem felülírás, hanem kiürítés: a
+   * kisebb súlyú mise sehol nem marad látható. Élő adattal ez a Nyári szünet
+   * (súly 3) és a Nyári időszámítás (súly 5) párosa — aki átmásolta a miséit,
+   * annak az eredeti eltűnt.
+   *
+   * Konzervatív: ha bármelyik oldalnak nincs generált tartománya, false — marad
+   * a régi viselkedés. A szerveroldali párja: CalMass::periodCovers().
+   */
+  private periodCovers(coverPeriodId?: number | null, innerPeriodId?: number | null): boolean {
+    if (!coverPeriodId || !innerPeriodId || coverPeriodId === innerPeriodId) {
+      return false;
+    }
+
+    /*
+     * #747: a tartalmazás nem szigorú (<=/>=), tehát két AZONOS tartomány kölcsönösen
+     * lefedi egymást. Ott viszont egyik sem „a szűkebb", nincs mit specifikusabbnak
+     * tekinteni — maradjon a súly. Enélkül a nagyobb súlyú időszak veszítene a vele
+     * azonos tartományú kisebbel szemben, ami a súlyozás értelmét fordítaná meg.
+     * A szerveroldali párja ugyanezt teszi (CalMass::periodCoversInYear).
+     */
+    if (this.rangesContain(innerPeriodId, coverPeriodId)) {
+      return false;
+    }
+
+    return this.rangesContain(coverPeriodId, innerPeriodId);
+  }
+
+  /**
+   * #747: a SZŰKEBB időszakot kizárjuk a lefedő időszak miséiből.
+   *
+   * Ez a „fordítás": ha a nagyobb súlyú időszak teljesen lefedi a kisebbet, nem a
+   * kisebbet zárjuk ki (az kiürítés lenne), hanem a nagyobbat a kisebb tartományában.
+   * Enélkül a lefedett napokon MINDKÉT mise látszana.
+   */
+  private excludeNarrowPeriodFromWiderMasses(widerPeriodId: number, narrowPeriodId: number): void {
+    let changed = false;
+
+    const erintettIds = new Set<number>();
+    for (const m of this.masses.values()) {
+      if (m.periodId === widerPeriodId && ScriptUtil.isNotNull(m.id)) {
+        erintettIds.add(m.id);
+      }
+    }
+    for (const m of this.changes.values()) {
+      if (m.periodId === widerPeriodId && ScriptUtil.isNotNull(m.id)) {
+        erintettIds.add(m.id);
+      }
+    }
+
+    for (const id of erintettIds) {
+      // A folyamatban lévő változás elsőbbséget élvez; a mentett misét klónozzuk,
+      // hogy a betöltött állapotot ne írjuk felül a helyén.
+      const m = this.changes.get(id) ?? ScriptUtil.clone(this.masses.get(id)!);
+      if (!m) {
+        continue;
+      }
+      if (ScriptUtil.isNull(m.experiod)) {
+        m.experiod = [];
+      }
+      if (!m.experiod!.includes(narrowPeriodId)) {
+        m.experiod!.push(narrowPeriodId);
+        this.changes.set(id, m);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.refreshCalendarAndMassList();
+    }
+  }
+
+  /** #747: tisztán tartalmazás-vizsgálat, a kölcsönösség kérdése nélkül. */
+  private rangesContain(coverPeriodId: number, innerPeriodId: number): boolean {
+    const cover = this.periodService.getGeneratedPeriodsByPeriodId(coverPeriodId);
+    const inner = this.periodService.getGeneratedPeriodsByPeriodId(innerPeriodId);
+    if (!cover?.length || !inner?.length) {
+      return false;
+    }
+
+    // A lefedés ÉVENTE változik: a Nagyböjt csak 2026-ban fedi le teljesen a
+    // Márciust. A szerkesztő viszont egyetlen `experiod` listát állít be, ami nem
+    // évfüggő — ezért itt csak akkor fordítunk, ha MINDEN olyan évben teljes a
+    // lefedés, amire van generált tartomány. Így a szerkesztő sosem tesz be olyan
+    // kizárást, amit a szerveroldali, évenkénti számolás egy évben visszavonna.
+    const years = new Set(inner.map(i => new Date(i.startDate).getFullYear()));
+
+    return Array.from(years).every(year => {
+      const innerOfYear = inner.filter(i => new Date(i.startDate).getFullYear() === year);
+      const coverOfYear = cover.filter(c => new Date(c.startDate).getFullYear() === year);
+      if (!coverOfYear.length) {
+        return false;
+      }
+      return innerOfYear.every(i => coverOfYear.some(c =>
+        new Date(c.startDate) <= new Date(i.startDate) && new Date(c.endDate) >= new Date(i.endDate)
+      ));
+    });
   }
 
   private filterOverlappingPeriodIds(

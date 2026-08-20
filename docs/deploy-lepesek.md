@@ -148,6 +148,35 @@ ez nem, a /health „a referencia elavult"-at mond, és az összevetés eredmén
 docker exec <konténer> php /miserend/webapp/tools/schema-reference.php
 ```
 
+### `157-mise-kulso-naptar.sql`
+
+A `cal_masses` új oszlopot kap (`external_calendar_id`), és a meglévő importált misék
+visszamenőleg megkapják a templomuk naptárát.
+
+Eddig a `comment` mező pontos értéke jelölte az importált misét. Ez foglalta a mezőt (a
+naptár leírása nem fért bele), és templomonként EGY naptárra korlátozott: az import a
+templom összes jelölt miséjét törölte, tehát a második naptár kitörölte az elsőét.
+
+A visszamenőleges hozzárendelés csak ott fut, ahol a templomnak pontosan egy naptára van.
+Ahol több, ott a régi sorokat a `comment`-es tartalék jelölés viszi tovább az első
+importig — nem vesznek el, és nem is válnak szerkeszthetővé.
+
+**Kell-e még?**
+```sql
+SELECT COUNT(*) AS hianyzik
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'cal_masses'
+  AND COLUMN_NAME = 'external_calendar_id';
+-- 0 → kell futtatni
+```
+
+Adatvesztés nincs: csak hozzáad. A futtatás után az első naptár-szinkron a leírást és a
+helyszínt is átveszi, tehát a meglévő importált misék a következő cron-futáskor
+gazdagodnak — külön teendő nélkül.
+
+---
+
 ### `LORAWAN_TOKEN`
 
 A szenzoros végpont (gyóntatás-érzékelő) enélkül nem fogad adatot. Környezeti változó,
