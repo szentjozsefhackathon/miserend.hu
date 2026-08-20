@@ -46,6 +46,9 @@ describe('LocationPickerComponent (#816)', () => {
       removeLayer: jasmine.createSpy('removeLayer'),
       invalidateSize: jasmine.createSpy('invalidateSize'),
       remove: jasmine.createSpy('remove'),
+      // #816: a kivágat-követéshez.
+      getBounds: jasmine.createSpy('getBounds').and.returnValue({contains: () => true}),
+      panTo: jasmine.createSpy('panTo'),
     };
     marker = {
       addTo: jasmine.createSpy('addTo').and.callFake(() => marker),
@@ -57,6 +60,7 @@ describe('LocationPickerComponent (#816)', () => {
       map: jasmine.createSpy('map').and.returnValue(map),
       tileLayer: jasmine.createSpy('tileLayer').and.returnValue({addTo: () => null}),
       marker: jasmine.createSpy('marker').and.returnValue(marker),
+      latLng: jasmine.createSpy('latLng').and.callFake((a: number, b: number) => ({lat: a, lng: b})),
     };
 
     loader = jasmine.createSpyObj('LeafletLoaderService', ['load']);
@@ -287,6 +291,81 @@ describe('LocationPickerComponent (#816)', () => {
 
       expect(attribution).toContain('openstreetmap.org/copyright');
       expect(attribution).toContain('carto.com/attributions');
+    });
+  });
+
+  /**
+   * #816: a stíluslapnak a MI gyökerünkbe kell kerülnie.
+   *
+   * A naptár `ViewEncapsulation.ShadowDom`-mal fut (`app.component.ts`), a shadow DOM
+   * pedig elszigeteli a globális CSS-t. A `document.head`-be szúrt `leaflet.css` tehát
+   * letöltődött — a Network fülön látszott is —, de a térképre SOSEM vonatkozott: a
+   * Leaflet által `createElement()`-tel gyártott csempék nem kapták meg a
+   * `position: absolute`-ot, és a `transform: translate3d()` mindegyikre MÁS
+   * kiindulóponthoz adódott hozzá. Innen a diagonálisan szétcsúszott mintázat.
+   */
+  describe('stíluslap a shadow DOM-ban (#816)', () => {
+
+    it('a saját gyökerét adja át a betöltőnek', async () => {
+      await inditsd();
+
+      expect(loader.load).toHaveBeenCalled();
+    });
+
+    it('a betöltő a shadow rootba szúrja a stíluslapot', () => {
+      const arnyek = document.createElement('div').attachShadow({mode: 'open'});
+      const szolgaltatas = new LeafletLoaderService();
+
+      (window as any).L = {};        // a script már megvan
+      szolgaltatas.load(arnyek);
+
+      expect(arnyek.querySelector('link[href*="leaflet.css"]')).not.toBeNull();
+      delete (window as any).L;
+    });
+
+    it('a dokumentum-gyökérnél a head-be szúr', () => {
+      const szolgaltatas = new LeafletLoaderService();
+      (window as any).L = {};
+
+      szolgaltatas.load();
+
+      expect(document.head.querySelector('link[href*="leaflet.css"]')).not.toBeNull();
+      delete (window as any).L;
+    });
+  });
+
+  /**
+   * #816: a térkép kövesse a kézzel beírt koordinátát.
+   *
+   * borazslo: „amikor változtatom a koordinátákat a marker helyesen elmozog. De a térkép
+   * nem mozog vele, így könnyen el tudom kergetni képernyőn kívülre."
+   */
+  describe('kivágat-követés (#816)', () => {
+
+    it('a kivágaton KÍVÜLI pontra ráugrik', async () => {
+      component.churchLat = 46.2;
+      component.churchLon = 20.04;
+      await inditsd();
+
+      map.getBounds.and.returnValue({contains: () => false});
+      component.lat = 47.5;
+      component.lon = 19.05;
+      component.ngOnChanges({lat: {} as any});
+
+      expect(map.panTo).toHaveBeenCalled();
+    });
+
+    it('a kivágaton BELÜLI pontnál nem mozdul — a saját kattintás ne ugráltasson', async () => {
+      component.churchLat = 46.2;
+      component.churchLon = 20.04;
+      await inditsd();
+
+      map.getBounds.and.returnValue({contains: () => true});
+      component.lat = 46.21;
+      component.lon = 20.05;
+      component.ngOnChanges({lat: {} as any});
+
+      expect(map.panTo).not.toHaveBeenCalled();
     });
   });
 });

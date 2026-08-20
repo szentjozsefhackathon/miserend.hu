@@ -59,7 +59,16 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
   constructor(private leaflet: LeafletLoaderService) {}
 
   ngAfterViewInit(): void {
-    this.leaflet.load()
+    /*
+     * #816: a stíluslapnak a MI gyökerünkbe kell kerülnie.
+     *
+     * A naptár `ViewEncapsulation.ShadowDom`-mal fut, tehát a `document.head`-be szúrt
+     * `leaflet.css` nem ér el idáig. A `getRootNode()` adja meg a valódi gyökeret: shadow
+     * DOM-ban a shadow root, azon kívül maga a dokumentum.
+     */
+    const gyoker = this.mapContainer?.nativeElement.getRootNode();
+
+    this.leaflet.load(gyoker instanceof ShadowRoot ? gyoker : undefined)
       .then(L => {
         this.L = L;
         this.meretreVar();
@@ -114,6 +123,29 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['lat'] || changes['lon']) && this.map) {
       this.jeloloFrissit();
+      this.kivagatotKovet();
+    }
+  }
+
+  /**
+   * #816: a térkép KÖVESSE a kézzel beírt koordinátát.
+   *
+   * borazslo: „amikor változtatom a koordinátákat a marker helyesen elmozog. De a térkép
+   * nem mozog vele, így könnyen el tudom kergetni képernyőn kívülre." Így is volt: a
+   * jelölő átkerült, a kivágat maradt — a felhasználó pedig azt látta, hogy a jelölő
+   * eltűnt, és nem tudta, hova.
+   *
+   * Csak akkor mozdítunk, ha a pont tényleg kilóg. Aki a térképen kattint, annak a
+   * kivágata ne ugráljon a saját mozdulatától.
+   */
+  private kivagatotKovet(): void {
+    if (!this.map || this.lat == null || this.lon == null) {
+      return;
+    }
+
+    const pont = this.L.latLng(this.lat, this.lon);
+    if (!this.map.getBounds().contains(pont)) {
+      this.map.panTo(pont);
     }
   }
 

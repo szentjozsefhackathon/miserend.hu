@@ -34,16 +34,30 @@ export class LeafletLoaderService {
   /** Egyetlen betöltés fut, akárhányszor kérik — a további hívók ugyanarra várnak. */
   private betoltes?: Promise<any>;
 
-  public load(): Promise<any> {
+  /**
+   * @param gyoker AHOVA a stíluslap kerül. A naptár `ViewEncapsulation.ShadowDom`-mal fut
+   *               (`app.component.ts`), és a shadow DOM ELSZIGETELI a globális CSS-t —
+   *               a `document.head`-be szúrt `leaflet.css` tehát SOSEM ért el a
+   *               térképig. A hívó a saját elemének `getRootNode()`-jával adja meg a
+   *               valódi gyökeret; l. `LocationPickerComponent`.
+   */
+  public load(gyoker?: Document | ShadowRoot): Promise<any> {
     if (!this.betoltes) {
-      this.betoltes = this.betolt();
+      this.betoltes = this.betolt(gyoker);
+    } else if (gyoker && gyoker !== document) {
+      /*
+       * A script csak egyszer töltődik be, a STÍLUSLAP viszont gyökerenként kell.
+       * Ha egy második komponens másik shadow rootban nyílik meg, annak is jár —
+       * enélkül a másodikban megint szétcsúsznának a csempék.
+       */
+      this.stilust(gyoker);
     }
     return this.betoltes;
   }
 
-  private async betolt(): Promise<any> {
+  private async betolt(gyoker?: Document | ShadowRoot): Promise<any> {
     // A stíluslap előbb: a scriptre várás alatt legalább letöltődik.
-    const stilus = this.stilust();
+    const stilus = this.stilust(gyoker ?? document);
     const L = (window as any).L ? (window as any).L : await this.scriptet();
 
     await stilus;
@@ -61,8 +75,18 @@ export class LeafletLoaderService {
    * ne dőljön el tőle. A dobozból kiszökő csempék ellen a komponens saját CSS-e is véd
    * (`overflow: hidden`), tehát a kár ilyenkor is korlátozott.
    */
-  private stilust(): Promise<void> {
-    const meglevo = document.querySelector<HTMLLinkElement>(
+  private stilust(gyoker: Document | ShadowRoot = document): Promise<void> {
+    /*
+     * #816: a stíluslap ABBA a gyökérbe kell, ahol a térkép él.
+     *
+     * A naptár `ViewEncapsulation.ShadowDom`-mal fut, a shadow DOM pedig elszigeteli a
+     * globális CSS-t. A `document.head`-be szúrt `leaflet.css` tehát letöltődött (a
+     * Network fülön látszott is), de a térképre SOSEM vonatkozott — a Leaflet által
+     * `createElement()`-tel gyártott csempék nem kapták meg a `position: absolute`-ot,
+     * és a `transform: translate3d()` mindegyikre MÁS kiindulóponthoz adódott hozzá.
+     * Innen a diagonálisan szétcsúszott mintázat.
+     */
+    const meglevo = gyoker.querySelector<HTMLLinkElement>(
       `link[href="${LeafletLoaderService.STYLE_URL}"]`);
 
     if (meglevo) {
@@ -77,7 +101,11 @@ export class LeafletLoaderService {
     const css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = LeafletLoaderService.STYLE_URL;
-    document.head.appendChild(css);
+
+    // A `document`-nél a `head`, shadow rootnál maga a gyökér az illesztési pont.
+    const cel: Node = gyoker instanceof ShadowRoot ? gyoker : document.head;
+    cel.appendChild(css);
+
     return this.esemenyre(css);
   }
 
