@@ -217,6 +217,20 @@
 		</div>
 	{% endif %}
 
+	{% if periodsWithoutGenerated is not empty %}
+		<div class="alert alert-warning" style="margin-top: 15px;">
+			<strong>{{ periodsWithoutGenerated|length }} választható időszaknak nincs generált sora.</strong>
+			A szerkesztő felajánlja őket, de az oda tett mise <strong>sehol nem jelenik meg</strong> —
+			se a naptárban, se a keresőben —, és erről semmi nem szól.
+			A pótlás a <code>\Crons::rollPeriodYears()</code> dolga (havonta fut).
+			<ul class="mb-0">
+				{% for period in periodsWithoutGenerated %}
+					<li>#{{ period.id }} — {{ period.name }}</li>
+				{% endfor %}
+			</ul>
+		</div>
+	{% endif %}
+
 	<h3 id="externalapis">Külső szolgáltatók elérhetősége</h3>
 	<p><i>Olyanok mint mapqquest, openstreetmap, kozossegekapi, liturgiativ, nominatim, openinghapi, overpass</i></p> 
 

@@ -350,14 +350,78 @@ class OSM {
         return (int) $match[1];
     }
 
-    function syncUrlMiserendFromOSM() {
-        
-        $overpass = new \ExternalApi\OverpassApi();
+    /**
+     * #840: mennyi `url:miserend` elemet VÁRUNK az Overpasstól?
+     *
+     * A saját adatunkból származtatjuk: ahány misézőhelyünkhöz OSM-azonosító tartozik,
+     * nagyjából annyi elemnek kell kijönnie odaátról is (a hoszton mérve 5035 elem).
+     *
+     * A küszöb SZÁNDÉKOSAN nagyon alacsony — az ÖTÖDE. Ez füstjelző, nem mérőműszer:
+     * azt a fajta hibát kell elkapnia, ami nagyságrendet téved (élesben 5035 helyett 1
+     * elem jött, a várt érték 0,02%-a). A valódi ingadozásba viszont ne szóljon bele:
+     * az OSM-ben tényleg mozognak a címkék, és egy tévesen leálló szinkron ugyanolyan
+     * rossz, mint egy némán hiányos.
+     *
+     * A mérsékelt csökkenés így is LÁTSZIK: a futás mindig kiírja, hány elem érkezett.
+     */
+    public static function expectedUrlMiserendElements(): int {
+        $osmAzonositoval = \Eloquent\Church::whereNotNull('osmid')
+            ->where('osmid', '<>', '')
+            ->whereNotNull('osmtype')
+            ->where('osmtype', '<>', '')
+            ->count();
+
+        return (int) floor($osmAzonositoval / 5);
+    }
+
+    /**
+     * @param ?\ExternalApi\OverpassApi $overpass #840: teszthez injektálható. A cron
+     *        paraméter nélkül hívja, tehát élesben semmi nem változik — de a „mi
+     *        történik, ha az Overpass hiányos választ ad" eset végre lefuttatható
+     *        hálózat nélkül is. Enélkül csak az éles futásból derült volna ki, hogy
+     *        a szinkron ilyenkor csendben végigmegy.
+     */
+    function syncUrlMiserendFromOSM(?\ExternalApi\OverpassApi $overpass = null) {
+
+        $overpass = $overpass ?? new \ExternalApi\OverpassApi();
+
+        /*
+         * #840: ez a site LEGNEHEZEBB Overpass-hívása — globális, korlátozás nélküli
+         * lekérdezés, mérve 5035 elem és 3,17 MB. A közös 30 másodperces keret ehhez
+         * kevés: a francia tükör 24,1 mp alatt válaszolt, a lassabb pillanataiban tehát
+         * biztosan elhasalna. Cronban vagyunk, nem látogatói kérésben — kaphat többet.
+         */
+        $overpass->queryTimeout = 120;
+
+        /*
+         * #840: megmondjuk, mit várunk. Enélkül egy földrajzilag korlátozott tükör
+         * hiánytalan JSON-ja is „sikeres" válasz volt — élesben másfél hónapon át EGYETLEN
+         * elemet dolgoztunk fel naponta, sikert jelentve.
+         */
+        $overpass->minElements = self::expectedUrlMiserendElements();
+
         $overpass->downloadUrlMiserend();
-        
-         if (!$overpass->jsonData->elements) {
+
+        /*
+         * #840: a HIBÁT is nézzük, ne csak azt, jött-e valami.
+         *
+         * Eddig csak az `elements` üressége számított. Ha a tartaléklista minden végpontja
+         * elhasalt, az utolsó — visszautasított — végpont hiányos válasza ottmaradt a
+         * `jsonData`-ban, és ez a feltétel átengedte. Most az `OverpassApi::run()` ki is
+         * üríti, de a hibát itt is meg kell nézni: a szinkron ne írjon adatot olyan
+         * válaszból, amit a rendszer maga utasított vissza.
+         */
+        if ($overpass->hasError()) {
+            throw new Exception('Az Overpass egyik végpontja sem adott használható választ: '
+                . $overpass->getErrorMessage());
+        }
+
+        if (!$overpass->jsonData->elements) {
             throw new Exception("Missing Json Elements from OverpassApi Query");
         }
+
+        echo 'OSM url:miserend: a(z) ' . $overpass->usedUrl . ' válaszolt, '
+            . count($overpass->jsonData->elements) . " elem érkezett.\n";
 
         /*
          * #658: a hibás értékeket JELENTJÜK, nem dobjuk el némán.

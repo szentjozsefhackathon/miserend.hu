@@ -29,5 +29,7 @@ export interface Church {
   masses: Mass[];
   eventsFromSensor?: SensorEvent[];
   country?: string;
+  lat?: number;
+  lon?: number;
   family?: ChurchFamilyMember[];
 }

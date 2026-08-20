@@ -112,15 +112,15 @@
         }
 
         //https://leaflet-extras.github.io/leaflet-providers/preview/
-        var CartoDB_Voyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 19
-        });
-    	var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    		maxZoom: 19,
-    		attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    	});
+        // #817: a konfiguráció a /js/map-tiles.js-ben van, egy helyen. Itt eddig helyes
+        // volt, három másik hívóhelyen viszont nem — ezért került közösbe.
+        var CartoDB_Voyager = L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas);
+        /*
+         * #817: az `OpenStreetMap_Mapnik` réteg innen KIKERÜLT. Halott kód volt — a lenti
+         * `control.layers` baseLayers-e null, tehát sosem lehetett kiválasztani —, viszont
+         * pont azt a forrást mutatta példaként, amit nem szabad használni. Ugyanez a döntés
+         * született a #653-ban a szintén halott Stamen-rétegre.
+         */
         /*
          * #653: a Stamen Terrain réteg innen KIKERÜLT. A Stamen 2023-ban a Stadia Mapshez
          * költözött, a régi végpont (stamen-tiles-*.a.ssl.fastly.net) mérve HTTP 503-at ad,
@@ -132,12 +132,12 @@
          * hozzá. Ha valaha kell egy terep-alapréteg, az külön döntés (és külön kulcs-kezelés).
          */
 
-        // #376: a direkt tile.openstreetmap.org az OSM Tile Usage Policy szerint
-        // produkciós forgalomra tiltott → intermittensen „Access blocked" csempe
-        // (van akinek megy, van akinek nem, Referer/IP/forgalom alapján). A CARTO
-        // Voyager basemap (ingyenes, produkcióra való) a default — böngészőben mérve
-        // minden csempe 200-zal jön. Az OpenStreetMap_Mapnik fentebb definiálva
-        // marad, de nincs a réteg-választóban (baseLayers=null a lenti control.layers-nél).
+        // #376/#817: a direkt tile.openstreetmap.org az OSM Tile Usage Policy szerint
+        // produkciós forgalomra tiltott. A blokkolást NEM hibakóddal jelzi: HTTP 200-at ad
+        // és egy valódi PNG-t „Access blocked" felirattal (mérve: 6987 bájt, x-blocked
+        // fejléc), amit a Leaflet szabályos csempeként rak ki — a térkép nem hibázik,
+        // hanem foltos lesz. A CARTO Voyager basemap (ingyenes, produkcióra való) a
+        // default; a konfiguráció a /js/map-tiles.js-ben van.
         CartoDB_Voyager.addTo(mymap);
     
     
