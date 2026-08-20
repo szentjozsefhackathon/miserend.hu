@@ -293,6 +293,15 @@
                    [matTooltip]="(('LANGUAGES.' + l) | translate) + ' nyelvű'"
                    [src]="'/cal_images/flags/' + l.toLowerCase() + '.svg'" [alt]="(('LANGUAGES.' + l) | translate) + ' nyelvű'" />
             }
+            <!--
+              #431/#816: helyszín-jel a fejlécben (borazslo kérése). A panel alapból
+              CSUKVA van, tehát enélkül a saját helyszín a szerkesztőben rejtve marad
+              — épp az, amiről tudni kellene, hogy be van állítva.
+            -->
+            @if (elteroHelyszin) {
+              <mat-icon class="mcal-location-icon"
+                        [matTooltip]="'DIFFERENT_LOCATION_BADGE' | translate:{place: helyszinCimke()}">place</mat-icon>
+            }
           </div>
         </mat-panel-description>
       </mat-expansion-panel-header>
@@ -376,6 +385,16 @@
               <input matInput type="number" step="0.0000001" [(ngModel)]="data.event.locationLon">
             </mat-form-field>
             <small class="hint">{{ 'DIFFERENT_LOCATION_HINT' | translate }}</small>
+
+            <!-- #816: térképes kiválasztás. A fenti mezők tőle függetlenül is
+                 működnek — aki kész koordinátát kapott, ne kelljen keresgélnie. -->
+            <app-location-picker
+              [lat]="data.event.locationLat ?? null"
+              [lon]="data.event.locationLon ?? null"
+              [churchLat]="data.churchLat ?? null"
+              [churchLon]="data.churchLon ?? null"
+              (picked)="onHelyszinValasztva($event)">
+            </app-location-picker>
           </div>
         }
       </div>

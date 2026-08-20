@@ -117,6 +117,7 @@
     <script language="javascript" type="text/javascript" src="/js/tiny_mce_init.js"></script>
     
     <script src="/node_modules/leaflet/dist/leaflet.js"></script>
+    <script src="/js/map-tiles.js"></script>
     <link rel="stylesheet" href="/node_modules/leaflet/dist/leaflet.css"/>
 
     <script>
@@ -258,12 +259,9 @@
     // Térkép inicializálása
     var map = L.map('map').setView([defaultLat, defaultLon], 15);
 
-    // #376: CARTO Voyager basemap (a direkt tile.openstreetmap.org produkcióra tiltott).
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    }).addTo(map);
+    // #376/#817: CARTO Voyager basemap (a direkt tile.openstreetmap.org produkcióra
+    // tiltott). A konfiguráció a /js/map-tiles.js-ben van, egy helyen.
+    L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas).addTo(map);
 
     // Marker inicializálása
     var marker = L.marker([defaultLat, defaultLon], { draggable: true }).addTo(map);
