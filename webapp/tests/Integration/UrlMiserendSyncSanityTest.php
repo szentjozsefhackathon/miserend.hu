@@ -124,6 +124,11 @@ class SzinkronOverpassDouble extends \ExternalApi\OverpassApi {
         $this->cache = false;
     }
 
+    /** L. az OverpassCachePoisoningTest dublőrét: az offline kapcsoló ne vágjon be. */
+    protected function isInternalService(): bool {
+        return true;
+    }
+
     function downloadData() {
         $this->rawData = $this->valasz;
         $this->responseCode = 200;

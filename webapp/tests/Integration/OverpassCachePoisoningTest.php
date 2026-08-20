@@ -128,6 +128,17 @@ class OverpassApiDouble extends \ExternalApi\OverpassApi {
 
     public $valasz = '{"elements":[]}';
 
+    /*
+     * A teszt-környezet KIKAPCSOLJA a külső hívásokat (EXTERNAL_APIS_OFFLINE=1 a
+     * compose.test.yml-ben és a compose.coverage.yml-ben), és a kapcsoló a `runQuery()`
+     * LEGELEJÉN vág be — a cache-logika és az ellenőrzés elé. Ez a dublőr viszont maga
+     * adja a választ, hálózat nélkül: épp azt az útvonalat mérjük, amit az offline mód
+     * átugrana. A CI ezt pontosan meg is fogta.
+     */
+    protected function isInternalService(): bool {
+        return true;
+    }
+
     function downloadData() {
         $this->rawData = $this->valasz;
         $this->responseCode = 200;
