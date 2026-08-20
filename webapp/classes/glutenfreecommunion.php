@@ -5,6 +5,16 @@ class GlutenFreeCommunion
     public const HOLIDAYS_KEY = 'communion:gluten_free:holidays';
     public const WEEKDAYS_KEY = 'communion:gluten_free:weekdays';
 
+    /**
+     * #840: azok a kulcsok, amik NEM OSM-címkék — a mi saját névterünk.
+     *
+     * A tudás itt van, ahol a kulcs születik. Az `\Eloquent\Attribute::isOsmKey()` innen
+     * kérdezi meg, tehát egyetlen helyen kell karbantartani. Enélkül a következő helyi
+     * attribútum-író megint azt írná a `fromOSM`-be, hogy „én írtam", és a jelző megint
+     * három dolgot jelentene egyszerre.
+     */
+    public const LOCAL_KEYS = [self::HOLIDAYS_KEY, self::WEEKDAYS_KEY];
+
     public static function options(): array
     {
         return [
@@ -70,7 +80,8 @@ class GlutenFreeCommunion
             }
             \Eloquent\Attribute::updateOrCreate(
                 ['church_id' => $churchId, 'key' => $key],
-                ['value' => $value, 'fromOSM' => 0]
+                // #840: a jelzőt a KULCS dönti el, nem az, hogy mi írjuk épp.
+                ['value' => $value, 'fromOSM' => (int) \Eloquent\Attribute::isOsmKey($key)]
             );
         }
 
@@ -81,9 +92,15 @@ class GlutenFreeCommunion
             $stored[self::HOLIDAYS_KEY] ?? '',
             $stored[self::WEEKDAYS_KEY] ?? ''
         );
+        /*
+         * #840: a `diet:gluten_free` VALÓDI OSM-címke, tehát fromOSM = 1 — akkor is, ha
+         * épp mi írjuk. Eddig 0-val írtuk, és ezzel átbillentettük a szinkron által
+         * beállított jelzőt: a /josm statisztikájából emiatt tűnt el az a három templom,
+         * ahol az érték az OSM-ben is ott van (1515, 889, 1254).
+         */
         \Eloquent\Attribute::updateOrCreate(
             ['church_id' => $churchId, 'key' => self::OSM_KEY],
-            ['value' => $osmValue, 'fromOSM' => 0]
+            ['value' => $osmValue, 'fromOSM' => (int) \Eloquent\Attribute::isOsmKey(self::OSM_KEY)]
         );
 
         return $osmValue;

@@ -98,7 +98,18 @@ class Josm extends Html {
         }
 			
     
-        /* OSM tag variácók */
+        /*
+         * OSM tag variácók
+         *
+         * #840: a `fromOSM = 1` MOSTANTÓL azt jelenti, hogy a kulcs OSM-címke — nem azt,
+         * hogy ki írta a sort utoljára (l. `\Eloquent\Attribute::isOsmKey()`). A szűrés
+         * tehát maradhat, és most már azt is jelenti, amit mond.
+         *
+         * Miért kell egyáltalán szűrni: a lenti overpass-turbo link és a sablonban lévő
+         * taginfo-hivatkozás a KULCSBÓL épül. A saját névterű kulcsaink
+         * (`communion:gluten_free:*`) OSM-címkeként jelennének meg, halott taginfo-linkkel
+         * és nulla találatot adó Overpass-lekérdezéssel.
+         */
 		$attributes = DB::table('attributes')
 			->select('attributes.*','templomok.osmtype', 'templomok.osmid')
 			->join('templomok','templomok.id', '=', 'attributes.church_id')
