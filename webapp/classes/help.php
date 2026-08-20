@@ -82,8 +82,22 @@ class Help {
                 //miserend - templom adatlap
                 $this->html = '<b>Turistautak ID</b>' .
                         '<br><br>A turistautak.hu oldal gazdái gyűjtik a templomok (GPS) koordinátáit. Ebből térképen pontosan meghatározható a templom elhelyezkedése. Nekünk nem kell külön felmérnünk, hanem az elérhető <a href=http://turistautak.hu/search.php?s=templom target=_blank>listából</a> elég kikeresnünk a templomot (ha megvan) és ráklikkelve a címsorban megjelenő id utáni értéket kell ide beírnunk. ' .
-                        '<br><br>Egy példa: tardosi rk. templom linkje: http://turistautak.hu/poi.php?<b>id=6515</b>' .
-                        '<br>Az űrlapba beírandó szám tehát a 6515';
+                        /*
+                         * #855: az URL-t NEM szabad HTML-taggel kettévágni.
+                         *
+                         * Itt korábban ez állt: `http://turistautak.hu/poi.php?<b>id=6515</b>`
+                         * — vagyis a `<b>` a kérdőjel UTÁN nyílt. Aki ezt a szöveget
+                         * automatikusan linkesíti (böngésző-kiegészítő, indexelő), a tagek
+                         * kiszedése után egy `poi.php?id=6515` TÖREDÉKET kap, amit RELATÍV
+                         * útvonalként a mi domainünkre kér le. borazslo pontosan ezt látta a
+                         * statisztikában: „elég sok /poi.php?id=1234 formájú kérés is érkezik".
+                         *
+                         * Ezért az URL egyben marad, és rendes hivatkozás lesz belőle; a
+                         * kiemelés a szám köré kerül, az URL-en kívülre.
+                         */
+                        '<br><br>Egy példa: a tardosi rk. templom linkje: ' .
+                        '<a href="http://turistautak.hu/poi.php?id=6515" target="_blank" rel="noopener">http://turistautak.hu/poi.php?id=6515</a>' .
+                        '<br>Az űrlapba beírandó szám tehát a <b>6515</b>';
                 break;
 
             case 17:
