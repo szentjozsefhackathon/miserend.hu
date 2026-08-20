@@ -91,26 +91,22 @@ class NearBy extends Api {
 		// (error:0-val, mintha érvényes találat lenne). A 0,0 a Guineai-öbölben
 		// van, ott nincs katolikus misézőhely; kezeljük „nincs érvényes helyzet"-
 		// ként és adjunk vissza hibát a szemét 5000 km-es lista helyett.
-		if ((float) $this->input['lat'] === 0.0 && (float) $this->input['lon'] === 0.0) {
+		if (!\Eloquent\Church::isUsablePosition((float) $this->input['lat'], (float) $this->input['lon'])) {
 			$this->return['error'] = 1;
 			$this->return['text'] = 'Érvénytelen helyzet (0,0) — nem sikerült meghatározni a pozíciót.';
 			$this->return['templomok'] = [];
 			return;
 		}
 
-		$this->return['templomok'] = \Eloquent\Church::select()
-				->addSelect(DB::raw("ST_distance_sphere( ST_GeomFromText('POINT ( ".$this->input['lat']." ".$this->input['lon']." )', 4326), ST_GeomFromText(CONCAT('POINT ( ',lat,' ', lon, ')'), 4326) ) as distance"))
-                ->where('ok','i')
-				// #94 (másodlagos, defenzív): a koordináta nélküli templomok a
-				// templomok.lat/lon DEFAULT 0.0/0.0 értékén ülnek. Ezeket a meglévő
-				// `lat <> ''` szűrő DECIMAL-coercion révén (''→0) már kizárja, de ez
-				// törékeny/rejtett — explicit `NOT (lat=0 AND lon=0)`-val biztosítjuk,
-				// hogy egy 0,0 templom akkor se szivárogjon be, ha a szűrő változik.
-				->where('lat','<>','')
-				->where('lon','<>','')
-				->whereRaw('NOT (lat = 0 AND lon = 0)')
-                ->orderBy('distance', 'ASC')
-				->limit($limit)
+		/*
+		 * #854: a lekérdezés a `Church::nearestQuery()`-be került, mert a főoldali doboz
+		 * (`Html\Ajax\NearBy`) is ezt használja. A két FELÜLET szétvált — az API-t nem
+		 * kötheti a saját oldalunk —, de a távolságszámítás és a kizárások egyek maradnak.
+		 * A #94-es (0,0)-védelem is ott van, egy helyen.
+		 */
+		$this->return['templomok'] = \Eloquent\Church::nearestQuery(
+					(float) $this->input['lat'], (float) $this->input['lon'], (int) $limit
+				)
                 ->get()->map->toAPIArray(
 					isset($this->input['response_length']) ? $this->input['response_length'] : (  $this->fields['response_length']['default'] ? $this->fields['response_length']['default'] : false ), 
 					isset($this->input["whenMass"]) ? $this->input["whenMass"] : (  $this->fields['whenMass']['default'] ? $this->fields['whenMass']['default'] : false ),
