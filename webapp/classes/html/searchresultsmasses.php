@@ -327,12 +327,19 @@ class SearchResultsMasses extends Html {
             if (!empty($categoriesReq)) {
                 $selectedCategories = array_filter(array_map('trim', explode(',', $categoriesReq)));
 
-                // #299: a cím-alakok előállítása átkerült a \MassDefinitions-be, mert az
-                // API-nak (api/search.php `categories`) is pontosan ugyanez kell. Egy
-                // implementáció, két hívó — így a kettő nem tud szétcsúszni.
-                $titleFilters = (new \MassDefinitions())->titleFiltersByCategories($selectedCategories);
-                if (!empty($titleFilters)) {
-                    $search->query['bool']['must'][] = [ 'terms' => ['title.keyword' => $titleFilters] ];
+                /*
+                 * #299: a klauzula előállítása a \MassDefinitions-ben van, mert az
+                 * API-nak (api/search.php `categories`) is pontosan ugyanez kell. Egy
+                 * implementáció, két hívó — így a kettő nem tud szétcsúszni.
+                 *
+                 * #157: a szűrő eddig egy zárt CÍMLISTÁRA ment. A `cal_masses.title`
+                 * viszont szabad szöveg — importnál a nyers ICS-cím kerül bele —, tehát
+                 * minden importált esemény kiesett MINDEN kategóriából. Mostantól az
+                 * indexelt `category` is számít, a cím-lista pedig mellette marad.
+                 */
+                $clause = (new \MassDefinitions())->categoryQueryClause($selectedCategories);
+                if ($clause !== null) {
+                    $search->query['bool']['must'][] = $clause;
                     $translatedCategoryNames = array_map(function($c){ return t('MASS_TITLE_CATEGORY.' . $c); }, $selectedCategories);
                     $search->filters[] = "Kategóriák: <b>" . implode('</b> vagy <b>', $translatedCategoryNames) . "</b>";
                 }
