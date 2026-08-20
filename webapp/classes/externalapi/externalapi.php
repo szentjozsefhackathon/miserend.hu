@@ -10,6 +10,23 @@ class ExternalApi {
     public $queryTimeout = 30;
 
     /**
+     * #840: mennyit várunk a VÁLASZRA, ha ez más, mint a szolgáltatónak adott keret.
+     *
+     * Az Overpassnál a `queryTimeout` KÉT dolgot jelentett egyszerre: a lekérdezésbe
+     * írt szerveroldali költségvetést (`[out:json][timeout:30]`) ÉS a curl teljes
+     * várakozását. Egy olyan lekérdezés tehát, ami tényleg elhasználja a szerveroldali
+     * keretét, definíció szerint nem tud megérkezni: a curl pont akkor vágja el, amikor
+     * a szerver elkezdene válaszolni. Élesben pontosan ez volt a naplóban:
+     * „Operation timed out after 30000 milliseconds with 0 bytes received".
+     *
+     * Mérve: a teljes `url:miserend` lekérdezés az overpass.openstreetmap.fr-en 24,1 mp
+     * alatt adott 3,17 MB-ot — a 30 mp-es közös korlát alatt, de már a sodrásában.
+     *
+     * `null` = maradjon a régi viselkedés (a queryTimeout a curl korlátja is).
+     */
+    public $transferTimeout = null;
+
+    /**
      * #766: a kapcsolatfelvétel felső korlátja másodpercben.
      *
      * Szándékosan sokkal kisebb a teljes időkorlátnál: a kérés kiszolgálása tarthat
@@ -139,8 +156,29 @@ class ExternalApi {
                 $this->tryToLoadFromCache();
             }
 
-            if (!isset($this->rawData)) {
+            $cachebolJott = isset($this->rawData);
+
+            if (!$cachebolJott) {
                 $this->downloadData();
+            }
+
+            /*
+             * #840: a válasz formailag rendben van — de ÉRDEMI-e?
+             *
+             * A HTTP 200 nem elég bizonyíték. Az Overpass a szerveroldali időtúllépésre is
+             * 200-at ad (üres `elements` + `remark`), egy földrajzilag korlátozott tükör
+             * pedig hiánytalan JSON-t ad a világ töredékéről. Mindkettő „sikeresen"
+             * lefutott, és mindkettő egy hétre beégett a cache-be.
+             *
+             * Ha a cache-ből jött a hibás válasz, TÖRÖLJÜK is: különben a következő futás
+             * ugyanazt olvasná vissza, és a javítás egy hétig nem érne semmit.
+             */
+            $elutasitas = $this->rejectionReason();
+            if ($elutasitas !== null) {
+                if ($cachebolJott) {
+                    $this->forgetCache();
+                }
+                throw new \Exception($elutasitas);
             }
 
             // Ha a cache be van kapcsolva, akkor szeretnénk elmenteni a letöltött adatokat.
@@ -247,6 +285,33 @@ class ExternalApi {
         }
     }
 
+    /**
+     * #840: érdemi-e a most kapott válasz?
+     *
+     * Alapból minden válasz elfogadható — a formai ellenőrzést (JSON/XML, HTTP-kód) a
+     * `downloadData()` már elvégezte. Ez a horog azoknak a szolgáltatóknak való, ahol a
+     * 200-as válasz ÖNMAGÁBAN nem bizonyíték (l. `\ExternalApi\OverpassApi`).
+     *
+     * @return ?string a visszautasítás oka, vagy null, ha a válasz rendben van
+     */
+    protected function rejectionReason(): ?string {
+        return null;
+    }
+
+    /**
+     * #840: a mostani lekérdezés cache-fájljának eldobása.
+     *
+     * Akkor kell, ha utólag derül ki, hogy a tárolt válasz hibás. Enélkül egy rossz
+     * pillanat a cache teljes élettartamára (Overpassnál egy hétre) beég.
+     */
+    public function forgetCache(): bool {
+        if (empty($this->cacheFilePath) || !file_exists($this->cacheFilePath)) {
+            return false;
+        }
+
+        return @unlink($this->cacheFilePath);
+    }
+
     function downloadData() {        
         $header = array("cache-control: no-cache","Content-Type: application/".$this->format);
 		if(isset($this->headerAuthorization))
@@ -255,7 +320,8 @@ class ExternalApi {
         curl_setopt($ch, CURLOPT_URL,$this->apiUrl . $this->rawQuery);
 		//echo $this->apiUrl . $this->rawQuery."\n";
         
-		curl_setopt($ch, CURLOPT_TIMEOUT, $this->queryTimeout);
+		// #840: a válaszra tovább várunk, mint amennyi keretet a szolgáltatónak adtunk.
+		curl_setopt($ch, CURLOPT_TIMEOUT, $this->transferTimeout ?? $this->queryTimeout);
 
 		/*
 		 * #766: külön KAPCSOLAT-időkorlát. Eddig csak a teljes kérésre volt korlát (30 mp),

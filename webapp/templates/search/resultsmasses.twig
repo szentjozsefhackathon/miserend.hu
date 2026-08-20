@@ -14,6 +14,7 @@
            kockázat — a keresőoldal egy idegen CDN elérhetőségén múlott. #}
         <link rel="stylesheet" href="/node_modules/leaflet/dist/leaflet.css"/>
         <script src="/node_modules/leaflet/dist/leaflet.js"></script>
+        <script src="/js/map-tiles.js"></script>
     {% endif %}
     <script>
         window.boundaryDataFromUrl = {{ boundaryDataJson|raw|default('[]') }};
@@ -112,10 +113,9 @@
                     var radiusKm = {{ nearbyRadius|json_encode|raw }};
                     var churches = {{ nearbyMapJson|raw }};
                     var map = L.map('nearby-masses-map').setView([origin.lat, origin.lon], 12);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        maxZoom: 19,
-                        attribution: '&copy; OpenStreetMap közreműködők'
-                    }).addTo(map);
+                    {# #817: a kanonikus csempeforrás. A korábbi direkt OSM-hívás nemcsak
+                       policy-sértés volt, de az attribúcióban egyetlen link sem szerepelt. #}
+                    L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas).addTo(map);
                     var bounds = L.latLngBounds([[origin.lat, origin.lon]]);
                     function escapeHtml(value) {
                         var node = document.createElement('div');

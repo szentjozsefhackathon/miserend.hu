@@ -262,9 +262,21 @@ function file_exists_ci($fileName) {
     return false;
 }
 
+/**
+ * #860: hibakereső kiírás — HTML-be ESCAPE-elve.
+ *
+ * A függvény korábban nyersen echózta a `print_r()` kimenetét. Ez addig ártalmatlan,
+ * amíg saját adatot ír ki, de a `Request::IntegerArrayRequired()`-ben ottfelejtett
+ * hívás a FELHASZNÁLÓ bemenetét adta vissza — reflected XSS lett belőle, bejelentkezés
+ * nélkül, sima GET-tel.
+ *
+ * A hívásokat kivettük, de a függvény maga is legyen védett: hibakereséskor az ember
+ * pont nem arra figyel, honnan jött az adat. Escape-elve ugyanúgy olvasható, csak nem
+ * futtatható.
+ */
 function printr($variable) {
 
-    echo"<pre>" . print_r($variable, 1) . "</pre>";
+    echo "<pre>" . htmlspecialchars(print_r($variable, 1), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</pre>";
 }
 
 function configurationSetEnvironment($env) {
