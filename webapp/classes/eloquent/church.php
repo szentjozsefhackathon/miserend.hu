@@ -1475,7 +1475,7 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             ->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
             ->join('user', 'user.uid', '=', 'church_holders.user_id')
             ->whereIn('templomok.id', array_keys($erintettek))
-            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error','crashed') AND emails.to = user.email AND emails.updated_at > ? ) ",
                 [$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
             ->where('church_holders.status', 'allowed')
             ->whereNull('church_holders.deleted_at')

@@ -43,6 +43,20 @@ $json = json_encode(
     JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
 );
 
+/*
+ * #845: KÉT szóközös behúzás, hogy a diff olvasható maradjon.
+ *
+ * A `JSON_PRETTY_PRINT` négy szóközt ad, a beversenyzett fájl viszont kettővel készült
+ * (valamikor egy szerkesztő formázta újra). Emiatt egy sémabővítés — ami tartalmilag két
+ * sor — 3000 soros diffet termelt, és a review-ban semmi nem látszott belőle. A behúzás
+ * itt dől el egyszer, hogy a következő generálás ne csússzon el megint.
+ */
+$json = preg_replace_callback(
+    '/^(?: {4})+/m',
+    fn($m) => str_repeat(' ', strlen($m[0]) / 2),
+    $json
+);
+
 file_put_contents(\SchemaCheck::referenceFile(), $json . "\n");
 
 printf("Referencia frissítve: %s\n", \SchemaCheck::referenceFile());

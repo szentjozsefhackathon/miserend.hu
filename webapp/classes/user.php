@@ -840,10 +840,19 @@ class User {
 	 * beszámítanánk, az ilyen fiókok némán kimaradnának a törlésből.
 	 */
 	static function isUndeliverable(string $type, string $email): bool {
+		/*
+		 * #845: csak a CÍMZETT oldali kudarc számít bizonyítéknak.
+		 *
+		 * A 'crashed' sorokat a `Email::requeueStuck()` termeli, amikor a MI folyamatunk
+		 * halt meg küldés közben. Eddig ezek is 'error'-ba kerültek, és itt beszámítottak
+		 * — vagyis egy háromnapos konténer-leállás után három ilyen sor egy működő címre
+		 * is örökre elnémította az értesítőt. Csendes veszteség, amiről a felhasználó
+		 * soha nem szerzett volna tudomást.
+		 */
 		$errors = DB::table('emails')
 			->where('type', $type)
 			->where('to', $email)
-			->where('status', 'error');
+			->whereIn('status', \Eloquent\Email::rejectedStatuses());
 
 		$lastSuccess = DB::table('emails')
 			->where('type', $type)
@@ -889,9 +898,24 @@ class User {
 		$inactivityPeriod = '-5 years';
 	
 		$users2notify = DB::table('user')
-			->where('lastlogin', '<', date('Y-m-d H:i:s',strtotime( $inactivityPeriod )) )			
+			->where('lastlogin', '<', date('Y-m-d H:i:s',strtotime( $inactivityPeriod )) )
+			/*
+			 * #845: a SOHA be nem lépett fiókok nem ide tartoznak.
+			 *
+			 * A `lastlogin` ilyenkor '0000-00-00 00:00:00', ami minden múltbeli
+			 * időpontnál korábbi, tehát ez a merítés eddig bevette őket. Két baj lett
+			 * belőle. Egy: ugyanaz a fiók KÉT értesítőt is kapott (aktiválás-kérőt
+			 * hetente, „lépj be"-t háromhetente), külön-külön hiba-kerettel, ami
+			 * megduplázta a kézbesíthetetlen kísérleteket. Kettő: a levél szövege
+			 * értelmetlen volt — „már eltelt 740245 nap, hogy nem léptél be".
+			 *
+			 * Ezekkel a `sendActivationNotification()` és a
+			 * `deleteUnreachableNonActivatedUsers()` foglalkozik, tehát nem maradnak
+			 * gazdátlanul; a takarításuk ott is megtörténik.
+			 */
+			->where('lastlogin', '<>', '0000-00-00 00:00:00')
 			->orderByRaw("RAND()")
-			->limit(5)			
+			->limit(5)
 			->get();
 			
 
@@ -970,7 +994,8 @@ class User {
 					FROM emails
 					WHERE
 						`type` = 'user_pleaseupdate' AND 
-						`status` IN ('sent','queued','sending','error') AND
+						/* #845: a 'crashed' is megpróbált értesítés — csak nem a címzett hibája. */
+						`status` IN ('sent','queued','sending','error','crashed') AND
 						emails.to = user.email AND
 						updated_at > '".date('Y-m-d H:i:s',strtotime('-2 weeks'))."'
 						ORDER BY updated_at DESC
@@ -1092,7 +1117,7 @@ class User {
 			->select('user.*')
 			->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
 			->join('user', 'user.uid', '=', 'church_holders.user_id')
-			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
+			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error','crashed') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
 				[$type, date('Y-m-d H:i:s', strtotime('-2 weeks'))])
 			->where('church_holders.status', 'allowed')
 			->whereNull('church_holders.deleted_at')

@@ -469,12 +469,29 @@ class Health extends Html {
 		$this->boundariesStats['churches_with_osm_percentage'] = $totalChurches > 0 ? round(($churchesWithOsmBoundary / $totalChurches) * 100, 2) : 0;
 		$this->boundariesStats['churches_without_osm_percentage'] = $totalChurches > 0 ? round(($churchesWithoutOsmBoundary / $totalChurches) * 100, 2) : 0;
 		
-		// Health of Mailing
+		/*
+		 * #845: a levélstatisztika mondja meg azt is, hogy JAVUL-E.
+		 *
+		 * Eddig egyetlen 30 napos összeg volt típusonként és státuszonként. Ebből
+		 * szerkezetileg lehetetlen megállapítani, hogy egy javítás fogott-e: a
+		 * `user_pleaselogin` hibaszáma pont attól „nőtt" 48-ról 117-re, hogy a #823-as
+		 * javítás egyetlen futással 89 addig láthatatlan, 'sending'-ben ragadt sort
+		 * billentett át — az ablak `created_at` szerint aggregál, tehát a régi sorok
+		 * benne maradtak. A valóságban a kézbesítetlenek száma 137-ről 117-re CSÖKKENT.
+		 *
+		 * Ezért: friss (0-7 nap) és régebbi (8-30 nap) szelet külön, plusz a KÜLÖN
+		 * címzettek száma — abból derül ki, hogy néhány cím pörög-e, vagy tényleg sok
+		 * embert nem érünk el.
+		 */
 		$this->emails = DB::table('emails')
-			->select('type', 'status', DB::raw('COUNT(*) as total'))
+			->select('type', 'status',
+				DB::raw('COUNT(*) as total'),
+				DB::raw('COUNT(DISTINCT `to`) as recipients'),
+				DB::raw('SUM(CASE WHEN created_at >= \'' . Carbon::now()->subDays(7)->toDateTimeString() . '\' THEN 1 ELSE 0 END) as last_week'))
 			->where('created_at', '>=', Carbon::now()->subDays(30))
 			->groupBy('type', 'status')
-			->orderBy('updated_at','DESC')
+			->orderBy('type')
+			->orderBy('status')
 			->get();
 
 		$this->mailing = $config['smtp'];
