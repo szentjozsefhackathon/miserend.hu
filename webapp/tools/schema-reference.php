@@ -44,11 +44,10 @@ $json = json_encode(
 );
 
 /*
- * #866: KÉT szóközös behúzás, hogy a diff olvasható maradjon.
+ * #874: KÉT szóközös behúzás, hogy a diff olvasható maradjon.
  *
- * A `JSON_PRETTY_PRINT` négy szóközt ad, a beversenyzett fájl viszont kettővel készült.
- * Emiatt egy sémabővítés — ami tartalmilag pár sor — 3000 soros diffet termel, és a
- * review-ban semmi nem látszik belőle.
+ * A `JSON_PRETTY_PRINT` négy szóközt ad, a beversenyzett fájl viszont kettővel készült —
+ * emiatt egy sémabővítés 3000 soros diffet termel, és a review-ban semmi nem látszik.
  */
 $json = preg_replace_callback(
     '/^(?: {4})+/m',

@@ -1835,6 +1835,48 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * @param string $churchIdColumn a templom azonosítója a külső lekérdezésben
      *                               (pl. `templomok.id` vagy `t.id`)
      */
+    /**
+     * #854: a legközelebbi misézőhelyek egy koordinátához.
+     *
+     * KÖZÖS lekérdezés a nyilvános API (`Api\NearBy`) és a főoldali „mi van a
+     * közelemben" doboz (`Html\Ajax\NearBy`) között. A kettő SZÉTVÁLT — borazslo kérése:
+     * a főoldal ne a nyilvános API-t hívja, mert az torzítja az API-statisztikát, és a
+     * publikus szerződést sem lehet szabadon alakítani, amíg a saját oldalunk függ tőle.
+     * A LEKÉRDEZÉS viszont maradjon egy: a távolságszámítás és a kizárások pontosan
+     * ugyanazok, és nem szabad, hogy szétcsússzanak.
+     *
+     * A `(0,0)` KIZÁRÁSA szándékos, és nem elméleti: a #94-ben a mobilalkalmazás
+     * GPS-fix nélkül (0,0)-t küldött, és erre minden magyar templom ~5000 km-re jött
+     * vissza — érvényes találatnak látszó szemétként. A koordináta nélküli templomok
+     * ugyanezen a nulla-ponton ülnek (a `lat`/`lon` DEFAULT 0.0), ezért őket is kizárjuk.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder a `distance` mezővel (méter)
+     */
+    public static function nearestQuery(float $lat, float $lon, int $limit = 10) {
+        return self::select()
+            ->addSelect(DB::raw(
+                "ST_distance_sphere( ST_GeomFromText('POINT ( " . (float) $lat . " " . (float) $lon . " )', 4326),"
+                . " ST_GeomFromText(CONCAT('POINT ( ',lat,' ', lon, ')'), 4326) ) as distance"
+            ))
+            ->where('ok', 'i')
+            ->where('lat', '<>', '')
+            ->where('lon', '<>', '')
+            ->whereRaw('NOT (lat = 0 AND lon = 0)')
+            ->orderBy('distance', 'ASC')
+            ->limit($limit);
+    }
+
+    /**
+     * #854/#94: van-e egyáltalán értelmes helyzetünk?
+     *
+     * A (0,0) a Guineai-öbölben van; ott nincs katolikus misézőhely. Ha ez jön be, a
+     * hívó nem helyzetet küldött, hanem a GPS-fix hiányát — és jobb ezt megmondani,
+     * mint egy ötezer kilométeres listát adni érvényes válaszként.
+     */
+    public static function isUsablePosition(float $lat, float $lon): bool {
+        return !($lat === 0.0 && $lon === 0.0);
+    }
+
     public static function citySubquerySql(string $churchIdColumn = 'templomok.id'): string {
         return self::boundaryNameSubquerySql([8, 9, 10], $churchIdColumn);
     }

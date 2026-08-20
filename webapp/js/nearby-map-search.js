@@ -204,10 +204,10 @@
 
         function buildMap(L) {
             state.map = L.map(canvas, { scrollWheelZoom: false });
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            }).addTo(state.map);
+            // #817: a kanonikus csempeforrás (/js/map-tiles.js). A direkt OSM-szerver
+            // produkciós forgalomra tiltott, és a blokkolt csempét HTTP 200-zal, valódi
+            // PNG-ként adja vissza — a Leaflet kirakja, a térkép foltos lesz.
+            L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas).addTo(state.map);
 
             var point = currentPoint();
             state.map.setView(point || DEFAULT_CENTER, point ? 14 : DEFAULT_ZOOM);

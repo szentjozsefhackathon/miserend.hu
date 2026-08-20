@@ -48,7 +48,21 @@ class EditPhotos extends \Html\Html {
         $photos = \Request::Fields('photos');
         if ($photos !== false) {
             foreach ($photos as $modPhoto) {
-                $origPhoto = \Eloquent\Photo::find($modPhoto['id']);
+                /*
+                 * #870: a fotót a SZERKESZTETT TEMPLOMHOZ kötjük.
+                 *
+                 * Itt korábban `Photo::find($modPhoto['id'])` állt, szűkítés nélkül. A
+                 * fenti őr (`church[id] == $this->tid`) csak azt nézi, hogy a saját
+                 * templomát szerkeszti-e valaki — a FOTÓ azonosítója viszont tetszőleges
+                 * lehetett. Egy tetszőleges templom gondnoka tehát a saját templomára
+                 * POST-olva idegen fotót nevezhetett át, rejthetett el, sorrendezhetett
+                 * át, és a `delete` jelzővel VÉGLEG törölhetett — a `photos` táblán nincs
+                 * SoftDeletes, tehát a törlés visszaállíthatatlan.
+                 *
+                 * A `where()` a `find()` ELŐTT: így egy idegen azonosító nem sort ad
+                 * vissza, hanem semmit, és a ciklus csendben továbblép.
+                 */
+                $origPhoto = \Eloquent\Photo::where('church_id', $this->tid)->find($modPhoto['id']);
                 if ($origPhoto) {
                     if ($modPhoto['flag'] == 'i')
                         $origPhoto->flag = 'i';
