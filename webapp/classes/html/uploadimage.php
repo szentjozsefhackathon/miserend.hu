@@ -112,8 +112,8 @@ class UploadImage extends Html {
         if($responsabile) {
             $emails[$responsabile->email] = ['image_diocese', $responsabile->email, $responsabile];
         }
-        /* Templom felelősök */
-        $churchHolders = DB::table('church_holders')->where('church_id',$this->church->id)->where('church_holders.status','allowed')->leftJoin('user','user.uid','=','church_holders.user_id')->where('user.notifications',1)->get();        
+        /* Templom felelősök — #819: a származtatott gondnokok is (l. notifiableHolders()). */
+        $churchHolders = $this->church->notifiableHolders();
         foreach($churchHolders as $churchHolder) {
             $emails[$churchHolder->email] = ['image_responsible', $churchHolder->email, $churchHolder];
         }

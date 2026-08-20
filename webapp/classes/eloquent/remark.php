@@ -98,8 +98,10 @@ class Remark extends \Illuminate\Database\Eloquent\Model {
         if($responsabile) {
             $emails[$responsabile->email] = ['diocese', $responsabile->email, $responsabile];
         }
-        /* Templom felelősök */
-        $churchHolders = DB::table('church_holders')->where('church_id',$this->church->id)->where('church_holders.status','allowed')->leftJoin('user','user.uid','=','church_holders.user_id')->where('user.notifications',1)->get();        
+        /* Templom felelősök — #819: a származtatott gondnokok is. Egy fília, aminek
+           nincs saját gondnoka, eddig SENKIT nem értesített, pedig a plébánosa
+           hivatalosan hozzáfér hozzá. */
+        $churchHolders = $this->church->notifiableHolders();
         foreach($churchHolders as $churchHolder) {
             $emails[$churchHolder->email] = ['responsible', $churchHolder->email, $churchHolder];
         }

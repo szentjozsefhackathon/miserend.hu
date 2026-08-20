@@ -180,12 +180,15 @@ class Church extends \Html\Html {
 
         // #505: az adatlap admin/szerkesztő nézetében jelezzük, van-e a templomnak
         // aktív (engedélyezett) gondnoka. A részletes lista a _panelholders.twig-ben marad.
+        //
+        // #819: a SZÁRMAZTATOTT gondnokok is beleszámítanak. Egy saját gondnok nélküli
+        // fília eddig „nincs gondnok"-ot mutatott, pedig a plébánosa hozzáfér — a
+        // felirat épp az ellenkezőjét állította annak, ami igaz.
+        $this->activeHolderCount = $church->activeHolderCount();
+
         // #830: a sablon innen tudja meg, melyik szó az útvonal — így a döntés
         // megváltoztatása egyetlen konstans átírása marad.
         $this->csaladUtvonal = self::CSALAD_UTVONAL;
-
-        $this->activeHolderCount = \Eloquent\ChurchHolder::where('church_id', $church->id)
-            ->where('status', 'allowed')->count();
 
         global $_tidsToWorkWith;
         if(in_array($this->id, $_tidsToWorkWith)) {
