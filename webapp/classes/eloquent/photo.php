@@ -193,7 +193,9 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
                     $exception .= " Because ".$target_path." already exists.";
             if(!is_writable(dirname($target_path)))
                     $exception .= " Because ".dirname($target_path)." is not writable.";
-            \printr($inputFile);
+            // #860: itt egy `\printr($inputFile)` állt, ami a nyers $_FILES bejegyzést —
+            // benne a szerver ideiglenes útvonalával — a válaszba echózta. A konkrét okot
+            // az $exception fentebb amúgy is tartalmazza, ez csak szivárgás volt.
             throw new \Exception($exception);
         }
 
