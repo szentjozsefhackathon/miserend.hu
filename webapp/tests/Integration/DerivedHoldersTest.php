@@ -212,4 +212,123 @@ class DerivedHoldersTest extends TestCase {
 
         self::assertNotContains($this->idegenId, (new \User($this->userId))->responsibleChurchIds());
     }
+
+    /* ---- #819 folytatás: az ÉRTESÍTÉS is öröklődjön ---- */
+
+    /**
+     * Ez a jegy lényege: a fília, aminek nincs saját gondnoka, EDDIG SENKIT nem
+     * értesített — pedig a plébánosa hivatalosan hozzáfér, és rajta kívül nincs is más,
+     * aki frissíthetné. A jog megvolt, csak nem szóltunk neki.
+     */
+    public function testAFiliaErtesitoiKozottOttVanAPlebanos(): void {
+        $this->gondnok($this->plebaniaId);
+
+        $ertesitendok = $this->templomObjektum($this->filiaId)->notifiableHolders();
+
+        $this->assertSame([$this->userId], $ertesitendok->pluck('uid')->map('intval')->all());
+    }
+
+    /** Aki több szinten is gondnok, egyszer kapjon levelet, ne háromszor. */
+    public function testAKettosGondnokEgyszerSzerepelAzErtesitendokKozott(): void {
+        $this->gondnok($this->plebaniaId);
+        $this->gondnok($this->koztesId);
+        $this->gondnok($this->filiaId);
+
+        $this->assertCount(1, $this->templomObjektum($this->filiaId)->notifiableHolders());
+    }
+
+    /** A csak KÉRT gondnokság nem jogosít, tehát értesítőt sem von maga után. */
+    public function testACsakKertGondnoksagNemErtesit(): void {
+        $this->gondnok($this->plebaniaId, 'asked');
+
+        $this->assertCount(0, $this->templomObjektum($this->filiaId)->notifiableHolders());
+    }
+
+    /** Aki kikapcsolta az értesítéseket, annak nem küldünk — az öröklődés ezen nem lép át. */
+    public function testAzErtesiteseketKikapcsoloNemKapLevelet(): void {
+        $this->gondnok($this->plebaniaId);
+        DB::table('user')->where('uid', $this->userId)->update(['notifications' => 0]);
+
+        $this->assertCount(0, $this->templomObjektum($this->filiaId)->notifiableHolders());
+    }
+
+    /** Cím nélkül nincs értelme levelet írni — eddig ezt egyik hívóhely sem nézte. */
+    public function testACimNelkuliFelhasznaloKimarad(): void {
+        $this->gondnok($this->plebaniaId);
+        DB::table('user')->where('uid', $this->userId)->update(['email' => '']);
+
+        $this->assertCount(0, $this->templomObjektum($this->filiaId)->notifiableHolders());
+    }
+
+    /**
+     * A TÖRÖLT gondnokság sem értesít.
+     *
+     * A négy régi hívóhely közül egyik sem szűrt `deleted_at`-re, tehát a visszavont
+     * gondnokság is kapott levelet.
+     */
+    public function testATOroltGondnoksagNemErtesit(): void {
+        $this->gondnok($this->plebaniaId);
+        DB::table('church_holders')
+            ->where('church_id', $this->plebaniaId)
+            ->where('user_id', $this->userId)
+            ->update(['deleted_at' => date('Y-m-d H:i:s')]);
+
+        $this->assertCount(0, $this->templomObjektum($this->filiaId)->notifiableHolders());
+    }
+
+    /**
+     * A KÖZVETLEN gondnok is benne van — a származtatott nem VÁLTJA KI, hanem kiegészíti.
+     */
+    public function testAKozvetlenGondnokIsErtesulAFiliarol(): void {
+        $this->gondnok($this->filiaId);
+
+        $this->assertSame([$this->userId],
+            $this->templomObjektum($this->filiaId)->notifiableHolders()->pluck('uid')->map('intval')->all());
+    }
+
+    /* ---- #819: a származtatott lista hibája ---- */
+
+    /**
+     * Aki a fílián csak KÉRTE a gondnokságot, a plébánián viszont teljes jogú, az eddig
+     * SEHOL nem jelent meg: a közvetlen listából kiesett (nem 'allowed'), a
+     * származtatottból pedig kizártuk. Pedig épp neki van hozzáférése.
+     */
+    public function testAFilianCsakKeroDeFelettAllowedGondnokSzarmaztatottkentLatszik(): void {
+        $this->gondnok($this->plebaniaId);
+        $this->gondnok($this->filiaId, 'asked');
+
+        $szarmaztatott = $this->templomObjektum($this->filiaId)->derivedHolders();
+
+        $this->assertSame([$this->userId], $szarmaztatott->pluck('user_id')->map('intval')->all());
+    }
+
+    /* ---- #819: az őstérkép ---- */
+
+    /** A tömeges térkép ugyanazt adja, mint a templomonkénti bejárás. */
+    public function testAzOsterkepEgyezikATemplomonkentiBejarassal(): void {
+        $terkep = \Eloquent\Church::ancestorMap();
+
+        $this->assertEqualsCanonicalizing(
+            $this->templomObjektum($this->filiaId)->ancestorChurchIds(),
+            $terkep[$this->filiaId] ?? []
+        );
+    }
+
+    /** Ciklus esetén se fusson végtelen körbe — egy elrontott szerkesztés ne állítsa meg a cront. */
+    public function testAzOsterkepTuleliACiklust(): void {
+        $this->kapcsolat($this->filiaId, $this->plebaniaId);   // A -> B -> C -> A
+
+        $terkep = \Eloquent\Church::ancestorMap();
+
+        $this->assertNotEmpty($terkep[$this->filiaId] ?? []);
+        $this->assertLessThanOrEqual(3, count($terkep[$this->filiaId]));
+    }
+
+    /** Az örökölt párok listája SQL-be írható, és csak számokat tartalmaz. */
+    public function testAzOrokoltParokListajaCsakSzamokatTartalmaz(): void {
+        $sql = \Eloquent\Church::inheritedHolderPairsSql();
+
+        $this->assertMatchesRegularExpression('/^(\(\d+,\d+\))(,\(\d+,\d+\))*$/', $sql);
+        $this->assertStringContainsString('(' . $this->filiaId . ',' . $this->plebaniaId . ')', $sql);
+    }
 }

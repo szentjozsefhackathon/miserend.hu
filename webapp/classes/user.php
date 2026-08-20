@@ -960,7 +960,29 @@ class User {
 				// volna, és vele az egész „frissítsd az adataidat" értesítő.
 				->select('templomok.id as tid','templomok.nev','templomok.ismertnev','templomok.frissites')
 				->selectRaw(\Eloquent\Church::citySubquerySql('templomok.id') . ' AS varos')
-				->join('church_holders','templomok.id','=','church_holders.church_id')
+				/*
+				 * #819: az ÖRÖKÖLT gondnokságok is számítanak.
+				 *
+				 * A join eddig a templomot a SAJÁT gondnokaihoz kötötte, tehát egy elavult
+				 * fília, aminek nincs saját gondnoka, SENKIT nem szólított meg — pedig a
+				 * plébánosa hivatalosan hozzáfér, és rajta kívül nincs is más, aki
+				 * frissíthetné. A jog megvolt, csak nem szóltunk neki.
+				 *
+				 * A bővítés a JOIN feltételébe kerül, nem a WHERE-be: ott az `OR` a többi
+				 * szűrőt is felülírná (két hetes ablak, `notifications`, cím megléte),
+				 * és olyanoknak is menne levél, akiknek nem szabad.
+				 *
+				 * Megfizethető, mert a hierarchia PICI: 456 kapcsolat, és mindössze 456
+				 * templomnak van egyáltalán szülője — az örökölt párok száma eleve pár száz.
+				 */
+				->join('church_holders', function ($join) {
+					$join->on('templomok.id', '=', 'church_holders.church_id');
+
+					$orokolt = \Eloquent\Church::inheritedHolderPairsSql();
+					if ($orokolt !== '') {
+						$join->orWhereRaw('(templomok.id, church_holders.church_id) IN (' . $orokolt . ')');
+					}
+				})
 				->addSelect('church_holders.description')
 				->join('user','user.uid','=','church_holders.user_id')
 				->addSelect('user.*');
@@ -983,7 +1005,7 @@ class User {
 				->whereNotNull('user.email')
 				->where('user.email','<>','')
 				->where('templomok.frissites','<',date('Y-m-d',strtotime('-1 year')))->where('templomok.ok','i')
-								
+
 			->groupBy('user.email')
 			->orderByRaw("RAND()")
 			->limit(5)
@@ -1017,10 +1039,26 @@ class User {
 			$user = new User($user2notify->uid);
 			$user->getResponsabilities();
 
-			foreach($user->responsible['church'] as $key => $churchID) {
-				$user->responsible['church'][$churchID] = \Eloquent\Church::find($churchID);
-				unset($user->responsible['church'][$key]);
+			/*
+			 * #819: a levél a SZÁRMAZTATOTT templomokat is sorolja fel.
+			 *
+			 * borazslo: „itt is külön nézzük meg hogy egy user-hez hány saját templom van,
+			 * amit ki kell egészíteni a származtatott templomokkal." Eddig csak a
+			 * közvetlen gondnokságok kerültek a levélbe, tehát a plébános azt látta, hogy
+			 * egyetlen templomát kell frissítenie — miközben tíz fília is hozzá tartozik,
+			 * és azokat rajta kívül senki nem tudja frissíteni.
+			 *
+			 * A `responsibleChurchIds()` a leszármazottakat is behúzza; a szerkesztési jog
+			 * amúgy is rájuk terjed, tehát nem kérünk olyat, amit nem tud megtenni.
+			 */
+			$templomok = [];
+			foreach ($user->responsibleChurchIds() as $churchID) {
+				$templom = \Eloquent\Church::find($churchID);
+				if ($templom) {
+					$templomok[(int) $churchID] = $templom;
+				}
 			}
+			$user->responsible['church'] = $templomok;
 
 			$batchId = bin2hex(random_bytes(16));
 			$churchTokens = [];

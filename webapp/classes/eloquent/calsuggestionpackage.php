@@ -106,13 +106,8 @@ class CalSuggestionPackage extends CalModel
             $emails[$responsabile->email] = ['diocese', $responsabile->email, $responsabile];
         }
 
-        // Templom felelősök
-        $churchHolders = DB::table('church_holders')
-            ->where('church_id', $church->id)
-            ->where('church_holders.status', 'allowed')
-            ->leftJoin('user', 'user.uid', '=', 'church_holders.user_id')
-            ->where('user.notifications', 1)
-            ->get();
+        // Templom felelősök — #819: a származtatott gondnokok is (l. notifiableHolders()).
+        $churchHolders = $church->notifiableHolders();
         foreach ($churchHolders as $churchHolder) {
             if (!empty($churchHolder->email)) {
                 $emails[$churchHolder->email] = ['responsible', $churchHolder->email, $churchHolder];
