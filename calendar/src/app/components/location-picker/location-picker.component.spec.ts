@@ -61,6 +61,7 @@ describe('LocationPickerComponent (#816)', () => {
       tileLayer: jasmine.createSpy('tileLayer').and.returnValue({addTo: () => null}),
       marker: jasmine.createSpy('marker').and.returnValue(marker),
       latLng: jasmine.createSpy('latLng').and.callFake((a: number, b: number) => ({lat: a, lng: b})),
+      icon: jasmine.createSpy('icon').and.callFake((o: any) => o),
     };
 
     loader = jasmine.createSpyObj('LeafletLoaderService', ['load']);
@@ -150,7 +151,9 @@ describe('LocationPickerComponent (#816)', () => {
 
       await inditsd();
 
-      expect(L.marker).toHaveBeenCalledWith([46.18, 20.03], {draggable: true});
+      // #816: az `icon` a kifejtett képútvonalakat hordozza — l. a „jelölő-ikon útvonala" blokkot.
+      expect(L.marker).toHaveBeenCalledWith([46.18, 20.03],
+        jasmine.objectContaining({draggable: true}));
     });
   });
 
@@ -366,6 +369,55 @@ describe('LocationPickerComponent (#816)', () => {
       component.ngOnChanges({lat: {} as any});
 
       expect(map.panTo).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #816: a jelölő ikonjának útvonala.
+   *
+   * A Leaflet magától próbálja kitalálni, hol vannak a képei — a `document.body`-ba
+   * szúrt mérőelem `background-image`-éből. A mi stíluslapunk viszont a SHADOW ROOTBAN
+   * van, tehát a mérés üresre fut, és a Leaflet a LAP címéhez képest old fel:
+   * `/templom/:id/marker-icon.png`. Az pedig a front controlleren HTML-t ad vissza,
+   * nem képet — a jelölő törött.
+   */
+  describe('jelölő-ikon útvonala (#816)', () => {
+
+    it('kifejtett, abszolút útvonalat ad a képeknek', async () => {
+      component.lat = 46.25;
+      component.lon = 20.15;
+
+      await inditsd();
+
+      expect(L.icon).toHaveBeenCalled();
+      const ikon = L.icon.calls.mostRecent().args[0];
+
+      expect(ikon.iconUrl).toBe('/node_modules/leaflet/dist/images/marker-icon.png');
+      expect(ikon.shadowUrl).toBe('/node_modules/leaflet/dist/images/marker-shadow.png');
+      expect(ikon.iconRetinaUrl).toContain('marker-icon-2x.png');
+    });
+
+    it('a horgonyt is megadja — enélkül elcsúszna a tűhegy', async () => {
+      component.lat = 46.25;
+      component.lon = 20.15;
+
+      await inditsd();
+
+      const ikon = L.icon.calls.mostRecent().args[0];
+      expect(ikon.iconAnchor).toEqual([12, 41]);
+      expect(ikon.iconSize).toEqual([25, 41]);
+    });
+
+    it('a jelölő ezt az ikont kapja', async () => {
+      component.lat = 46.25;
+      component.lon = 20.15;
+
+      await inditsd();
+
+      expect(L.marker).toHaveBeenCalledWith(
+        [46.25, 20.15],
+        jasmine.objectContaining({draggable: true, icon: jasmine.anything()}),
+      );
     });
   });
 });

@@ -197,6 +197,37 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
     return {lat: 47.4979, lon: 19.0402};
   }
 
+  /**
+   * #816: a jelölő ikonja KIFEJTETT útvonallal.
+   *
+   * A Leaflet magától próbálja kitalálni, hol vannak a képei: létrehoz egy
+   * `<div class="leaflet-default-icon-path">`-et a `document.body`-ban, és annak a
+   * `background-image`-éből számol. A mi stíluslapunk viszont a SHADOW ROOTBAN van
+   * (a naptár `ViewEncapsulation.ShadowDom`-mal fut), tehát a `document.body`-ban lévő
+   * mérőelemre nem vonatkozik — a detektálás üresre fut, és a Leaflet a LAP címéhez
+   * képest oldja fel az utat.
+   *
+   * borazslo pontosan ezt látta: a `marker-icon.png` a `/templom/:id/marker-icon.png`
+   * címen kereste magát. Az pedig a front controlleren HTML-t ad vissza (mérve:
+   * `content-type: text/html`), nem képet — a jelölő tehát törött.
+   *
+   * A méretek a Leaflet saját alapértékei; azért írjuk ki, mert az `icon()` megadásával
+   * a `Icon.Default` egészét kiváltjuk, és a hiányzó horgony elcsúsztatná a tűhegyet.
+   */
+  private jeloloIkon() {
+    const alap = '/node_modules/leaflet/dist/images/';
+
+    return this.L.icon({
+      iconUrl: alap + 'marker-icon.png',
+      iconRetinaUrl: alap + 'marker-icon-2x.png',
+      shadowUrl: alap + 'marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    });
+  }
+
   private jeloloFrissit(): void {
     if (!this.L || !this.map) {
       return;
@@ -211,7 +242,10 @@ export class LocationPickerComponent implements AfterViewInit, OnChanges, OnDest
     }
 
     if (!this.marker) {
-      this.marker = this.L.marker([this.lat, this.lon], {draggable: true}).addTo(this.map);
+      this.marker = this.L.marker([this.lat, this.lon], {
+        draggable: true,
+        icon: this.jeloloIkon(),
+      }).addTo(this.map);
       this.marker.on('dragend', () => {
         const p = this.marker.getLatLng();
         this.valaszt(p.lat, p.lng);
