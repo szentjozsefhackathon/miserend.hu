@@ -51,6 +51,22 @@
 
         {{ extraMeta|raw }}
         <link rel="shortcut icon" type="image/vnd.microsoft.icon" href="/favicon.ico">
+        {#
+            #855: az iOS „Hozzáadás a kezdőképernyőhöz" ikonja.
+
+            borazslo kérdése az volt, hogy honnan jön a sok `apple-touch-icon.png` és
+            `apple-touch-icon-precomposed.png` kérés — nem a régi iOS-alkalmazás maradéka:
+            az Apple MAGÁTÓL keresi. Ha nincs `<link rel="apple-touch-icon">`, a Safari a
+            dokumentum GYÖKERÉBŐL találgat, több névvel egymás után (…-precomposed.png,
+            …-180x180.png, …). Mindegyik 404 volt, és mindegyik bekerült a statisztikába.
+
+            A link megléte ezt a találgatást megszünteti: egyetlen kérés lesz belőle, és
+            a kezdőképernyőn végre a saját ikonunk jelenik meg a weblap-pillanatkép helyett.
+
+            A fájl SZÁNDÉKOSAN átlátszóság nélküli: az Apple a transzparens képpontokat
+            feketére festi. A lekerekítést a rendszer maga adja hozzá.
+        #}
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
         
 		<link href="/node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
