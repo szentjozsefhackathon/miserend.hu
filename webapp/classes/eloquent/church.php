@@ -243,9 +243,24 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         }
     }
     
+    /** #866: a gyóntatást az AJTÓÉRZÉKELŐ jelzi (Mód 1) — a vízszivárgás (Mód 2) nem. */
+    const CONFESSION_MOD_DOOR = 1;
+
     public function getConfessionStatusAttribute() {
-        // Get all confessions related to this church
-        $lastConfessionData = \Eloquent\Confession::where('church_id', $this->id)->orderBy('timestamp', 'desc')->limit(1)->get();
+        /*
+         * #866: CSAK az ajtóérzékelő sorai számítanak.
+         *
+         * A LoRaWAN-végpont két módot ismer, és mindkettő 'ON'/'OFF'-ot ír ugyanabba a
+         * `status` mezőbe. Ez a lekérdezés a templom legutolsó sorát vette, módra való
+         * szűrés nélkül — egy jelzett VÍZSZIVÁRGÁSBÓL tehát „Most van gyóntatás a
+         * helyszínen!" lett a templom oldalán.
+         *
+         * A `device_mode` alapértéke 1, tehát a régi sorok (mind ajtóérzékelőtől) továbbra
+         * is beleszámítanak.
+         */
+        $lastConfessionData = \Eloquent\Confession::where('church_id', $this->id)
+            ->where('device_mode', self::CONFESSION_MOD_DOOR)
+            ->orderBy('timestamp', 'desc')->limit(1)->get();
         // Ha sosem kaptunk még ilyen adatot, az azt jelenti, hogy a templomban nincs telepítve gyóntatási kapcsoló
         
         if ($lastConfessionData->isEmpty()) {            
