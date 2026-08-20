@@ -6,7 +6,7 @@ class Token {
         global $config;
                 
         if(isset($_COOKIE['token'])) {
-                \Eloquent\Token::where('name',$_COOKIE['token'])->delete();
+                \Eloquent\Token::deleteByName($_COOKIE['token']);
         }
 
         $timeout = date('Y-m-d H:i:s', strtotime("+" . $config['token'][$type]));        
@@ -29,7 +29,7 @@ class Token {
    
     static function delete() {
         if(isset($_COOKIE['token'])) {
-            \Eloquent\Token::where('name',$_COOKIE['token'])->delete();
+            \Eloquent\Token::deleteByName($_COOKIE['token']);
             setcookie('token', "", strtotime("-1 year"),"/","", self::isHttps(), true);
             unset($_COOKIE['token']);
         }        

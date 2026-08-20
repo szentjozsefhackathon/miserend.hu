@@ -20,6 +20,8 @@ class Health extends Html {
     public $boundariesStats;
     public $schemaCheck;
     public $emails;
+    /** Választható, de nem generált időszakok — az oda tett mise sehol nem jelenne meg. */
+    public $periodsWithoutGenerated;
     public $mailing;
     public $foremail;
 
@@ -242,6 +244,29 @@ class Health extends Html {
 		$ids = $elastic->churchIdsWithMassesInPeriod(date('Y-01-01'), date('Y-12-31'));
 		$this->churchesWithNoElasticMasses = \Eloquent\Church::whereNotIn('id', $ids)->has('massrules')->get()->toArray();
 		$this->churchesWithNoElasticMassesCount = count($this->churchesWithNoElasticMasses);
+
+		/*
+		 * Választható, de nem generált időszakok.
+		 *
+		 * A miserend-szerkesztő minden `selectable = 1` időszakot felajánl. Ha egy
+		 * időszakhoz nincs `cal_generated_periods` sor, az oda tett mise SEHOL nem jelenik
+		 * meg — se a naptárban, se a keresőben —, és erről semmi nem szól. A szerkesztő azt
+		 * látja, hogy beírta, a látogató azt, hogy nincs ott.
+		 *
+		 * Nem hiba önmagában: a generálás a `\Crons::rollPeriodYears()` dolga, ami havonta
+		 * fut, tehát egy frissen felvett időszaknál ez átmeneti állapot. De LÁTSZÓDNIA kell,
+		 * mert magától nem derül ki. (A fejlesztői adatbázisban például a 43-as „Nyár"
+		 * ilyen.)
+		 */
+		$this->periodsWithoutGenerated = DB::table('cal_periods')
+			->where('cal_periods.selectable', 1)
+			->whereNotExists(function ($q) {
+				$q->select(DB::raw(1))
+					->from('cal_generated_periods')
+					->whereColumn('cal_generated_periods.period_id', 'cal_periods.id');
+			})
+			->orderBy('cal_periods.name')
+			->get(['cal_periods.id', 'cal_periods.name']);
 		
 		// Health of ExternalApis
 		$this->externalapis = [];		
