@@ -48,7 +48,9 @@ class Favorites extends Api {
         parent::run();
         $this->getInputJson();
 
-        $token = \Eloquent\Token::where('name',$this->input['token'])->first();
+        // #862: típusbiztos keresés — a JSON-ból szám is jöhet, és a MySQL olyankor a
+        // TÁROLT sztringet konvertálja számmá (l. Token::findByName()).
+        $token = \Eloquent\Token::findByName($this->input['token'] ?? null);
         if(!$token or !$token->isValid) {
             throw new \Exception("Invalid token.");
         }    
