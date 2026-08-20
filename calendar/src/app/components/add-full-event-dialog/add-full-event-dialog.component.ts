@@ -19,6 +19,7 @@ import {AsyncPipe, TitleCasePipe, CommonModule} from '@angular/common';
 import {map, Observable, of, startWith} from 'rxjs';
 import {MatSelectModule} from '@angular/material/select';
 import {MatCheckboxModule} from '@angular/material/checkbox';
+import {LocationPickerComponent, PickedLocation} from '../location-picker/location-picker.component';
 import {recurrences, Renum} from '../../enum/recurrence';
 import {TranslatePipe, TranslateService} from '@ngx-translate/core';
 import {Rite, RiteMassTypes} from '../../enum/rites';
@@ -60,6 +61,7 @@ import {ChristmasDay} from "../../enum/christmas-day";
     ReactiveFormsModule,
     MatSelectModule,
     MatCheckboxModule,
+    LocationPickerComponent,
     TranslatePipe,
     TitleCasePipe,
     MatExpansionModule,
@@ -104,6 +106,36 @@ export class AddFullEventDialogComponent {
       this.data.event.locationLon = null;
       this.data.event.locationName = null;
     }
+  }
+
+  /**
+   * #816: a térképen kijelölt pont átvétele.
+   *
+   * A nevet SZÁNDÉKOSAN nem nyúlja meg: azt a felhasználó írta, és egy térképi
+   * kattintás nem tudhatja, hogy a „Röszkei puszta, kereszt" már nem érvényes.
+   */
+  onHelyszinValasztva(pont: PickedLocation): void {
+    this.data.event.locationLat = pont.lat;
+    this.data.event.locationLon = pont.lon;
+  }
+
+  /**
+   * #816: mi álljon a fejléc helyszín-jelének tooltipjében.
+   *
+   * Fél koordinátánál (a felhasználó még csak az egyiket írta be) a `MassUtil` még
+   * nem ad címkét — a jel viszont már ott van a bekapcsolt jelölő miatt. Ilyenkor
+   * inkább a mező nevét mutatjuk, mint egy „NaN, NaN"-t.
+   */
+  helyszinCimke(): string {
+    const alkalom = {
+      locationLat: this.data.event.locationLat,
+      locationLon: this.data.event.locationLon,
+      locationName: this.data.event.locationName,
+    } as any;
+
+    return MassUtil.hasOwnLocation(alkalom)
+      ? MassUtil.locationLabel(alkalom)
+      : this.translateService.instant('DIFFERENT_LOCATION');
   }
 
   // #454: Új dátum hozzáadásához használt ideiglenes változó
