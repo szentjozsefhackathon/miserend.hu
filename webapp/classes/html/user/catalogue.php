@@ -117,8 +117,24 @@ class Catalogue extends \Html\Html {
             $query->where('jogok', 'like', "%" . $this->input['adminok'] . "%");
         }
 
+        /*
+         * #819: a szűrés a JOIN feltételébe való, nem a WHERE-be.
+         *
+         * A `leftJoin` + `where('church_holders.status','allowed')` páros csendben
+         * INNER JOIN-ná alakította a lekérdezést: akinek egyetlen engedélyezett
+         * gondnoksága sincs, az a „templomok szerint" rendezésnél egyszerűen ELTŰNT a
+         * felhasználó-listából. Nem nullával szerepelt — nem szerepelt.
+         *
+         * A törölt gondnokságokat sem szűrtük, tehát a szám azokat is beleszámolta.
+         */
         if($this->input['sort'] == 'templomok desc')
-            $query->addSelect(DB::raw('count(church_holders.church_id) as templomok'))->leftJoin('church_holders', 'church_holders.user_id','=','user.uid')->where('church_holders.status','allowed')->groupBy('uid');
+            $query->addSelect(DB::raw('count(church_holders.church_id) as templomok'))
+                ->leftJoin('church_holders', function ($join) {
+                    $join->on('church_holders.user_id', '=', 'user.uid')
+                         ->where('church_holders.status', 'allowed')
+                         ->whereNull('church_holders.deleted_at');
+                })
+                ->groupBy('uid');
         
 		if($this->input['sort'] == 'favorites desc')
             $query->addSelect(DB::raw('count(favorites.tid) as favorites'))->leftJoin('favorites', 'favorites.uid','=','user.uid')->groupBy('user.uid');
