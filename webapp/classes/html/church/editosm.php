@@ -194,13 +194,14 @@ class EditOsm extends \Html\Html {
 					[
 						'church_id' => $this->church['id'],
 						'key' => $key
-					],			
+					],
 					[
 						'value' => $value,
-						'fromOSM' => 1
+						// #840: a jelzőt a KULCS dönti el, egyetlen helyen — l. Attribute::isOsmKey().
+						'fromOSM' => (int) \Eloquent\Attribute::isOsmKey($key)
 					]
 				);
-			}			
+			}
 						
 			// #670: az OSM-tagok (pl. wheelchair) a templom keresési adatai közé kerülnek,
 			// és a mise-indexbe is beágyazódnak — frissítsük, hogy a kereső rögtön lássa.

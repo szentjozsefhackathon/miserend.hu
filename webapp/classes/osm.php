@@ -614,10 +614,13 @@ class OSM {
 					[
 						'church_id' => $church->id,
 						'key' => $key
-					],			
+					],
 					[
 						'value' => $value,
-						'fromOSM' => 1
+						// #840: a jelzőt a KULCS dönti el. Ami az OSM-ből jön, az per
+						// definíció OSM-kulcs — de a döntés egy helyen szülessen, hogy
+						// a négy írási hely ne tudjon szétcsúszni.
+						'fromOSM' => (int) \Eloquent\Attribute::isOsmKey($key)
 					]
 				);
 			}
