@@ -1341,6 +1341,18 @@
           "nullable": true,
           "default": null,
           "extra": ""
+        },
+        "error_reason": {
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "failed_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
         }
       },
       "indexes": {
@@ -1348,6 +1360,14 @@
           "unique": true,
           "columns": [
             "id"
+          ]
+        },
+        "type_to_status": {
+          "unique": false,
+          "columns": [
+            "type",
+            "to",
+            "status"
           ]
         }
       }
@@ -3127,8 +3147,8 @@
     }
   },
   "_meta": {
-    "generated_at": "2026-08-20T11:14:05+02:00",
-    "source_schema": "ref_master",
+    "generated_at": "2026-08-20T11:23:43+02:00",
+    "source_schema": "ref_845",
     "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
     "initdb_files": {
       "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
