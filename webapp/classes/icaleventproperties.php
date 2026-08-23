@@ -280,6 +280,78 @@ class IcalEventProperties {
     }
 
     /**
+     * #157: a bejegyzés KATEGÓRIÁJA a címből.
+     *
+     * borazslo: „ha a keresőben filterként választom ki hogy misefélék vagy
+     * szentségimádások vagy gyóntatások vagy egyebek, akkor azok még nem fogják jól
+     * megtalálni az importált speciális miséinket."
+     *
+     * MINTA-CSAPDÁK, amiket nem szabad elfelejteni:
+     *
+     *   - „liturgia" TELJES szóként, nem „liturgi": a „Régi rítusú liturgikus hétvége"
+     *     különben misévé válna. Ugyanezt a döntést a `RITE_PATTERNS` már meghozta.
+     *   - „szentmise" és „mise" is kell: az előbbi a gyakori alak, az utóbbi a
+     *     „Régi rítusú mise"-hez.
+     *   - a „szentségimádás" nem tartalmazza a „mise" szót, tehát nincs átfedés.
+     *
+     * @var array<string, string[]>
+     */
+    private const CATEGORY_PATTERNS = [
+        'CONFESSION' => ['gyóntat', 'gyontat', 'szentgyónás', 'szentgyonas', 'gyónási', 'gyonasi', 'confession'],
+        'ADORATION'  => ['szentségimád', 'szentsegimad', 'adorác', 'adorac', 'adoration'],
+        'MASS'       => ['szentmise', 'mise', 'liturgia', 'szentáldozás', 'szentaldozas', 'mass', 'eucharist'],
+        'OTHER'      => ['rózsafüzér', 'rozsafuzer', 'keresztút', 'keresztut', 'litánia', 'litania',
+                         'zsolozsma', 'vecsernye', 'utrenye', 'esti dicséret', 'esti dicseret', 'imaóra', 'imaora'],
+    ];
+
+    /**
+     * #157: melyik kategóriába tartozik ez a cím?
+     *
+     * A magyar naptárcímek a FŐESEMÉNYT írják előre, ezért a címben LEGKORÁBBAN
+     * előforduló minta nyer — nem a csoportok sorrendje:
+     *
+     *   „Szentmise, utána szentségimádás"      -> MASS
+     *   „Szentségimádás a szentmise után"      -> ADORATION
+     *   „Gyóntatás a szentmise előtt"          -> CONFESSION
+     *
+     * Csoport-sorrenddel mindhárom ugyanazt adná, tehát kettő rossz lenne.
+     *
+     * @return ?string a kategória kulcsa, vagy null, ha nem ismerjük fel
+     */
+    public static function detectCategory(string $summary): ?string {
+        return self::earliestMatch(self::normalize($summary), self::CATEGORY_PATTERNS);
+    }
+
+    /**
+     * A LEGKORÁBBAN előforduló minta csoportja.
+     *
+     * A `firstMatch()` a csoportok sorrendje szerint dönt — ott ez helyes (a rítusnál a
+     * szűkebb minta van elöl). Itt viszont a szöveg sorrendje a mérvadó, l. a
+     * `detectCategory()` példáit.
+     *
+     * @param array<string, string[]> $patterns
+     */
+    private static function earliestMatch(string $haystack, array $patterns): ?string {
+        $legkorabbi = null;
+        $hol = null;
+
+        foreach ($patterns as $ertek => $mintak) {
+            foreach ($mintak as $minta) {
+                $pozicio = mb_strpos($haystack, $minta);
+                if ($pozicio === false) {
+                    continue;
+                }
+                if ($hol === null || $pozicio < $hol) {
+                    $hol = $pozicio;
+                    $legkorabbi = $ertek;
+                }
+            }
+        }
+
+        return $legkorabbi;
+    }
+
+    /**
      * @param array<string, string[]> $patterns
      */
     private static function firstMatch(string $haystack, array $patterns): ?string {
