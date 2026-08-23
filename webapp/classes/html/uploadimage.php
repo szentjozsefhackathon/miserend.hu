@@ -16,6 +16,8 @@ class UploadImage extends Html {
 
         // #391: közvetlen $_REQUEST helyett a \Request:: olvasás.
         if (\Request::get('upload') !== false) {
+            // #873: a feltöltés fájlt ír a lemezre és sort a `photos` táblába — POST + token.
+            \Csrf::guard();
             $this->ajax();
             exit;
         }

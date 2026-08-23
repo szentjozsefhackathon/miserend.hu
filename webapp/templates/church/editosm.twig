@@ -41,6 +41,7 @@
 	<div class="alert alert-warning">Az alábbi adatok közül honlapunkon még még nem használ fel minden adatot.</div>
 	
     <FORM ENCTYPE='multipart/form-data' method=post>
+    {{ csrf_field() }}
         <input type=hidden name=church[id] value={{ church.id }}>
 		<input type=hidden name=osmid value={{ church.osmid }}>
 		<input type=hidden name=osmtype value={{ church.osmtype }}>

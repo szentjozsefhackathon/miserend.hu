@@ -14,6 +14,7 @@
         <p><strong>Ha vállalod a gondoksággal járó felelősséget, akkor kattints lenn a „Kérés küldése” gombra.</strong></p>    
     
         <FORM ENCTYPE='multipart/form-data' action="/templom/{{ holder.church_id }}/changeholders" method=post>
+        {{ csrf_field() }}
         <table class="table table-striped align-middle">
             <tr>
                 <td>Templom:</td>

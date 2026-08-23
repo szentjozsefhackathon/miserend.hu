@@ -49,6 +49,7 @@
 		
 
     <FORM ENCTYPE='multipart/form-data' method=post>
+    {{ csrf_field() }}
         <input type=hidden name=church[id] value={{ church.id }}>
 			
 		{% for photo in church.photos %}

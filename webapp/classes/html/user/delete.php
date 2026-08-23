@@ -38,15 +38,20 @@ class Delete extends \Html\Html {
             return;
         }
 
+        // #873: a felhasználó törlése eddig egyetlen linken múlt
+        // (`/user/{uid}/delete?confirmation=confirmed`) — vagyis egy beágyazott kép
+        // a bejelentkezett adminunk nevében bárkit törölhetett.
+        \Csrf::guard();
+
         $this->user2delete->delete();
         header("Location: /user/catalogue");
     }
 
     /**
      * A saját fiók törlése visszafordíthatatlan, ezért nem elég egy linkre kattintani:
-     * POST kell hozzá és a saját jelszó. A jelszó nem csak elgépelés ellen véd — CSRF
-     * ellen is, mert egy idegen oldal el tudna küldeni egy formot a nevünkben, a
-     * jelszavunkat viszont nem tudja. (A projektben nincs CSRF-token mechanizmus.)
+     * POST kell hozzá, CSRF-token és a saját jelszó. A jelszó nem csak elgépelés ellen
+     * véd — a tokentől függetlenül is bizonyítja, hogy tényleg a fiók gazdája kérte.
+     * (#873 óta van CSRF-token mechanizmus; a jelszó marad, mert nem ugyanazt védi.)
      */
     private function deleteSelf() {
         global $user;

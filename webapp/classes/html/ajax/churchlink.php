@@ -5,7 +5,9 @@ namespace Html\Ajax;
 class ChurchLink extends Ajax {
 
     public function __construct() {
-        
+        // #873: hivatkozás felvétele és törlése is írás — POST + token.
+        \Csrf::guard();
+
         $action = \Request::InArrayRequired('action', ['delete','add']);
 
         header("Content-Type: text/plain");                         

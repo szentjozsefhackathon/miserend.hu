@@ -22,7 +22,11 @@ class Delete extends \Html\Html {
         if (!$this->input['confirmation']) {
             $this->askConfirmation();
             return;
-        } else {            
+        } else {
+            // #873: a templom törlése (a misékkel, képekkel, kedvencekkel együtt)
+            // eddig GET-tel is kiadható volt — a megerősítő űrlap POST-ol ugyan, de a
+            // `?confirmation=confirmed` egy sima linkből is elég volt hozzá.
+            \Csrf::guard();
             $this->delete();
         }
     }

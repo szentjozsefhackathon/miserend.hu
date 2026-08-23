@@ -21,6 +21,7 @@
 		</td>
 		<td valign=top width="140" style="padding:3px">
                     <form method=post action='/templom/{{ remark.church_id }}/eszrevetelek'>
+                        {{ csrf_field() }}
                         <input type=hidden name=rid value="{{ remark.id }}">
                         <div class='form-group '>
                             <label for='my_dropdown'>Állapot</label>

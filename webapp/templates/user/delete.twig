@@ -24,6 +24,7 @@
 		nem tudjuk visszaadni.</p>
 
 	<form method="post" action="/user/{{ user2delete.uid }}/delete">
+		{{ csrf_field() }}
 		<div class="form-group">
 			<label for="password">A megerősítéshez add meg a jelszavadat:</label>
 			<input type="password" class="form-control" id="password" name="password"
@@ -41,10 +42,16 @@
 	<p>Biztosan törölni akarod a következő felhasználót?</p>
 	<p><strong>{{ user2delete.username }}</strong> ({{ user2delete.nev }})</p>
 
-	<p>
-		<a href="/user/{{ user2delete.uid }}/delete?confirmation=confirmed" class="btn btn-danger">Igen</a>
+	{# #873: az „Igen" eddig link volt, tehát GET-tel is kiadható — egy beágyazott kép
+	   a bejelentkezett admin nevében törölhetett bárkit. Most POST-űrlap, tokennel. #}
+	<div>
+		<form method="post" action="/user/{{ user2delete.uid }}/delete" style="display:inline">
+			<input type="hidden" name="confirmation" value="confirmed">
+			{{ csrf_field() }}
+			<button type="submit" class="btn btn-danger">Igen</button>
+		</form>
 		<a href="/user/{{ user2delete.uid }}/edit" class="btn btn-secondary">Nem</a>
-	</p>
+	</div>
 {% endif %}
 
 {% endblock %}

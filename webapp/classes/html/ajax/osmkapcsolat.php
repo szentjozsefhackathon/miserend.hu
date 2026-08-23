@@ -12,6 +12,10 @@ class OSMKapcsolat extends Ajax {
         
 
         try {
+            // #873: az OSM-összeköttetés bontása törli az összes fromOSM attribútumot is
+            // — POST + token. (A hibát a lenti catch csomagolja JSON-ba.)
+            \Csrf::guard();
+
             $action = \Request::InArrayRequired('action', ['delete', 'add']);
             $tid = \Request::IntegerRequired('tid');
 

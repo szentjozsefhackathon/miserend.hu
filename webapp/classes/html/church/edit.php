@@ -61,6 +61,8 @@ class Edit extends \Html\Html {
         }
 
         $isForm = \Request::Text('submit');
+        // #873: a mentés POST + token. Eddig egy `?submit=1&church[...]=...` URL is elég volt.
+        if ($isForm) { \Csrf::guard(); }
         $isRelationshipAction = \Request::get('relationship[add]') !== false
             || \Request::get('relationship[delete]') !== false;
         if ($isForm || $isRelationshipAction) {

@@ -44,7 +44,11 @@ class ChangeHolders extends \Html\Html {
                 }
                 $this->holder = $churchHolder;
                            
-            } else {            
+            } else {
+                // #873: itt már írunk — POST + token. A fenti `confirmation == 'needed'`
+                // ág CSAK megjelenít (a megerősítő lapot), azt szándékosan nem őrizzük.
+                \Csrf::guard();
+
                 $churchHolder = \Eloquent\ChurchHolder::updateOrCreate($where,$data);
                 $churchHolder->sendEmails();
                 addMessage('A kérést köszönettel elmentettük.', 'info');
@@ -52,7 +56,15 @@ class ChangeHolders extends \Html\Html {
             }
         
         } else if($user->checkRole('miserend')) {
-           
+            /*
+             * #873: ez az ág adott ki és vont vissza szerkesztési jogot — GET-en, sima
+             * linkkel. Vagyis egy bejelentkezett miserend-adminnak elég volt megnéznie
+             * egy idegen oldalt (vagy egy beküldött észrevételben lévő képet), és a
+             * nevében kiosztódott a jog egy tetszőleges felhasználónak egy tetszőleges
+             * templomra. A jogosultság-ellenőrzés eközben hibátlanul lefutott.
+             */
+            \Csrf::guard();
+
 			if ( $data['status'] == 'toDelete') {
 				$churchHolder = \Eloquent\ChurchHolder::where('user_id',$where['user_id'])->where('church_id',$where['church_id'])->first()->delete();
 			} else {

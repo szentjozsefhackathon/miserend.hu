@@ -19,6 +19,10 @@ class EditSchedule extends \Html\Html {
 
         // Handle POST request to mark schedule as current
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'mark_current') {
+            // #873: POST-ot már eddig is követelt, tokent nem — egy rejtett űrlappal
+            // idegen oldalról is „naprakésszé" lehetett nyilvánítani a miserendet.
+            \Csrf::guard();
+
             $church = \Eloquent\Church::find($this->tid);
             if ($church && $church->writeAccess) {
                 $church->frissites = date('Y-m-d H:i:s');

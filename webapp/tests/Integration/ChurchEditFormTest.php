@@ -12,14 +12,12 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class ChurchEditFormTest extends TestCase {
 
-    private string $baseUrl;
-    private ?string $cookie = null;
+    private CsrfFormClient $client;
     private ?int $churchId = null;
 
     protected function setUp(): void {
-        $this->baseUrl = rtrim(getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000', '/');
-        $this->login();
-        if ($this->cookie === null) {
+        $this->client = new CsrfFormClient();
+        if (!$this->client->login('admin', 'miserend')) {
             $this->markTestSkipped('Nem sikerült adminisztrátorként bejelentkezni.');
         }
         $this->churchId = $this->createChurch();
@@ -45,35 +43,13 @@ class ChurchEditFormTest extends TestCase {
         ]);
     }
 
-    /** Bejelentkezés; a session-sütit eltesszük a további kérésekhez. */
-    private function login(): void {
-        $ctx = stream_context_create(['http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/x-www-form-urlencoded\r\n",
-            'content'       => http_build_query(['login' => 'admin', 'passw' => 'miserend', 'logout' => 'false']),
-            'timeout'       => 30,
-            'ignore_errors' => true,
-        ]]);
-        @file_get_contents($this->baseUrl . '/', false, $ctx);
-        foreach ($http_response_header ?? [] as $h) {
-            if (stripos($h, 'Set-Cookie:') === 0 && stripos($h, 'token=') !== false) {
-                $this->cookie = trim(explode(';', substr($h, 11))[0]);
-            }
-        }
-    }
-
+    /**
+     * #873: a beküldés a CsrfFormClient-en át megy, ami úgy viselkedik, mint a böngésző:
+     * betölti a szerkesztő lapot, elteszi a `csrf` sütit, és a POST-hoz mellékeli a
+     * lapról kiolvasott tokent. Enélkül a mentés — helyesen — meg sem történne.
+     */
     private function post(string $path, array $fields): string {
-        $header = "Content-Type: application/x-www-form-urlencoded\r\n";
-        if ($this->cookie) {
-            $header .= 'Cookie: ' . $this->cookie . "\r\n";
-        }
-        $ctx = stream_context_create(['http' => [
-            'method' => 'POST', 'header' => $header,
-            'content' => http_build_query($fields), 'timeout' => 60, 'ignore_errors' => true,
-        ]]);
-        $body = @file_get_contents($this->baseUrl . $path, false, $ctx);
-        $this->assertNotFalse($body, 'A kérés nem sikerült: ' . $path);
-        return $body;
+        return $this->client->post($path, $fields, true, '/templom/' . $this->churchId . '/edit');
     }
 
     private function churchRow() {

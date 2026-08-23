@@ -333,6 +333,7 @@
 
 {% block content %}
     <form method="post" enctype="multipart/form-data" id="MyUploadForm">
+    {{ csrf_field() }}
         <input type=hidden name=tid class="form-control" value='{{ church.id }}'>
         <input type=hidden name=upload class="form-control" value='true'>
 

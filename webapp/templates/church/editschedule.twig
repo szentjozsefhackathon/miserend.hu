@@ -53,6 +53,7 @@
                 <div>
                     <form method="POST" action="/templom/{{ church.id }}/editschedule" style="display: inline;">
                         <input type="hidden" name="action" value="mark_current">
+                        {{ csrf_field() }}
 
                     <p style="margin: 5px 0 0 0;">
                         {% if yearsSinceUpdate >= 1 %}

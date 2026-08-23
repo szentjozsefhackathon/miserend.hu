@@ -35,7 +35,14 @@
 	   {% if user.loggedin %}
                 <div class="navbar-form navbar-right" role="search">
                     <a class="button btn btn-default" href="/user/edit">{{ user.username }}</a>
-                    <a class="button btn btn-default" href="/?logout=true" id="quit">Kilépés</a>
+                    {# #873: a kilépés eddig link volt, tehát bármelyik idegen oldal ki tudta
+                       léptetni a látogatót (egy `<img src="https://miserend.hu/?logout=true">`
+                       elég volt hozzá). Kártétel nincs, bosszantás van. POST-űrlap, tokennel. #}
+                    <form method="post" action="/" style="display:inline">
+                        <input type="hidden" name="logout" value="true">
+                        {{ csrf_field() }}
+                        <button type="submit" class="button btn btn-default" id="quit">Kilépés</button>
+                    </form>
                 </div>
             {% else %}
                 <form class="navbar-form navbar-right" role="search"  method="post">

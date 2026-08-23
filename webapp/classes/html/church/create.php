@@ -14,6 +14,8 @@ class Create extends \Html\Html {
 
         
         $isForm = \Request::Text('submit');
+        // #873: új templom felvétele — POST + token.
+        if ($isForm) { \Csrf::guard(); }
         if ($isForm) {
             $tid = $this->create();            
             if($tid) {

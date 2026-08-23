@@ -11,6 +11,9 @@ class Email extends \Html\Html {
 
         $this->mail = new \Eloquent\Email();        
         if (\Request::text('send') == 'Küldés') {
+            // #873: levélküldés a mi nevünkben, tetszőleges címzettnek és szöveggel —
+            // GET-tel is kiadható volt. POST + token.
+            \Csrf::guard();
             $this->send();
             $this->template = 'layout_simpliest.twig';
             $this->body = "Köszönjük, elküldtük.";

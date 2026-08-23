@@ -28,6 +28,8 @@ class EditPhotos extends \Html\Html {
 
 	
         $isForm = \Request::Text('submit');
+        // #873: fotó átnevezése, elrejtése, VÉGLEGES törlése — POST + token.
+        if ($isForm) { \Csrf::guard(); }
         if ($isForm) {
             $this->modify();
         }
