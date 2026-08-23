@@ -67,6 +67,42 @@ class Crons {
 	 * határa. A /health ezt írja ki, hogy a lefedettségi hiány LÁTSZÓDJON — eddig
 	 * csak abból derült volna ki, hogy egy település alatt nem jön ki a templom.
 	 */
+	/**
+	 * #842: bélyeget adunk annak, aminek MÁR MEGVAN a határa.
+	 *
+	 * A `boundaries_checked_at` oszlop utólagos migrációval került be (initdb.d/03),
+	 * NULL alapértékkel. Ettől minden régi templom „soha nem ellenőrzött"-nek látszik,
+	 * pedig a határa rég megvan: az éles /health 4950 ilyet mutat, MIKÖZBEN 5052/5052-nek
+	 * van administratív határa. A `checkBoundaries()` ezért hónapok óta olyan adatot
+	 * kérdez újra az Overpasstól, ami a saját táblánkban ott van.
+	 *
+	 * A bélyeg SZÁNDÉKOSAN szétszórt a frissességi ablakon belül. Ha mind a mai napot
+	 * kapná, fél év múlva egyszerre járna le az összes, és a mai helyzet térne vissza egy
+	 * csapásra. Így viszont naponta a töredékük válik esedékessé, egyenletesen.
+	 *
+	 * Idempotens: csak a bélyeg nélküli, határral rendelkező sorokat érinti. A határ
+	 * NÉLKÜLI templomokat nem bántja — azokkal a `requeueChurchesWithoutBoundary()`
+	 * foglalkozik, és nekik pont a NULL a jelzésük.
+	 *
+	 * @return int hány templom kapott bélyeget
+	 */
+	public static function backfillBoundaryCheckedAt(): int {
+		$napok = max(1, (int) round((time() - strtotime('-' . \OSM::BOUNDARY_FRESHNESS)) / 86400));
+
+		return DB::table('templomok')
+			->whereNull('boundaries_checked_at')
+			->whereExists(function ($q) {
+				$q->select(DB::raw(1))
+					->from('lookup_boundary_church')
+					->join('boundaries', 'boundaries.id', '=', 'lookup_boundary_church.boundary_id')
+					->whereColumn('lookup_boundary_church.church_id', 'templomok.id')
+					->where('boundaries.boundary', 'administrative');
+			})
+			->update(['boundaries_checked_at' => DB::raw(
+				'DATE_SUB(NOW(), INTERVAL FLOOR(RAND() * ' . $napok . ') DAY)'
+			)]);
+	}
+
 	public static function churchesWithoutBoundaryCount(): int {
 		return DB::table('templomok')
 			->where('ok', 'i')

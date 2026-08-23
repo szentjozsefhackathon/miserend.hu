@@ -530,18 +530,26 @@
 	</table>
 	
 	{% if emails|length > 0 %}
-		<p><i>Az elmúlt 30 napban elküldött levelek statisztikája:</i></p>
+		<p><i>Az elmúlt 30 napban elküldött levelek statisztikája.</i>
+		   <small class="text-muted">A „utolsó 7 nap" oszlop mondja meg, hogy egy javítás fogott-e:
+		   a 30 napos összeg még hetekig hordozza a javítás előtti napokat. A „címzett" oszlopból
+		   derül ki, hogy néhány cím pörög-e, vagy tényleg sok embert nem érünk el.
+		   A <code>crashed</code> státusz a MI megszakadt folyamatunkat jelenti, nem a címzettet.</small></p>
 		<table class="table table-hover table-condensed table-striped">
 			<tr>
 				<th >type</th>
 				<th >status</th>
 				<th >total</th>
+				<th >utolsó 7 nap</th>
+				<th >címzett</th>
 			</tr>
 			{% for email in emails %}
 				<tr>
 					<td>{{ email.type }}</td>
 					<td>{{ email.status }}</td>
 					<td>{{ email.total }}</td>
+					<td>{{ email.last_week }}</td>
+					<td>{{ email.recipients }}</td>
 				</tr>
 			{% endfor %}
 		</table>

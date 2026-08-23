@@ -1501,7 +1501,8 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         $users2notify = DB::table('user')
             ->select('user.*')
             ->whereIn('user.uid', array_keys($gondnokok))
-            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+            /* #845: a 'crashed' is megpróbált értesítés — csak nem a címzett hibája. */
+            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error','crashed') AND emails.to = user.email AND emails.updated_at > ? ) ",
                 [$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
             ->where('user.notifications', 1)
             ->whereNotNull('user.email')->where('user.email', '<>', '')

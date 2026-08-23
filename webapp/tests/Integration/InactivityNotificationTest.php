@@ -61,6 +61,26 @@ class InactivityNotificationTest extends TestCase {
         return $uid;
     }
 
+    /**
+     * #845: SOHA be nem lépett fiók. A `lastlogin` ilyenkor a nulla-dátum, ami minden
+     * múltbeli időpontnál korábbi — ezért esett bele az inaktivitási merítésbe is.
+     */
+    private function makeNeverLoggedInUser(string $email): int {
+        $uid = (int) DB::table('user')->max('uid') + 1;
+        DB::table('user')->insert([
+            'uid'       => $uid,
+            'login'     => 'sosemvolt' . $uid,
+            'jelszo'    => 'x',
+            'jogok'     => 'user',
+            'regdatum'  => date('Y-m-d H:i:s', strtotime('-8 years')),
+            'lastlogin' => '0000-00-00 00:00:00',
+            'email'     => $email,
+            'becenev'   => 'Sosem',
+            'nev'       => 'Sosem Lépett Be',
+        ]);
+        return $uid;
+    }
+
     private function makeAttempt(string $to, string $status, string $when): void {
         DB::table('emails')->insert([
             'type'       => 'user_pleaselogin',
@@ -251,5 +271,25 @@ class InactivityNotificationTest extends TestCase {
         $this->assertTrue(\User::isEmailUsable('valaki@example.com'));
         // A körülötte lévő szóköz nem teszi használhatatlanná.
         $this->assertTrue(\User::isEmailUsable('  valaki@example.com  '));
+    }
+
+    /**
+     * #845: a soha be nem lépett fiók NEM ide tartozik.
+     *
+     * A nulla-dátumú `lastlogin` minden múltbeli időpontnál korábbi, tehát a merítés
+     * eddig bevette. Két baj lett belőle. Egy: ugyanaz a fiók KÉT értesítőt kapott
+     * (aktiválás-kérőt és „lépj be"-t), külön-külön hiba-kerettel — ez duplázta a
+     * kézbesíthetetlen kísérleteket, amiből az éles /health 117-es hibaszáma is áll.
+     * Kettő: a levél szövege értelmetlen volt, „már eltelt 740245 nap, hogy nem léptél be".
+     */
+    public function testASosemBelepettFiokNemKapInaktivitasiErtesitot(): void {
+        $this->isolateFromExistingUsers();
+        $email = 'sosem' . uniqid() . '@example.com';
+        $this->makeNeverLoggedInUser($email);
+
+        \User::sendInactivityNotification();
+
+        $this->assertSame(0, $this->queuedCountFor($email),
+            'a soha be nem lepett fiokkal az aktivalas-kero ag foglalkozik');
     }
 }

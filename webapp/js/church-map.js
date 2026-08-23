@@ -338,6 +338,18 @@
 
         // #641: a már kirajzolt templomok, hogy mozgatáskor csak a különbséget rajzoljuk.
         var renderedChurchIds = new Set();
+
+        /*
+         * #842: a már lekért egyházmegye-terület — a MOZGATÁS-KEZELŐN KÍVÜL.
+         *
+         * A #641 pont azért vezette be, hogy pásztázáskor ne kérdezzük újra az
+         * Overpasst. Csakhogy a deklaráció az `onMapMoved()` törzsében állt, tehát
+         * minden egyes mozdulatnál visszaállt `null`-ra — a „ezt a területet már
+         * lekértük" feltétel SOHA nem tudott teljesülni. Az optimalizáció egy sor
+         * elhelyezésén bukott el, és ezt semmi nem jelezte: a réteg helyesen jelent
+         * meg, csak közben minden mozdulat elment az Overpassig.
+         */
+        var dioceseFetchedBounds = null;
     
         L.control.layers( null, layerControls ).addTo(mymap);
        
@@ -522,7 +534,8 @@
              *   - a nézet kilóg abból a területből, amit már egyszer lekértünk.
              * A lekért területet megnöveljük, így a szokásos pásztázás már nem jár kéréssel.
              */
-            var dioceseFetchedBounds = null;
+            // #842: a `dioceseFetchedBounds` a függvényen KÍVÜL él (l. fentebb) — itt
+            // deklarálva minden mozdulatnál nullázódott, és a lenti feltétel sosem fogott.
 
             function refreshDioceses(mapBounds) {
                 var visible = mymap.hasLayer(diocesesRomanCatholicLayer) || mymap.hasLayer(diocesesGreekcatholicLayer);
