@@ -138,13 +138,15 @@ class SearchResultsChurches extends Html {
 
             if (!empty($langsShould)) {
                 $search->addMust([ 'terms' => ['nyelvek' => $langsShould] ]);
-                $translated = array_map(function($l){ return t('LANGUAGES.'.$l); }, $langsShould);
+                // #864: fordítás ÉS escape — a kulcs a felhasználó paraméteréből jön.
+                $translated = \Search::tSafe(array_map(function($l){ return 'LANGUAGES.'.$l; }, $langsShould));
                 $search->filters[] = "Amelyik templomban van liturgia <b>" . implode('</b> vagy <b>', $translated) . "</b> nyelven.";                              
             }
 
             if (!empty($langsMustNot)) {
                 $search->addMustNot([ 'terms' => ['nyelvek' => $langsMustNot] ]);
-                $translated = array_map(function($l){ return t('LANGUAGES.'.$l); }, $langsMustNot);
+                // #864: fordítás ÉS escape — l. Search::tSafe().
+                $translated = \Search::tSafe(array_map(function($l){ return 'LANGUAGES.'.$l; }, $langsMustNot));
                 $search->filters[] = "Amelyik templomban nincs liturgia <b>" . implode('</b> se <b>', $translated) . "</b> nyelven.";                              
             }
         }
@@ -164,13 +166,15 @@ class SearchResultsChurches extends Html {
 
             if (!empty($ritesShould)) {
                 $search->addMust([ 'terms' => ['ritusok.keyword' => $ritesShould] ]);
-                $translated = array_map(function($r){ return t($r); }, $ritesShould);
+                // #864: fordítás ÉS escape — l. Search::tSafe().
+                $translated = \Search::tSafe($ritesShould);
                 $search->filters[] = "Amelyik templomban van <b>" . implode('</b> vagy <b>', $translated) . "</b> liturgia.";
             }
 
             if (!empty($ritesMustNot)) {
                 $search->addMustNot([ 'terms' => ['ritusok.keyword' => $ritesMustNot] ]);
-                $translated = array_map(function($r){ return t($r); }, $ritesMustNot);
+                // #864: fordítás ÉS escape — l. Search::tSafe().
+                $translated = \Search::tSafe($ritesMustNot);
                 $search->filters[] = "Amelyik templomban nincs <b>" . implode('</b> se <b>', $translated) . "</b> liturgia.";
             }
         }
