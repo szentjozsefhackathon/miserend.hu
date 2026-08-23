@@ -130,10 +130,34 @@ class Sqlite extends Api {
         $this->sqliteFileName = 'miserend_v' . $this->version . '.sqlite3';
     }
 
+    /**
+     * #858: a fájlnév MINDIG a mostani verzióból számolódik.
+     *
+     * Itt korábban `if (!isset($this->sqliteFileName))` állt — vagyis az első beállítás
+     * után a név BEFAGYOTT. Ez addig ártalmatlan volt, amíg egy példány egy verziót
+     * épített, de a #822 óta a `cron()` UGYANAZON a példányon megy végig a
+     * `GENERALT_VERZIOK`-on:
+     *
+     *     foreach (self::GENERALT_VERZIOK as $verzio) {   // [4, 5]
+     *         $this->version = $verzio;
+     *         $this->run();                               // -> setFilePath()
+     *     }
+     *
+     * Az első kör beállította a `miserend_v4.sqlite3`-at, a második kör pedig a `version`
+     * átállítása ELLENÉRE ugyanoda írt. Következmény, mérve:
+     *
+     *     version=4  ->  miserend_v4.sqlite3
+     *     version=5  ->  miserend_v4.sqlite3     <-- ide íródik a v5 tartalom
+     *
+     * Ez ROSSZABB, mint egy hiányzó fájl: a v5 sqlite soha nem készült el (a /health-en
+     * és élesben is 404), a `miserend_v4.sqlite3` viszont a V5 SÉMÁJÁT kapta — a v4-es
+     * kliensek tehát olyan `misek` táblát töltöttek le, ami nem az ő alakjuk.
+     *
+     * A `$sqliteFilePath` is újraszámolódik, mert a `run()` és a `generateSqlite()` is
+     * `isset()`-tel őrzi — ugyanaz a befagyás történne vele.
+     */
     function setFilePath() {
-        if(!isset($this->sqliteFileName)) {
-            $this->setFileName();
-        }
+        $this->setFileName();
         $this->sqliteFilePath = PATH . $this->folder . $this->sqliteFileName;
     }
 

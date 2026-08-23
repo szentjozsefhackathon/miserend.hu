@@ -24,8 +24,12 @@ class Josm extends Html {
             // Mert itt tudjuk jól állítani a cache idejét 
             $overpass = new \ExternalApi\OverpassApi();
             $overpass->cache = '1 sec';
+            // #840: ugyanaz az elvárás, mint a cronban — a frissítés ne írjon hiányos
+            // választ a cache-be, amiből aztán a szinkron dolgozna.
+            $overpass->queryTimeout = 120;
+            $overpass->minElements = \OSM::expectedUrlMiserendElements();
             $overpass->downloadUrlMiserend();
-            
+
             $job = \Eloquent\Cron::where('class','\OSM')->where('function','syncUrlMiserendFromOSM')->first();
             $job->run();                       
         }
@@ -38,12 +42,21 @@ class Josm extends Html {
                 ->where('function','syncUrlMiserendFromOSM')->first();
 
        $overpass = new \ExternalApi\OverpassApi();
+       /*
+        * #840: hiányos válaszból NE rajzoljunk összevetést.
+        *
+        * Élesben egy svájci tükör 1 elemes válasza jött vissza a cache-ből — ebből ez az
+        * oldal azt a következtetést vonta le, hogy ötezer templomunknak nincs OSM-adata.
+        * A „nem tudjuk" és a „nincs" nem ugyanaz; az elsőt kell mondani.
+        */
+       $overpass->queryTimeout = 120;
+       $overpass->minElements = \OSM::expectedUrlMiserendElements();
        $overpass->downloadUrlMiserend();
         // #573: az Overpass API gyakran túlterhelt és üres/hibás választ ad. Korábban
         // ilyenkor kivételt dobtunk → az EGÉSZ /josm oldal elszállt. Most inkább
         // barátságos üzenettel, az OSM-függő részeket üresen hagyva betöltjük az oldalt
         // (a DB-alapú rész — osmtags, cron-utolsó-futás — így is látszik).
-        if (empty($overpass->jsonData->elements)) {
+        if ($overpass->hasError() || empty($overpass->jsonData->elements)) {
             addMessage('Az OSM (Overpass) adatok most nem elérhetők (valószínűleg túlterhelt). Az OSM-összevetés átmenetileg üres — próbáld újra pár perc múlva.', 'error');
             $this->multipleOSMids = [];
             $this->osmWBadChurch = [];
@@ -98,7 +111,18 @@ class Josm extends Html {
         }
 			
     
-        /* OSM tag variácók */
+        /*
+         * OSM tag variácók
+         *
+         * #840: a `fromOSM = 1` MOSTANTÓL azt jelenti, hogy a kulcs OSM-címke — nem azt,
+         * hogy ki írta a sort utoljára (l. `\Eloquent\Attribute::isOsmKey()`). A szűrés
+         * tehát maradhat, és most már azt is jelenti, amit mond.
+         *
+         * Miért kell egyáltalán szűrni: a lenti overpass-turbo link és a sablonban lévő
+         * taginfo-hivatkozás a KULCSBÓL épül. A saját névterű kulcsaink
+         * (`communion:gluten_free:*`) OSM-címkeként jelennének meg, halott taginfo-linkkel
+         * és nulla találatot adó Overpass-lekérdezéssel.
+         */
 		$attributes = DB::table('attributes')
 			->select('attributes.*','templomok.osmtype', 'templomok.osmid')
 			->join('templomok','templomok.id', '=', 'attributes.church_id')

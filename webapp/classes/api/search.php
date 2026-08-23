@@ -101,11 +101,13 @@ class Search extends Api {
         // — csak más a címe. Tehát nem külön adatforrás és nem külön válaszszerkezet kell,
         // hanem egy cím-szűrő ugyanazon a mise-indexen. A cím-alakokat a \MassDefinitions
         // adja, ugyanaz, amit a webes keresés (searchresultsmasses) használ.
+        // #157: a cím-lista mellé az INDEXELT kategória is — enélkül az importált és a
+        // kézzel írt egyedi című események egyetlen kategóriában sem szerepeltek.
         $categories = $this->selectedCategories();
         if (!empty($categories)) {
-            $titleFilters = (new \MassDefinitions())->titleFiltersByCategories($categories);
-            if (!empty($titleFilters)) {
-                $search->query['bool']['must'][] = [ 'terms' => ['title.keyword' => $titleFilters] ];
+            $clause = (new \MassDefinitions())->categoryQueryClause($categories);
+            if ($clause !== null) {
+                $search->query['bool']['must'][] = $clause;
             }
         }
 

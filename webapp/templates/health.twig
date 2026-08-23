@@ -217,6 +217,20 @@
 		</div>
 	{% endif %}
 
+	{% if periodsWithoutGenerated is not empty %}
+		<div class="alert alert-warning" style="margin-top: 15px;">
+			<strong>{{ periodsWithoutGenerated|length }} választható időszaknak nincs generált sora.</strong>
+			A szerkesztő felajánlja őket, de az oda tett mise <strong>sehol nem jelenik meg</strong> —
+			se a naptárban, se a keresőben —, és erről semmi nem szól.
+			A pótlás a <code>\Crons::rollPeriodYears()</code> dolga (havonta fut).
+			<ul class="mb-0">
+				{% for period in periodsWithoutGenerated %}
+					<li>#{{ period.id }} — {{ period.name }}</li>
+				{% endfor %}
+			</ul>
+		</div>
+	{% endif %}
+
 	<h3 id="externalapis">Külső szolgáltatók elérhetősége</h3>
 	<p><i>Olyanok mint mapqquest, openstreetmap, kozossegekapi, liturgiativ, nominatim, openinghapi, overpass</i></p> 
 
@@ -516,18 +530,26 @@
 	</table>
 	
 	{% if emails|length > 0 %}
-		<p><i>Az elmúlt 30 napban elküldött levelek statisztikája:</i></p>
+		<p><i>Az elmúlt 30 napban elküldött levelek statisztikája.</i>
+		   <small class="text-muted">A „utolsó 7 nap" oszlop mondja meg, hogy egy javítás fogott-e:
+		   a 30 napos összeg még hetekig hordozza a javítás előtti napokat. A „címzett" oszlopból
+		   derül ki, hogy néhány cím pörög-e, vagy tényleg sok embert nem érünk el.
+		   A <code>crashed</code> státusz a MI megszakadt folyamatunkat jelenti, nem a címzettet.</small></p>
 		<table class="table table-hover table-condensed table-striped">
 			<tr>
 				<th >type</th>
 				<th >status</th>
 				<th >total</th>
+				<th >utolsó 7 nap</th>
+				<th >címzett</th>
 			</tr>
 			{% for email in emails %}
 				<tr>
 					<td>{{ email.type }}</td>
 					<td>{{ email.status }}</td>
 					<td>{{ email.total }}</td>
+					<td>{{ email.last_week }}</td>
+					<td>{{ email.recipients }}</td>
 				</tr>
 			{% endfor %}
 		</table>

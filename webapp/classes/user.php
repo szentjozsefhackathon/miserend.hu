@@ -578,7 +578,9 @@ class User {
         if (!isset($_COOKIE['token'])) 
             return new \User();
                         
-        $token = \Eloquent\Token::where('name',$_COOKIE['token'])->first();
+        // #862: típusbiztos keresés. A süti értéke mindig sztring, tehát itt a hiba nem
+        // volt kiváltható — de a minta legyen egységes, hogy ne lehessen visszacsempészni.
+        $token = \Eloquent\Token::findByName($_COOKIE['token'] ?? null);
         if(!$token or !$token->isValid) {
             \Token::delete();
             return new \User();
@@ -840,10 +842,19 @@ class User {
 	 * beszámítanánk, az ilyen fiókok némán kimaradnának a törlésből.
 	 */
 	static function isUndeliverable(string $type, string $email): bool {
+		/*
+		 * #845: csak a CÍMZETT oldali kudarc számít bizonyítéknak.
+		 *
+		 * A 'crashed' sorokat a `Email::requeueStuck()` termeli, amikor a MI folyamatunk
+		 * halt meg küldés közben. Eddig ezek is 'error'-ba kerültek, és itt beszámítottak
+		 * — vagyis egy háromnapos konténer-leállás után három ilyen sor egy működő címre
+		 * is örökre elnémította az értesítőt. Csendes veszteség, amiről a felhasználó
+		 * soha nem szerzett volna tudomást.
+		 */
 		$errors = DB::table('emails')
 			->where('type', $type)
 			->where('to', $email)
-			->where('status', 'error');
+			->whereIn('status', \Eloquent\Email::rejectedStatuses());
 
 		$lastSuccess = DB::table('emails')
 			->where('type', $type)
@@ -889,9 +900,24 @@ class User {
 		$inactivityPeriod = '-5 years';
 	
 		$users2notify = DB::table('user')
-			->where('lastlogin', '<', date('Y-m-d H:i:s',strtotime( $inactivityPeriod )) )			
+			->where('lastlogin', '<', date('Y-m-d H:i:s',strtotime( $inactivityPeriod )) )
+			/*
+			 * #845: a SOHA be nem lépett fiókok nem ide tartoznak.
+			 *
+			 * A `lastlogin` ilyenkor '0000-00-00 00:00:00', ami minden múltbeli
+			 * időpontnál korábbi, tehát ez a merítés eddig bevette őket. Két baj lett
+			 * belőle. Egy: ugyanaz a fiók KÉT értesítőt is kapott (aktiválás-kérőt
+			 * hetente, „lépj be"-t háromhetente), külön-külön hiba-kerettel, ami
+			 * megduplázta a kézbesíthetetlen kísérleteket. Kettő: a levél szövege
+			 * értelmetlen volt — „már eltelt 740245 nap, hogy nem léptél be".
+			 *
+			 * Ezekkel a `sendActivationNotification()` és a
+			 * `deleteUnreachableNonActivatedUsers()` foglalkozik, tehát nem maradnak
+			 * gazdátlanul; a takarításuk ott is megtörténik.
+			 */
+			->where('lastlogin', '<>', '0000-00-00 00:00:00')
 			->orderByRaw("RAND()")
-			->limit(5)			
+			->limit(5)
 			->get();
 			
 
@@ -960,7 +986,29 @@ class User {
 				// volna, és vele az egész „frissítsd az adataidat" értesítő.
 				->select('templomok.id as tid','templomok.nev','templomok.ismertnev','templomok.frissites')
 				->selectRaw(\Eloquent\Church::citySubquerySql('templomok.id') . ' AS varos')
-				->join('church_holders','templomok.id','=','church_holders.church_id')
+				/*
+				 * #819: az ÖRÖKÖLT gondnokságok is számítanak.
+				 *
+				 * A join eddig a templomot a SAJÁT gondnokaihoz kötötte, tehát egy elavult
+				 * fília, aminek nincs saját gondnoka, SENKIT nem szólított meg — pedig a
+				 * plébánosa hivatalosan hozzáfér, és rajta kívül nincs is más, aki
+				 * frissíthetné. A jog megvolt, csak nem szóltunk neki.
+				 *
+				 * A bővítés a JOIN feltételébe kerül, nem a WHERE-be: ott az `OR` a többi
+				 * szűrőt is felülírná (két hetes ablak, `notifications`, cím megléte),
+				 * és olyanoknak is menne levél, akiknek nem szabad.
+				 *
+				 * Megfizethető, mert a hierarchia PICI: 456 kapcsolat, és mindössze 456
+				 * templomnak van egyáltalán szülője — az örökölt párok száma eleve pár száz.
+				 */
+				->join('church_holders', function ($join) {
+					$join->on('templomok.id', '=', 'church_holders.church_id');
+
+					$orokolt = \Eloquent\Church::inheritedHolderPairsSql();
+					if ($orokolt !== '') {
+						$join->orWhereRaw('(templomok.id, church_holders.church_id) IN (' . $orokolt . ')');
+					}
+				})
 				->addSelect('church_holders.description')
 				->join('user','user.uid','=','church_holders.user_id')
 				->addSelect('user.*');
@@ -970,7 +1018,8 @@ class User {
 					FROM emails
 					WHERE
 						`type` = 'user_pleaseupdate' AND 
-						`status` IN ('sent','queued','sending','error') AND
+						/* #845: a 'crashed' is megpróbált értesítés — csak nem a címzett hibája. */
+						`status` IN ('sent','queued','sending','error','crashed') AND
 						emails.to = user.email AND
 						updated_at > '".date('Y-m-d H:i:s',strtotime('-2 weeks'))."'
 						ORDER BY updated_at DESC
@@ -983,7 +1032,7 @@ class User {
 				->whereNotNull('user.email')
 				->where('user.email','<>','')
 				->where('templomok.frissites','<',date('Y-m-d',strtotime('-1 year')))->where('templomok.ok','i')
-								
+
 			->groupBy('user.email')
 			->orderByRaw("RAND()")
 			->limit(5)
@@ -1017,10 +1066,26 @@ class User {
 			$user = new User($user2notify->uid);
 			$user->getResponsabilities();
 
-			foreach($user->responsible['church'] as $key => $churchID) {
-				$user->responsible['church'][$churchID] = \Eloquent\Church::find($churchID);
-				unset($user->responsible['church'][$key]);
+			/*
+			 * #819: a levél a SZÁRMAZTATOTT templomokat is sorolja fel.
+			 *
+			 * borazslo: „itt is külön nézzük meg hogy egy user-hez hány saját templom van,
+			 * amit ki kell egészíteni a származtatott templomokkal." Eddig csak a
+			 * közvetlen gondnokságok kerültek a levélbe, tehát a plébános azt látta, hogy
+			 * egyetlen templomát kell frissítenie — miközben tíz fília is hozzá tartozik,
+			 * és azokat rajta kívül senki nem tudja frissíteni.
+			 *
+			 * A `responsibleChurchIds()` a leszármazottakat is behúzza; a szerkesztési jog
+			 * amúgy is rájuk terjed, tehát nem kérünk olyat, amit nem tud megtenni.
+			 */
+			$templomok = [];
+			foreach ($user->responsibleChurchIds() as $churchID) {
+				$templom = \Eloquent\Church::find($churchID);
+				if ($templom) {
+					$templomok[(int) $churchID] = $templom;
+				}
 			}
+			$user->responsible['church'] = $templomok;
 
 			$batchId = bin2hex(random_bytes(16));
 			$churchTokens = [];
@@ -1082,6 +1147,46 @@ class User {
 		return true;
 	}
 
+	/**
+	 * #819: mely templomokért felel a felhasználó — a SZÁRMAZTATOTTAKKAL együtt?
+	 *
+	 * A `responsible['church']` csak a közvetlen gondnokságot ismeri, a szerkesztési
+	 * jog viszont a `checkWriteAccess()` óta öröklődik lefelé. A kettő szétcsúszása
+	 * ott fáj, ahol értesítőt küldünk: egy saját gondnok nélküli fíliáról SENKI nem
+	 * kapott levelet, pedig a plébánosa hozzáfér és neki kellene intézkednie.
+	 *
+	 * Külön metódus, nem a `responsible['church']` kibővítése: azt a felület is
+	 * használja („Templomai: 3"), és ott a közvetlen gondnokság a helyes válasz — a
+	 * származtatott hozzáférés nem ugyanaz, mint a vállalt felelősség.
+	 *
+	 * @return int[]
+	 */
+	public function responsibleChurchIds(): array {
+		if (!isset($this->responsible['church'])) {
+			$this->getResponsabilities();
+		}
+
+		$ids = [];
+		foreach ((array) ($this->responsible['church'] ?? []) as $kulcs => $ertek) {
+			// A hívók egy része azonosító-listát tart benne, más része id => Church
+			// térképet (lásd sendUpdateNotification) — mindkettőt el kell fogadni.
+			$churchId = is_object($ertek) ? (int) $ertek->id : (int) (is_int($kulcs) && !is_scalar($ertek) ? $kulcs : $ertek);
+			if (!$churchId) {
+				continue;
+			}
+			$ids[] = $churchId;
+
+			$templom = \Eloquent\Church::find($churchId);
+			if ($templom) {
+				foreach ($templom->descendantChurchIds() as $leszarmazott) {
+					$ids[] = $leszarmazott;
+				}
+			}
+		}
+
+		return array_values(array_unique($ids));
+	}
+
 	/** #290: egy konkrét, 2 hétre lévő ünnepre küld a gondnokoknak (gondnokonként 1 email). */
 	private static function sendHolidayReminderForFeast($feast) {
 		$type = 'holder_holiday_reminder';
@@ -1092,7 +1197,7 @@ class User {
 			->select('user.*')
 			->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
 			->join('user', 'user.uid', '=', 'church_holders.user_id')
-			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
+			->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error','crashed') AND emails.to = user.email AND updated_at > ? LIMIT 1 ) ",
 				[$type, date('Y-m-d H:i:s', strtotime('-2 weeks'))])
 			->where('church_holders.status', 'allowed')
 			->whereNull('church_holders.deleted_at')
@@ -1113,8 +1218,9 @@ class User {
 			$user->getResponsabilities();
 
 			// Csak azok a templomok, amelyeknek KELL az emlékeztető erre az ünnepre.
+			// #819: a származtatott templomok is — a plébános a fíliáiról is kap.
 			$churches = [];
-			foreach ($user->responsible['church'] as $churchID) {
+			foreach ($user->responsibleChurchIds() as $churchID) {
 				$church = \Eloquent\Church::find($churchID);
 				if (!$church || $church->ok !== 'i') continue;
 				$filled = \Eloquent\CalMass::where('church_id', $churchID)

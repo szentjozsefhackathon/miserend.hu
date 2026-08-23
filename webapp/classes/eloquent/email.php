@@ -57,10 +57,27 @@ class Email extends \Illuminate\Database\Eloquent\Model {
         $stuckBefore = date('Y-m-d H:i:s', strtotime('-' . $stuckAfter));
         $giveUpBefore = date('Y-m-d H:i:s', strtotime('-' . $giveUpAfter));
 
+        /*
+         * #845: a feladás oka NEM a címzett.
+         *
+         * Ezek a sorok azért ragadtak be, mert a MI folyamatunk halt meg küldés közben
+         * (időkorlát, OOM, konténer-újraindulás). Eddig ugyanabba az 'error' státuszba
+         * kerültek, mint a valódi SMTP-visszautasítás — az `User::isUndeliverable()`
+         * pedig ezeket is számolta. Következmény: egy háromnapos leállás után három
+         * ilyen sor egy TÖKÉLETESEN MŰKÖDŐ címre is örökre elnémította az értesítőt.
+         *
+         * Külön státusz kell hozzá, nem külön mező: az `attemptedStatuses()`-nak
+         * továbbra is bele kell számítania (megpróbáltuk, ne küldjük ki azonnal újra),
+         * az `isUndeliverable()`-nek viszont nem (nem a cím hibája).
+         */
         $failed = self::where('status', 'sending')
             ->where('updated_at', '<', $stuckBefore)
             ->where('created_at', '<', $giveUpBefore)
-            ->update(['status' => 'error']);
+            ->update([
+                'status' => self::STATUS_CRASHED,
+                'error_reason' => 'A küldés közben megszakadt a folyamatunk; több próbálkozás után feladtam. Nem a címzett hibája.',
+                'failed_at' => date('Y-m-d H:i:s'),
+            ]);
 
         $requeued = self::where('status', 'sending')
             ->where('updated_at', '<', $stuckBefore)
@@ -80,7 +97,27 @@ class Email extends \Illuminate\Database\Eloquent\Model {
      * @return string[]
      */
     public static function attemptedStatuses(): array {
-        return ['queued', 'sending', 'sent', 'error'];
+        return ['queued', 'sending', 'sent', 'error', self::STATUS_CRASHED];
+    }
+
+    /**
+     * #845: a saját folyamatunk halt meg küldés közben — nem a címzett utasított vissza.
+     *
+     * „Megpróbáltuk" szempontból ugyanaz, mint az 'error' (l. `attemptedStatuses()`),
+     * a cím megítélése szempontból viszont NEM az: az `User::isUndeliverable()` ezt nem
+     * számolja bele, különben a mi leállásunk némítaná el a működő címeket.
+     */
+    const STATUS_CRASHED = 'crashed';
+
+    /**
+     * #845: azok a státuszok, amik a CÍMZETT oldali kudarcot jelentik.
+     *
+     * Csak ezeket szabad a kézbesíthetetlenség bizonyítékának tekinteni.
+     *
+     * @return string[]
+     */
+    public static function rejectedStatuses(): array {
+        return ['error'];
     }
     
     function send($to = false) {
@@ -161,9 +198,21 @@ class Email extends \Illuminate\Database\Eloquent\Model {
      */
     protected function fail($reason, $userMessage = 'Valami hiba történt az email elküldése közben.') {
         $this->status = 'error';
+        /*
+         * #845: az OKOT is eltesszük, nem csak azt, hogy „hiba".
+         *
+         * Eddig kizárólag az error_log-ba ment, tehát az éles 117 hibás levélről semmit
+         * nem tudtunk mondani — se azt, hogy elutasított cím, se azt, hogy a kiszolgáló
+         * volt elérhetetlen. Márpedig a kettő ellentétes teendőt kíván.
+         */
+        $this->error_reason = mb_substr((string) $reason, 0, 1000);
+        $this->failed_at = date('Y-m-d H:i:s');
         $this->save();
 
-        error_log('miserend email hiba (id: ' . ($this->id ?: '-') . ', to: ' . $this->to . '): ' . $reason);
+        // #845: `[miserend]` előtaggal, hogy a docs/logok.md-ben dokumentált
+        // `docker logs | grep '[miserend]'` végre megtalálja. Ez volt az EGYETLEN
+        // előtag nélküli hibanaplózás a classes/ alatt.
+        error_log('[miserend] email hiba (id: ' . ($this->id ?: '-') . ', to: ' . $this->to . '): ' . $reason);
         addMessage($userMessage, 'danger');
 
         return false;

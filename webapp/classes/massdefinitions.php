@@ -98,6 +98,91 @@ final class MassDefinitions
         return array_values(array_unique($filters));
     }
 
+    /**
+     * #157: melyik kategóriába tartozik ez a MISE-CÍM?
+     *
+     * Két lépcső, és a sorrend számít:
+     *
+     *   1. PONTOS egyezés a kanonikus alakokra (a definíciókulcs vagy a magyar
+     *      fordítása). Ez garantálja, hogy a mai viselkedés bitre ugyanaz maradjon a
+     *      kanonikus címekre — nulla regresszió.
+     *   2. Ha nincs pontos találat, a szabad szöveges felismerő
+     *      (`\IcalEventProperties::detectCategory()`), ami az importált és a kézzel
+     *      írt egyedi címeket is besorolja.
+     *
+     * ISMERETLEN CÍM -> NULL, NEM 'OTHER'. Az OTHER felületi neve „Egyéb imaalkalmak",
+     * tagjai a zsolozsma, rózsafüzér, litánia, keresztút. Ha minden felismeretlen szabad
+     * szöveg oda kerülne, a szűrő hazudna: a „Képviselőtestületi ülés" és a „Hittanóra"
+     * imaalkalomként jelenne meg. A hiányzó mező őszinte, és mérhető is.
+     */
+    public function categoryForTitle(string $title): ?string
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return null;
+        }
+
+        // Ugyanaz a megfontolás, mint a titleFiltersByCategories()-ban: a `cal_masses.title`
+        // magyar címeket tartalmaz, akkor is, ha valaki angolul nézi az oldalt.
+        \Translator::init('hu');
+
+        foreach ($this->arrayValue('titlesByCategory') as $category => $titles) {
+            foreach ((array) $titles as $kanonikus) {
+                if ($title === $kanonikus) {
+                    return $category;
+                }
+                $forditott = \Translator::translate($kanonikus);
+                if (is_string($forditott) && $forditott !== '' && $title === $forditott) {
+                    return $category;
+                }
+            }
+        }
+
+        return \IcalEventProperties::detectCategory($title);
+    }
+
+    /**
+     * #157: a kategória-szűrő Elasticsearch-klauzulája.
+     *
+     * KÉT ág, `should`-dal összekötve, és mindkettőre szükség van:
+     *
+     *   - `category.keyword` — az új, indexelt kategória. Ez fogja meg az importált és
+     *     a kézzel írt egyedi címeket, amiket a régi szűrő némán elhagyott.
+     *   - `title.keyword` — a mai, cím-alapú lista. Ez tartja életben a szűrőt az
+     *     újraindexelés ALATT (a régi dokumentumokban még nincs `category`), és utána
+     *     is olcsó biztosíték.
+     *
+     * Így nincs olyan pillanat, amikor a szűrő rosszabb lenne a mainál: szigorú bővítés.
+     *
+     * NULL, ha egyetlen érvényes kategória sincs a kérésben — a hívó ilyenkor NE tegyen
+     * be szűrőt. Az ismeretlen kulcs (pl. „SZEMET") tehát nem nulla találatot ad, hanem
+     * szűrés nélküli keresést, ahogy eddig is.
+     *
+     * @param  string[] $categories
+     * @return ?array<string, mixed>
+     */
+    public function categoryQueryClause(array $categories): ?array
+    {
+        $ervenyesKulcsok = array_column($this->categories(), 'key');
+        $ervenyes = array_values(array_intersect(
+            array_map('strval', $categories),
+            $ervenyesKulcsok
+        ));
+
+        if ($ervenyes === []) {
+            return null;
+        }
+
+        $should = [['terms' => ['category.keyword' => $ervenyes]]];
+
+        $cimek = $this->titleFiltersByCategories($ervenyes);
+        if ($cimek !== []) {
+            $should[] = ['terms' => ['title.keyword' => $cimek]];
+        }
+
+        return ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
+    }
+
     private function arrayValue(string $key): array
     {
         return isset($this->data[$key]) && is_array($this->data[$key])

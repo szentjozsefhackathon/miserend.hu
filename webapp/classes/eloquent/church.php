@@ -1469,16 +1469,41 @@ class Church extends \Illuminate\Database\Eloquent\Model {
          * templomokra szűkítve. Egyházmegye-felelős és admin NEM kap — borazslo kérése.
          * A dedup a levelek táblájából megy, egy hónapos ablakkal: a napi cron ne
          * küldjön kétszer ugyanannak.
+         *
+         * #819: a SZÁRMAZTATOTT gondnokok is kapnak. Eddig a `church_holders`-re való
+         * join döntött, ami csak a KÖZVETLEN gondnokot ismeri — egy saját gondnok
+         * nélküli fília búcsújáról tehát SENKI nem kapott értesítést, pedig a
+         * plébánosa hozzáfér és ő az, akinek intézkednie kellene.
+         *
+         * A címzett-templom párokat ezért PHP-ban állítjuk össze: a hierarchia
+         * bejárása rekurzív, azt egy join nem tudja. Az így kapott felhasználó-listára
+         * megy rá a régi szűrés (értesítés bekapcsolva, van e-mail, nem kapott már).
          */
-        $users2notify = DB::table('templomok')
+        $gondnokok = [];
+        foreach ($erintettek as $churchId => $templom) {
+            $kozvetlen = \Eloquent\ChurchHolder::where('church_id', $churchId)
+                    ->where('status', 'allowed')
+                    ->whereNull('deleted_at')
+                    ->pluck('user_id');
+
+            foreach ($kozvetlen as $uid) {
+                $gondnokok[(int) $uid][$churchId] = $templom;
+            }
+            foreach ($templom->derivedHolders() as $holder) {
+                $gondnokok[(int) $holder->user_id][$churchId] = $templom;
+            }
+        }
+
+        if ($gondnokok === []) {
+            return 0;
+        }
+
+        $users2notify = DB::table('user')
             ->select('user.*')
-            ->join('church_holders', 'templomok.id', '=', 'church_holders.church_id')
-            ->join('user', 'user.uid', '=', 'church_holders.user_id')
-            ->whereIn('templomok.id', array_keys($erintettek))
-            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error') AND emails.to = user.email AND emails.updated_at > ? ) ",
+            ->whereIn('user.uid', array_keys($gondnokok))
+            /* #845: a 'crashed' is megpróbált értesítés — csak nem a címzett hibája. */
+            ->whereRaw(" NOT EXISTS ( SELECT 1 FROM emails WHERE `type` = ? AND `status` IN ('sent','queued','sending','error','crashed') AND emails.to = user.email AND emails.updated_at > ? ) ",
                 [$type, date('Y-m-d H:i:s', strtotime('-1 month'))])
-            ->where('church_holders.status', 'allowed')
-            ->whereNull('church_holders.deleted_at')
             ->where('user.notifications', 1)
             ->whereNotNull('user.email')->where('user.email', '<>', '')
             ->groupBy('user.email')
@@ -1489,13 +1514,9 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             $user = new \User($user2notify->uid);
             $user->getResponsabilities();
 
-            $sajatTemplomok = [];
-            foreach ($user->responsible['church'] as $churchID) {
-                if (isset($erintettek[$churchID])) {
-                    $templom = $erintettek[$churchID];
-                    $templom->bucsuDatum = $celDatum;
-                    $sajatTemplomok[$churchID] = $templom;
-                }
+            $sajatTemplomok = $gondnokok[(int) $user2notify->uid] ?? [];
+            foreach ($sajatTemplomok as $templom) {
+                $templom->bucsuDatum = $celDatum;
             }
             if ($sajatTemplomok === []) {
                 continue;
@@ -1820,6 +1841,48 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * @param string $churchIdColumn a templom azonosítója a külső lekérdezésben
      *                               (pl. `templomok.id` vagy `t.id`)
      */
+    /**
+     * #854: a legközelebbi misézőhelyek egy koordinátához.
+     *
+     * KÖZÖS lekérdezés a nyilvános API (`Api\NearBy`) és a főoldali „mi van a
+     * közelemben" doboz (`Html\Ajax\NearBy`) között. A kettő SZÉTVÁLT — borazslo kérése:
+     * a főoldal ne a nyilvános API-t hívja, mert az torzítja az API-statisztikát, és a
+     * publikus szerződést sem lehet szabadon alakítani, amíg a saját oldalunk függ tőle.
+     * A LEKÉRDEZÉS viszont maradjon egy: a távolságszámítás és a kizárások pontosan
+     * ugyanazok, és nem szabad, hogy szétcsússzanak.
+     *
+     * A `(0,0)` KIZÁRÁSA szándékos, és nem elméleti: a #94-ben a mobilalkalmazás
+     * GPS-fix nélkül (0,0)-t küldött, és erre minden magyar templom ~5000 km-re jött
+     * vissza — érvényes találatnak látszó szemétként. A koordináta nélküli templomok
+     * ugyanezen a nulla-ponton ülnek (a `lat`/`lon` DEFAULT 0.0), ezért őket is kizárjuk.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder a `distance` mezővel (méter)
+     */
+    public static function nearestQuery(float $lat, float $lon, int $limit = 10) {
+        return self::select()
+            ->addSelect(DB::raw(
+                "ST_distance_sphere( ST_GeomFromText('POINT ( " . (float) $lat . " " . (float) $lon . " )', 4326),"
+                . " ST_GeomFromText(CONCAT('POINT ( ',lat,' ', lon, ')'), 4326) ) as distance"
+            ))
+            ->where('ok', 'i')
+            ->where('lat', '<>', '')
+            ->where('lon', '<>', '')
+            ->whereRaw('NOT (lat = 0 AND lon = 0)')
+            ->orderBy('distance', 'ASC')
+            ->limit($limit);
+    }
+
+    /**
+     * #854/#94: van-e egyáltalán értelmes helyzetünk?
+     *
+     * A (0,0) a Guineai-öbölben van; ott nincs katolikus misézőhely. Ha ez jön be, a
+     * hívó nem helyzetet küldött, hanem a GPS-fix hiányát — és jobb ezt megmondani,
+     * mint egy ötezer kilométeres listát adni érvényes válaszként.
+     */
+    public static function isUsablePosition(float $lat, float $lon): bool {
+        return !($lat === 0.0 && $lon === 0.0);
+    }
+
     public static function citySubquerySql(string $churchIdColumn = 'templomok.id'): string {
         return self::boundaryNameSubquerySql([8, 9, 10], $churchIdColumn);
     }
@@ -2189,6 +2252,229 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         return $access;
     }
 
+    /**
+     * #819: az ÖSSZES ős-templom azonosítója, laposan — nem csak a közvetlen szülőké.
+     *
+     * Az `ancestors` szándékosan fát ad (a hierarchia-panel így rajzolja ki), de a
+     * jogosultsághoz és a gondnok-listához lánc kell. A ciklusvédelem és a mélységi
+     * korlát a `_getAncestors()`-ban van; itt csak kilapítjuk, amit az ad.
+     *
+     * @return int[]
+     */
+    public function ancestorChurchIds(): array {
+        $ids = [];
+
+        $bejar = static function (array $szint) use (&$bejar, &$ids): void {
+            foreach ($szint as $elem) {
+                if (!empty($elem['church'])) {
+                    $ids[] = (int) $elem['church']->id;
+                }
+                if (!empty($elem['children'])) {
+                    $bejar($elem['children']);
+                }
+            }
+        };
+        $bejar($this->ancestors);
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * #819: az ÖSSZES leszármazott templom azonosítója, laposan.
+     *
+     * Az `ancestorChurchIds()` párja, a másik irányba: ezekhez a templomokhoz fér
+     * hozzá az, aki ennek a templomnak a gondnoka.
+     *
+     * @return int[]
+     */
+    public function descendantChurchIds(): array {
+        $ids = [];
+
+        $bejar = static function (array $szint) use (&$bejar, &$ids): void {
+            foreach ($szint as $elem) {
+                if (!empty($elem['church'])) {
+                    $ids[] = (int) $elem['church']->id;
+                }
+                if (!empty($elem['children'])) {
+                    $bejar($elem['children']);
+                }
+            }
+        };
+        $bejar($this->descendants);
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * #819: a SZÁRMAZTATOTT gondnokok — akik egy ős-templom gondnokaként férnek hozzá.
+     *
+     * borazslo kérése: „Az /edit oldalon oldalt jelenjenek meg a gondnokok mellett a
+     * származtatott gondnokai is", és „A »de jó hogy van gondnokunk« feliratba
+     * számolja bele a származtatott gondnokokat."
+     *
+     * MENET KÖZBEN számoljuk, nem tárolt táblából. Egy kiírt gondnok-tábla pont akkor
+     * tud elavulni, amikor számít: új fília kerül a plébánia alá és a gondnok nem kap
+     * hozzáférést, vagy megszűnik egy gondnokság, de a származtatott sor ottmarad. Egy
+     * elavuló jogosultság rosszabb, mint egy lassabb lekérdezés — a hierarchia pedig
+     * pici (egy plébániához pár fília).
+     *
+     * Aki KÖZVETLEN gondnok is, az nem jelenik meg kétszer: ott a közvetlen a valódi
+     * viszony, a származtatott csak ismételné.
+     *
+     * @return \Illuminate\Support\Collection<int,\Eloquent\ChurchHolder>
+     */
+    /**
+     * #819: minden misézőhely ősei, EGYETLEN lekérdezésből.
+     *
+     * A templomonkénti `ancestorChurchIds()` a hierarchia-panelhez való: ott egy
+     * templomról van szó. A tömeges értesítő-cronok viszont több ezer templomot néznek
+     * végig — ott templomonként bejárni a fát N+1 lenne.
+     *
+     * Megfizethető, mert a hierarchia PICI: a `church_relationships` tábla 456 soros,
+     * és mindössze 456 templomnak van egyáltalán szülője. A teljes térkép elfér a
+     * memóriában, és egyetlen lekérdezésből felépül.
+     *
+     * Ciklusvédelem van: egy elrontott szerkesztés (A szülője B, B szülője A) nem
+     * futtathatja végtelen ciklusba az éjszakai cront.
+     *
+     * @return array<int,int[]> childId => ősök azonosítói (a közvetlen szülőtől felfelé)
+     */
+    public static function ancestorMap(): array {
+        $szulok = [];
+        foreach (DB::table('church_relationships')->get(['parent_church_id', 'child_church_id']) as $sor) {
+            $szulok[(int) $sor->child_church_id][] = (int) $sor->parent_church_id;
+        }
+
+        $terkep = [];
+        foreach (array_keys($szulok) as $gyerek) {
+            $osok = [];
+            $latott = [$gyerek => true];
+            $sor = $szulok[$gyerek];
+
+            while ($sor) {
+                $aktualis = array_shift($sor);
+                if (isset($latott[$aktualis])) {
+                    continue;   // ciklus vagy többször elért ős
+                }
+                $latott[$aktualis] = true;
+                $osok[] = $aktualis;
+                foreach ($szulok[$aktualis] ?? [] as $feljebb) {
+                    $sor[] = $feljebb;
+                }
+            }
+
+            if ($osok) {
+                $terkep[$gyerek] = $osok;
+            }
+        }
+
+        return $terkep;
+    }
+
+    /**
+     * #819: az ÖRÖKÖLT (templom, gondnokság-templom) párok SQL-tuple listaként.
+     *
+     * A tömeges értesítő-lekérdezések a templomot a saját gondnokságaihoz kötik. Ez a
+     * lista mondja meg, mely templomnál számít a FÖLÖTTE lévő templom gondnoksága is —
+     * így a join egyetlen `OR` ággal bővíthető, a többi feltétel érintése nélkül.
+     *
+     * Nyers SQL-t ad vissza, mert kötegelt tuple-IN-t a query builder nem tud. Minden
+     * érték egész szám, közvetlenül a `church_relationships` táblából, `(int)`-re
+     * kényszerítve — sztring sehol nem kerül a lekérdezésbe.
+     *
+     * Üres sztring, ha nincs hierarchia: a hívó ilyenkor ne is bővítse a joint.
+     */
+    public static function inheritedHolderPairsSql(): string {
+        $parok = [];
+        foreach (self::ancestorMap() as $gyerek => $osok) {
+            foreach ($osok as $os) {
+                $parok[] = '(' . (int) $gyerek . ',' . (int) $os . ')';
+            }
+        }
+
+        return implode(',', $parok);
+    }
+
+    /**
+     * #819: KIT KELL ÉRTESÍTENI ehhez a misézőhelyhez?
+     *
+     * Egyetlen belépési pont, mert eddig négy helyen állt ugyanaz a join, egymástól
+     * függetlenül — észrevétel, javaslat, fotó és adatfrissítés —, és mind a négy CSAK a
+     * közvetlen gondnokokat nézte. borazslo szavaival: „Ráadásul ezek talán külön-külön
+     * számolják ki, hogy kiknek kell emailt küldeni." Így is volt, és épp ezért lehetett
+     * mind a négy egyszerre hibás.
+     *
+     * A jog már a #819 előtt is öröklődött (`checkWriteAccess()`), az ÉRTESÍTÉS viszont
+     * nem: egy fília, aminek nincs saját gondnoka, senkit nem értesített — pedig a
+     * plébánosa hivatalosan hozzáfér. A jog megvolt, csak nem szóltunk neki.
+     *
+     * Két szűrés, amit a négy hívóhelyből egyik sem csinált meg maradéktalanul:
+     *   - a törölt (soft-deleted) gondnokság nem ér semmit, mégis kapott levelet;
+     *   - a cím nélküli felhasználónak nincs értelme levelet írni.
+     *
+     * A visszaadott sorok alakja SZÁNDÉKOSAN a régi: a levélsablonok a felhasználó
+     * mezőit várják, és a `leftJoin` sorrendje miatt azok írják felül az ütköző
+     * oszlopneveket. Nem akartam a sablonokhoz nyúlni ebben a lépésben.
+     */
+    public function notifiableHolders() {
+        $templomok = array_merge([(int) $this->id], $this->ancestorChurchIds());
+
+        return DB::table('church_holders')
+            ->whereIn('church_holders.church_id', $templomok)
+            ->where('church_holders.status', 'allowed')
+            ->whereNull('church_holders.deleted_at')
+            ->leftJoin('user', 'user.uid', '=', 'church_holders.user_id')
+            ->where('user.notifications', 1)
+            ->whereNotNull('user.email')
+            ->where('user.email', '<>', '')
+            ->get()
+            // Aki több szinten is gondnok, egyszer kapjon levelet.
+            ->unique('uid')
+            ->values();
+    }
+
+    public function derivedHolders() {
+        $osok = $this->ancestorChurchIds();
+        if ($osok === []) {
+            return collect();
+        }
+
+        /*
+         * Csak azt zárjuk ki, aki ITT IS TELJES JOGÚ gondnok — különben kétszer
+         * szerepelne. A szűrés hiánya valódi hiba volt: aki a fílián még csak KÉRTE a
+         * gondnokságot (vagy visszavonták tőle), a plébánián viszont teljes jogú, az
+         * eddig sehol nem jelent meg. Se a közvetlen listában (mert ott nem 'allowed'),
+         * se a származtatottban (mert innen kizártuk) — pedig épp neki van hozzáférése.
+         */
+        $kozvetlen = \Eloquent\ChurchHolder::where('church_id', $this->id)
+                ->where('status', 'allowed')
+                ->whereNull('deleted_at')
+                ->pluck('user_id')->all();
+
+        return \Eloquent\ChurchHolder::whereIn('church_id', $osok)
+                ->where('status', 'allowed')
+                ->whereNull('deleted_at')
+                ->when($kozvetlen !== [], fn($q) => $q->whereNotIn('user_id', $kozvetlen))
+                ->get()
+                ->unique('user_id')
+                ->values();
+    }
+
+    /**
+     * #819: hány gondnoka van a templomnak — a származtatottakkal együtt?
+     *
+     * A számláló eddig csak a közvetleneket nézte, ezért egy saját gondnok nélküli
+     * fília „nincs gondnok"-ot mutatott, holott a plébánosa hozzáfér.
+     */
+    public function activeHolderCount(): int {
+        $kozvetlen = \Eloquent\ChurchHolder::where('church_id', $this->id)
+                ->where('status', 'allowed')
+                ->whereNull('deleted_at')
+                ->count();
+
+        return $kozvetlen + $this->derivedHolders()->count();
+    }
+
     function checkWriteAccess($_user) {
         $access = false;
 
@@ -2201,16 +2487,24 @@ class Church extends \Illuminate\Database\Eloquent\Model {
         if(DB::table('egyhazmegye')->where('id',$this->egyhazmegye)->where('felelos',$_user->username)->first())
             $access = true;
 
-        // Örökölt gondnokság: ha a felhasználó bármely ős-templomnak 'allowed' gondnoka
-        if (!$access) {
-            foreach ($this->ancestors as $ancestor) {
-                if (\Eloquent\ChurchHolder::where('church_id', $ancestor['church']->id)
+        /*
+         * #819: örökölt gondnokság — a felhasználó bármely ŐS-templomnak 'allowed'
+         * gondnoka. borazslo célja: „elég a plébánosnak a legfölső plébániához kérnie
+         * a gondnokságot és megkapja minden alárendelthez is a hozzáférést."
+         *
+         * A bejárás EGY SZINTIG ment: az `ancestors` beágyazott listát ad (minden
+         * elem `children` alatt hordozza a saját őseit), a ciklus viszont csak a
+         * legfelső szintet nézte. Plébánia -> oldallagosan ellátott plébánia -> fília
+         * láncnál tehát a plébános NEM fért hozzá a fíliához, pedig épp ez a jegy
+         * lényege. Az `ancestorChurchIds()` a teljes láncot adja.
+         */
+        if (!$access && $_user->uid) {
+            $osok = $this->ancestorChurchIds();
+            if ($osok !== [] && \Eloquent\ChurchHolder::whereIn('church_id', $osok)
                     ->where('user_id', $_user->uid)
                     ->where('status', 'allowed')
                     ->exists()) {
-                    $access = true;
-                    break;
-                }
+                $access = true;
             }
         }
         

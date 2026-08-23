@@ -37,29 +37,72 @@ class Remark extends Html {
         }
     }
     
+    /** #868: az észrevétel érvényes állapotai (l. `remarks.allapot` enum). */
+    const ALLAPOTOK = ['u', 'f', 'j'];
+
     function pageList() {
         if (\Request::Simpletext('remark') == 'modify') {
             $rid = \Request::IntegerRequired('rid');
             $remark = \Eloquent\Remark::find($rid);
-            
-            $remark->allapot = \Request::Simpletext('state');
-            $remark->admindatum = date('Y-m-d H:i:s');
-            
-            $remark->appendComment(\Request::Text('adminmegj'));
-            $remark->save();
-            
-            if($this->tid != $remark->church_id) { // Hogy ne lehessen csalni
+
+            /*
+             * #868: ELŐBB a jogosultság, AZTÁN a mentés.
+             *
+             * Itt korábban a `save()` a `writeAccess` őr ELŐTT futott le — az őr csak
+             * lentebb, a lista megjelenítése előtt állt. Következmény, mérve, sima
+             * GET-tel, bejelentkezés NÉLKÜL:
+             *
+             *   /index.php?q=remark/list/1&remark=modify&rid=3&state=f&adminmegj=…
+             *   -> HTTP 200, és az adatbázisban: allapot u -> f, admindatum frissült,
+             *      az adminmegj-be bekerült a támadó szövege.
+             *
+             * Vagyis bárki elrejthette a bejelentéseket a gondnokok elől („f" =
+             * feldolgozva), és tetszőleges tartalmat írhatott az admin-megjegyzésbe,
+             * amit a lista a gondnok böngészőjében jelenít meg.
+             *
+             * A jogot a MEGTALÁLT észrevétel templomához nézzük, nem az URL-ből jövő
+             * `tid`-hez: az utóbbi a támadó paramétere. (A régi kód ezt a mentés UTÁN
+             * javította ki — „hogy ne lehessen csalni" —, csak épp későn.)
+             */
+            if (!$remark) {
+                addMessage('Nincs ilyen észrevétel.', 'danger');
+                return;
+            }
+
+            if ($this->tid != $remark->church_id) {
                 $this->tid = $remark->church_id;
                 $this->church = \Eloquent\Church::find($this->tid);
             }
+
+            if (!$this->church || !$this->church->writeAccess) {
+                addMessage('Hiányzó jogosultság. Elnézést.', 'danger');
+                return;
+            }
+
+            /*
+             * #868: az állapot FEHÉRLISTÁS. A `Simpletext` bármit átenged, az oszlop
+             * viszont enum — egy ismeretlen érték némán üres stringgé válna, és az
+             * észrevétel besorolhatatlan állapotba kerülne.
+             */
+            $ujAllapot = \Request::Simpletext('state');
+            if (!in_array($ujAllapot, self::ALLAPOTOK, true)) {
+                addMessage('Érvénytelen állapot.', 'danger');
+                return;
+            }
+
+            $remark->allapot = $ujAllapot;
+            $remark->admindatum = date('Y-m-d H:i:s');
+
+            $remark->appendComment(\Request::Text('adminmegj'));
+            $remark->save();
         }
-       
+
         global $user;
         if (!$this->church->writeAccess) {
             addMessage("Hiányzó jogosultság. Elnézést.", "danger");
             return;
         }
-        
+
         $this->church->remarks;
 
         // Split adminmegj by line into adminmegjlist for each remark, and extract meta info if present

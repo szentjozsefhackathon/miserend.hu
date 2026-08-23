@@ -84,7 +84,8 @@ class Report extends Api {
         }
     
         if (isset($this->input['token'])) {                    
-            $this->token = \Eloquent\Token::where('name',$this->input['token'])->first();
+            // #862: típusbiztos keresés — l. Token::findByName().
+            $this->token = \Eloquent\Token::findByName($this->input['token'] ?? null);
             if(!$this->token or !$this->token->isValid) {
                 throw new \Exception("Invalid token.");
             }            

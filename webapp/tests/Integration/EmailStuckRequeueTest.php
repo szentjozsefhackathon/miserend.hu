@@ -75,6 +75,14 @@ class EmailStuckRequeueTest extends TestCase {
         );
     }
 
+    /**
+     * #845: a feladás státusza 'crashed', nem 'error'.
+     *
+     * Ez a sor azért ragadt be, mert a MI folyamatunk halt meg küldés közben — nem a
+     * címzett utasította vissza. Amíg a kettő ugyanaz a státusz volt, az
+     * `User::isUndeliverable()` a saját leállásunkat is a cím rovására írta: három ilyen
+     * sor egy tökéletesen működő címre is örökre elnémította az értesítőt.
+     */
     public function testARegotaProbalkozoLevelHibaraKerul(): void {
         // Négy napja jött létre, azóta is 'sending' — ezzel már nem próbálkozunk tovább,
         // különben egy önmagában végzetes levél a végtelenségig pörögne a sorban.
@@ -86,7 +94,7 @@ class EmailStuckRequeueTest extends TestCase {
 
         $result = \Eloquent\Email::requeueStuck();
 
-        $this->assertSame('error', $this->statusOf($id));
+        $this->assertSame(\Eloquent\Email::STATUS_CRASHED, $this->statusOf($id));
         $this->assertGreaterThanOrEqual(1, $result['failed']);
     }
 
