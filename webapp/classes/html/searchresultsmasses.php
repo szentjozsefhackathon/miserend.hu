@@ -194,7 +194,8 @@ class SearchResultsMasses extends Html {
 
                 if (!empty($langsMustNot)) {
                     $search->addMustNot([ 'terms' => ['church.nyelvek.keyword' => $langsMustNot] ]);
-                    $translated = array_map(function($l){ return t('LANGUAGES.'.$l); }, $langsMustNot);
+                    // #864: fordítás ÉS escape — a kulcs a felhasználó paraméteréből jön (Search::tSafe()).
+                    $translated = \Search::tSafe(array_map(function($l){ return 'LANGUAGES.'.$l; }, $langsMustNot));
                     $search->filters[] = "A liturgia nyelve ne legyen <b>" . implode('</b> se <b>', $translated) . "</b>";
                 }
             }
@@ -261,7 +262,8 @@ class SearchResultsMasses extends Html {
                     $shouldClauses = [];
 
                     if (!empty($shouldRites)) {
-                        $translated = array_map(function($r){ return t($r); }, $shouldRites);
+                        // #864: fordítás ÉS escape — l. Search::tSafe().
+                        $translated = \Search::tSafe($shouldRites);
                         $search->filters[] = 'A rítus lehet <i>' . implode('</i> vagy <i>', $translated) . '</i>';
                     }
                     foreach ($shouldRites as $r) {
@@ -303,11 +305,12 @@ class SearchResultsMasses extends Html {
                                     $cl['bool']['must_not'][] = [ 'term' => ['types.keyword' => $tt] ];
                                 }
                             }
-                            foreach($tShould as $k => $ts)  $tShould[$k] = t($ts);
-                            foreach($tMustNot as $k => $ts)  $tMustNot[$k] = t($ts);
+                            // #864: fordítás ÉS escape — l. Search::tSafe().
+                            $tShould = \Search::tSafe($tShould);
+                            $tMustNot = \Search::tSafe($tMustNot);
 
                             if (!empty($tShould) or !empty($tMustNot)) {
-                                $search->filters[] = "Ha <b>".t($r)."</b> rítus, akkor  " .
+                                $search->filters[] = "Ha <b>".\Search::tSafe($r)."</b> rítus, akkor  " .
                                     (!empty($tShould) ? "legyen: <b>" . implode('</b> vagy <b>', $tShould) . "</b>" : '') .
                                     (!empty($tShould) && !empty($tMustNot) ? ", de " : '') .
                                     (!empty($tMustNot) ? "ne legyen: <b>" . implode('</b> vagy <b>', $tMustNot) . "</b>" : '');
@@ -327,13 +330,21 @@ class SearchResultsMasses extends Html {
             if (!empty($categoriesReq)) {
                 $selectedCategories = array_filter(array_map('trim', explode(',', $categoriesReq)));
 
-                // #299: a cím-alakok előállítása átkerült a \MassDefinitions-be, mert az
-                // API-nak (api/search.php `categories`) is pontosan ugyanez kell. Egy
-                // implementáció, két hívó — így a kettő nem tud szétcsúszni.
-                $titleFilters = (new \MassDefinitions())->titleFiltersByCategories($selectedCategories);
-                if (!empty($titleFilters)) {
-                    $search->query['bool']['must'][] = [ 'terms' => ['title.keyword' => $titleFilters] ];
-                    $translatedCategoryNames = array_map(function($c){ return t('MASS_TITLE_CATEGORY.' . $c); }, $selectedCategories);
+                /*
+                 * #299: a klauzula előállítása a \MassDefinitions-ben van, mert az
+                 * API-nak (api/search.php `categories`) is pontosan ugyanez kell. Egy
+                 * implementáció, két hívó — így a kettő nem tud szétcsúszni.
+                 *
+                 * #157: a szűrő eddig egy zárt CÍMLISTÁRA ment. A `cal_masses.title`
+                 * viszont szabad szöveg — importnál a nyers ICS-cím kerül bele —, tehát
+                 * minden importált esemény kiesett MINDEN kategóriából. Mostantól az
+                 * indexelt `category` is számít, a cím-lista pedig mellette marad.
+                 */
+                $clause = (new \MassDefinitions())->categoryQueryClause($selectedCategories);
+                if ($clause !== null) {
+                    $search->query['bool']['must'][] = $clause;
+                    // #864: fordítás ÉS escape — l. Search::tSafe().
+                    $translatedCategoryNames = \Search::tSafe(array_map(function($c){ return 'MASS_TITLE_CATEGORY.' . $c; }, $selectedCategories));
                     $search->filters[] = "Kategóriák: <b>" . implode('</b> vagy <b>', $translatedCategoryNames) . "</b>";
                 }
             }

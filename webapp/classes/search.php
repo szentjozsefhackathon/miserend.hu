@@ -5,6 +5,40 @@ use ExternalApi\ElasticsearchApi;
 
 class Search {
 
+    /**
+     * #864: FORDÍTÁS + ESCAPE, egy lépésben — a szűrő-címkékhez.
+     *
+     * A `filters` tömb elemei HTML-t tartalmaznak (`<b>`, `<i>`), ezért a sablon
+     * `|raw`-val írja ki őket. Ez rendben van, amíg CSAK a mi HTML-ünk kerül bele —
+     * csakhogy a fordítandó kulcs a felhasználó kérésparaméteréből jön, a `t()` pedig
+     * ISMERETLEN kulcsnál magát a kulcsot adja vissza (`translator.php:91`):
+     *
+     *     return self::$translations[$key] ?? ($default ?? $key);
+     *
+     * Vagyis egy nem létező „nyelvre" vagy „rítusra" szűrve a bemenet változatlanul
+     * kijutott a lapra. Mérve, azonosítás nélkül:
+     *
+     *     /index.php?q=SearchResultsChurches&rites[should]=<img src=x onerror=alert(1)>
+     *     -> a válasz törzsében: <img src=x onerror=alert(1)>
+     *
+     * Nincs CSP-fejléc, tehát a script lefut. Bejelentkezett gondnoknál vagy adminnál
+     * ez munkamenet-átvétel — egyetlen megküldött linkkel.
+     *
+     * Azért EGY metódus a kettőre, mert a hívóhelyeken a két lépés elválasztva
+     * felejthető el: a `htmlspecialchars(t($x))` sorrendjét könnyű elrontani vagy
+     * kihagyni, és épp ez történt tizenegy helyen.
+     *
+     * @param  string|string[] $keys
+     * @return string|string[] a fordítás(ok), HTML-be biztonságosan
+     */
+    public static function tSafe($keys) {
+        if (is_array($keys)) {
+            return array_map([self::class, 'tSafe'], $keys);
+        }
+
+        return htmlspecialchars((string) t((string) $keys), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
     public $query =  ["bool" => ["must" => [], "must_not" => []]];
     public $sort = [];
     // #608: melyik sort-slot hordozza a geo-távolságot. Vakon a sort[0]-ból olvasni
@@ -356,7 +390,8 @@ class Search {
 
     function languages(array $languageAbbrevs) {
         $this->addMust([ 'terms' => ['lang.keyword' => $languageAbbrevs] ]);                
-        $translated = array_map(function($l){ return t('LANGUAGES.'.$l); }, $languageAbbrevs);
+        // #864: fordítás ÉS escape — a nyelvkód a felhasználó paraméteréből jön.
+        $translated = self::tSafe(array_map(function($l){ return 'LANGUAGES.'.$l; }, $languageAbbrevs));
         $this->filters[] = "A liturgia nyelve legyen <b>" . implode('</b> vagy <b>', $translated) . "</b>";        
     }
 

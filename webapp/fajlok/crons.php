@@ -30,7 +30,22 @@ return [
     ['class' => '\ExternalApi\ExternalApi',       'function' => 'clearAllOldCache',           'frequency' => '1 day'],
     ['class' => '\Distance',                      'function' => 'updateSome',                 'frequency' => '15 min'],
     ['class' => '\OSM',                           'function' => 'syncUrlMiserendFromOSM',     'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
-    ['class' => '\OSM',                           'function' => 'checkBoundaries',            'frequency' => '5 min'],
+    /*
+     * #842: HÁROM ÓRA, nem öt perc.
+     *
+     * A registry '5 min'-t mondott, az éles adatbázisban viszont 3 óra áll — az
+     * `ensureRegistered()` ugyanis a meglévő sort nem írja felül, tehát a kettő évek óta
+     * szétcsúszva élt. Egy friss telepítés viszont az itteni értéket kapná: 288 futás
+     * naponta, kötegenként 50 templommal, ami napi 14 400 Overpass-hívás lenne.
+     * A valósághoz igazítom, hogy ne legyen benne meglepetés.
+     */
+    ['class' => '\OSM',                           'function' => 'checkBoundaries',            'frequency' => '3 hours'],
+    /*
+     * #842: egyszeri, de idempotens visszatöltés — annak ad bélyeget, aminek a határa
+     * már megvan. Havonta fut, mert a `requeueChurchesWithoutBoundary()` NULL-ozhat
+     * sorokat, és mert egy friss telepítésen is le kell futnia.
+     */
+    ['class' => '\Crons',                         'function' => 'backfillBoundaryCheckedAt',  'frequency' => '1 month'],
     ['class' => '\Token',                         'function' => 'cleanOut',                   'frequency' => '2 hours'],
     ['class' => '\Message',                       'function' => 'clean',                      'frequency' => '1 hour'],
     ['class' => '\Photos',                        'function' => 'cron',                       'frequency' => '1 week'],

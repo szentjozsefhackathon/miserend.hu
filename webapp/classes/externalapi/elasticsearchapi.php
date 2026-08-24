@@ -432,8 +432,23 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 	}
 
 	/** A mass_index állapota a teljes újraindexelés eldöntéséhez. */
+	/**
+	 * #157: a mise-dokumentum ALAKJÁNAK verziója.
+	 *
+	 * Enélkül egy új indexelt mező néma no-op lenne: a `shouldFullReindex()` csak
+	 * IDŐBÉLYEGEKET néz, a deploy viszont nem változtatja meg a `cal_masses.updated_at`-et.
+	 * A cron tehát átugraná az egészet, és az új mező hetekig nem kerülne az indexbe --
+	 * a jegy késznek látszana, miközben a tünet változatlan.
+	 *
+	 * Ha az indexelt dokumentum alakja változik, EZT A SZÁMOT KELL NÖVELNI. Minden
+	 * jövőbeli alak-változás így ingyen kap kiváltót.
+	 *
+	 * 2: #157, a `category` mező.
+	 */
+	const MASS_INDEX_SCHEMA = 2;
+
 	private static function massIndexState(): array {
-		$empty = ['empty' => true, 'created_at' => null, 'indexed_at' => null, 'max_start_date' => null];
+		$empty = ['empty' => true, 'created_at' => null, 'indexed_at' => null, 'max_start_date' => null, 'schema' => 0];
 
 		$elastic = new \ExternalApi\ElasticsearchApi();
 		if (!$elastic->isexistsIndex('mass_index')) {
@@ -453,6 +468,8 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			'max_start_date' => $elastic->maxMassStartDate(),
 			// A legutóbbi futásban hiba miatt kihagyott templomok.
 			'skipped_churches' => array_values(array_map('intval', (array) ($meta['skipped_churches'] ?? []))),
+			// #157: milyen ALAKÚ dokumentumokkal épült az index.
+			'schema' => (int) ($meta['schema'] ?? 0),
 		];
 	}
 
@@ -484,6 +501,9 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 			$elastic = new \ExternalApi\ElasticsearchApi();
 			$elastic->setIndexMeta('mass_index', [
 				'full_reindex_at' => date('Y-m-d H:i:s'),
+				// #157: a dokumentum-alak verziója. Ez váltja ki az újraindexelést, ha egy
+				// új mező kerül be -- az időbélyegek erre vakok.
+				'schema' => self::MASS_INDEX_SCHEMA,
 				'years' => array_values(array_map('intval', $years)),
 				// A "tényleg nincs idei miséje" lista szándékosan NEM öröklődik át: friss
 				// teljes indexépítés után újra ellenőrizzük, hátha közben lett miséjük.
@@ -667,7 +687,9 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 				$indexState['empty'],
 				$maxMassUpdated,
 				$indexState['created_at']
-			) || !$coversYears;
+			) || !$coversYears
+				// #157: az index régebbi ALAKKAL épült, mint amit a kód most ír.
+				|| ($indexState['schema'] ?? 0) < self::MASS_INDEX_SCHEMA;
 
 			$skipped = $indexState['skipped_churches'] ?? [];
 
@@ -782,7 +804,19 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 		$log("Egyedi periódusokkal felpumpálva már ". count($massPeriods). " a szám.");
 		
 		$countAllMasses = 0;
+		// #157: a kategória-felismerő. A ciklus ELŐTT, egyszer -- a MassDefinitions
+		// konstruktora JSON-t olvas fájlból.
+		$massDefinitions = new \MassDefinitions();
 		foreach($massPeriods as $k => $mass) {
+			/*
+			 * #157: a kategória a CÍMBŐL, egyszer periódusonként.
+			 *
+			 * Eddig a kereső kategória-szűrője egy zárt CÍMLISTÁRA szűrt, tehát minden
+			 * importált esemény és minden kézzel írt egyedi cím kiesett MINDEN
+			 * kategóriából -- nem azért, mert nem mise, hanem mert a címe nem karakterre
+			 * azonos a szótári alakkal.
+			 */
+			$category = $massDefinitions->categoryForTitle((string) $mass['title']);
 			$bulkInsert = [];
 
 	           $rrule = new \SimpleRRule($mass['rrule']);
@@ -816,6 +850,15 @@ class ElasticsearchApi extends \ExternalApi\ExternalApi {
 					'comment' => $mass['comment'],
 					'church' => $churches[$mass['church_id']]
 				];
+
+				/*
+				 * #157: a felismeretlen címnek NINCS kategóriája -- a mezőt ilyenkor ki sem
+				 * írjuk. Így a hiányzó felismerés MÉRHETŐ (`must_not exists category`), és
+				 * nem hazudunk 'OTHER'-t a „Képviselőtestületi ülés"-re.
+				 */
+				if ($category !== null) {
+					$bulkInsert[count($bulkInsert) - 1]['category'] = $category;
+				}
 				
 			}			
 			$countAllMasses += count($occs);
