@@ -99,6 +99,9 @@ return [
     ['class' => '\Crons',                         'function' => 'cleanNotificationEmails',    'frequency' => '1 day'],
     ['class' => '\Crons',                         'function' => 'rollPeriodYears',            'frequency' => '1 month'],
     ['class' => '\Eloquent\Email',                'function' => 'sendQueued',                 'frequency' => '15 minutes', 'from' => '1am', 'until' => '6am'],
+    // #872: a napi/heti összefoglaló. A sendQueued ELŐTT kell futnia (az teszi sorba a
+    // levelet), ezért az ablak eleje felé — a `from` az 1 óra, a drainer utána ér rá.
+    ['class' => '\DigestQueue',                   'function' => 'sendDue',                    'frequency' => '1 day',      'from' => '1am', 'until' => '6am'],
     // #315: heti hét templom önkéntesség. Korábban a seed-dumpba (data/crons.sql) írtam
     // volna őket, de az a fájl azóta megszűnt — a #638 óta ez a lista az egyetlen forrás.
     // Mindkettő levelet küld, ezért — a többi levelező cronhoz igazodva — hajnalban fut.

@@ -107,6 +107,20 @@ class Remark extends \Illuminate\Database\Eloquent\Model {
         }
         
         foreach($emails as $email) {
+            /*
+             * #872: akinek napi/heti összefoglalót kért a beállítása, annak nem külön
+             * levél megy, hanem egy sor a várólistára. Az azonnalit választóknál semmi
+             * nem változik.
+             */
+            if (\DigestQueue::halaszt(
+                    $email[2],
+                    'remark',
+                    (int) $this->church_id,
+                    (string) $this->leiras,
+                    '/templom/' . (int) $this->church_id . '/eszrevetelek')) {
+                continue;
+            }
+
             $this->sendMail($email[0], $email[1], $email[2]);            
         }
                 

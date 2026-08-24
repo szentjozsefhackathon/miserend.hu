@@ -115,6 +115,16 @@ class CalSuggestionPackage extends CalModel
         }
 
         foreach ($emails as $email) {
+            // #872: napi/heti összefoglalónál egy sor a várólistára, nem külön levél.
+            if (\DigestQueue::halaszt(
+                    $email[2],
+                    'suggestion',
+                    (int) $church->id,
+                    'Miserend-javaslat érkezett',
+                    '/templom/' . (int) $church->id . '/javaslatok')) {
+                continue;
+            }
+
             $this->sendMail($email[0], $email[1], $email[2]);
         }
 
