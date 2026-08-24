@@ -293,7 +293,25 @@ class Church extends \Illuminate\Database\Eloquent\Model {
      * @param string $toleranceString - The time window to consider for determining if the confession is still ON (e.g., '20 hours').
      * @return array - An array of confession periods with their start and end times, and duration.
      */
-    public function getConfessions($fromString, $toleranceString)
+    /**
+     * #884: a leghosszabb MEGJELENÍTETT gyóntatás-szakasz.
+     *
+     * A `getConfessions()` a le nem zárt szakaszt a toleranciával zárja le — ma 20
+     * órával. Élő státusznak („most van gyóntatás") ez elmegy, de MEGJELENÍTETT
+     * eseménynek nyilvánvalóan rossz: a naptárban 20 órás gyóntatás-blokk keletkezett
+     * belőle, a panelen pedig „20 óra" állt. Egy gyóntatás nem tart 20 órát; ez az az
+     * eset, amikor a pap bekapcsolta és kikapcsolni elfelejtette.
+     *
+     * borazslo döntése a #884-ben: legyen két óra.
+     */
+    const CONFESSION_MAX_DISPLAY = '2 hours';
+
+    /**
+     * @param string|null $maxDurationString  a megjelenített szakasz felső korlátja.
+     *        Alapból a CONFESSION_MAX_DISPLAY; `null` esetén nincs korlát (a nyers,
+     *        toleranciával lezárt szakaszok jönnek vissza).
+     */
+    public function getConfessions($fromString, $toleranceString, $maxDurationString = self::CONFESSION_MAX_DISPLAY)
     {
         $toleranceSeconds = strtotime($toleranceString) - time();
 
@@ -404,10 +422,38 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             
         }
 
-        return $periods;
+        return self::korlatozottSzakaszok($periods, $maxDurationString);
+    }
 
+    /**
+     * #884: a túl hosszú szakaszok visszavágása a megjelenítéshez.
+     *
+     * Amelyik szakasz hosszabb a korlátnál, az a kezdetétől számított korlátnál
+     * végződik. A le nem zárt szakasz („még tart", nincs `end` kulcsa) is lezárul, ha
+     * már túllépte a korlátot: két óra után nem állíthatjuk, hogy még mindig tart.
+     *
+     * Az ennél rövidebb, valóban folyamatban lévő szakasz érintetlen marad — a panel
+     * abból tudja, hogy „még tart".
+     */
+    private static function korlatozottSzakaszok(array $szakaszok, $maxDurationString): array {
+        if ($maxDurationString === null) {
+            return $szakaszok;
+        }
 
+        $max = strtotime($maxDurationString) - time();
+        if ($max <= 0) {
+            return $szakaszok;
+        }
 
+        foreach ($szakaszok as &$szakasz) {
+            if (($szakasz['duration'] ?? 0) <= $max) {
+                continue;
+            }
+            $szakasz['duration'] = $max;
+            $szakasz['end'] = date('Y-m-d H:i:s', strtotime($szakasz['start']) + $max);
+        }
+
+        return $szakaszok;
     }
 
 	public function attributes()
