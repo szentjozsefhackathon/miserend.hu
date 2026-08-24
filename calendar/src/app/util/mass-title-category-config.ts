@@ -48,6 +48,89 @@ export class MassTitleCategoryConfig {
     return titles;
   }
 
+  /**
+   * #896: kategóriánkénti szabad szöveges alakok — ugyanaz az adat, amit a PHP olvas.
+   *
+   * A szótár a definíciók mellett él (`mass-definitions.ts` -> `aliases`), az Angular
+   * build pedig ugyanezt exportálja a `webapp/mass-definitions.json`-ba. Egy forrás,
+   * két olvasó.
+   */
+  static get CATEGORY_ALIASES(): Record<MassTitleCategory, string[]> {
+    const aliases: Record<MassTitleCategory, string[]> = {} as Record<MassTitleCategory, string[]>;
+
+    for (const categoryDef of MASS_DEFINITIONS_DATA.categories) {
+      aliases[categoryDef.key as MassTitleCategory] = [];
+    }
+
+    for (const definition of MASS_DEFINITIONS_DATA.definitions) {
+      const category = definition.category as MassTitleCategory;
+      if (!aliases[category] || !definition.aliases) continue;
+
+      for (const alias of definition.aliases) {
+        if (!aliases[category].includes(alias)) {
+          aliases[category].push(alias);
+        }
+      }
+    }
+
+    return aliases;
+  }
+
+  /**
+   * #896: a címben LEGKORÁBBAN előforduló alias kategóriája.
+   *
+   * A magyar naptárcímek a főeseményt írják előre, ezért a SZÖVEG sorrendje dönt, nem a
+   * kategóriáké. Ez a különbség nem elméleti: a „Gyóntatás a szentmise előtt" a régi,
+   * kategória-sorrendes illesztéssel MASS lett, a PHP szerint viszont CONFESSION — a
+   * naptár tehát mást színezett, mint amit a kereső talált.
+   *
+   * Azonos pozíciónál a hosszabb alias nyer (az a szűkebb találat), így az eredmény nem
+   * függ a kategóriák felsorolási sorrendjétől. Ugyanez a szabály fut a PHP oldalon
+   * (`MassDefinitions::categoryForTitle()`).
+   */
+  private static matchByAliases(lowerTitle: string): MassTitleCategory | null {
+    let nyertes: MassTitleCategory | null = null;
+    let hol = -1;
+    let hossz = 0;
+
+    for (const [category, aliases] of Object.entries(this.CATEGORY_ALIASES)) {
+      for (const alias of aliases as string[]) {
+        const pozicio = this.aliasPozicio(lowerTitle, alias);
+        if (pozicio === -1) continue;
+
+        if (hol === -1 || pozicio < hol || (pozicio === hol && alias.length > hossz)) {
+          hol = pozicio;
+          hossz = alias.length;
+          nyertes = category as MassTitleCategory;
+        }
+      }
+    }
+
+    return nyertes;
+  }
+
+  /**
+   * #896: az alias első olyan előfordulása, ami SZÓ ELEJÉN áll.
+   *
+   * Szóhatár nélkül az „UnknownMassTitle"-ből a `mass` alias misét csinálna. Szó VÉGÉT
+   * nem kötünk ki: az aliasok egy része szándékosan tő („szentségimád"), hogy a ragozott
+   * alakok is illeszkedjenek. Ugyanez a szabály fut a PHP oldalon
+   * (`MassDefinitions::aliasPozicio()`).
+   */
+  private static aliasPozicio(cim: string, alias: string): number {
+    let tol = 0;
+
+    for (;;) {
+      const pozicio = cim.indexOf(alias, tol);
+      if (pozicio === -1) return -1;
+
+      const elozo = pozicio === 0 ? '' : cim.charAt(pozicio - 1);
+      if (elozo === '' || !/\p{L}/u.test(elozo)) return pozicio;
+
+      tol = pozicio + 1;
+    }
+  }
+
   // Lefordított szövegek a kategóriákhoz - dinamikusan generálva az i18n JSON alapján
   private static _translatedValuesCache: Record<MassTitleCategory, string[]> | null = null;
 
@@ -116,6 +199,15 @@ export class MassTitleCategoryConfig {
       if (titles.includes(title)) {
         return category as MassTitleCategory;
       }
+    }
+
+    const lowerTitleForAliases = title.toLowerCase();
+
+    // #896: a közös szótár. Ez fut a TranslateService nélkül is — eddig ilyenkor minden
+    // cím a default kategóriába esett, holott a felismeréshez a fordítás nem is kell.
+    const aliasTalalat = this.matchByAliases(lowerTitleForAliases);
+    if (aliasTalalat) {
+      return aliasTalalat;
     }
 
     // Lekérjük a lefordított értékeket

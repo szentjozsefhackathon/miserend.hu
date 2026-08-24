@@ -106,9 +106,9 @@ final class MassDefinitions
      *   1. PONTOS egyezés a kanonikus alakokra (a definíciókulcs vagy a magyar
      *      fordítása). Ez garantálja, hogy a mai viselkedés bitre ugyanaz maradjon a
      *      kanonikus címekre — nulla regresszió.
-     *   2. Ha nincs pontos találat, a szabad szöveges felismerő
-     *      (`\IcalEventProperties::detectCategory()`), ami az importált és a kézzel
-     *      írt egyedi címeket is besorolja.
+     *   2. Ha nincs pontos találat, a szabad szöveges felismerő — a definíciók
+     *      `aliases` szótára (#896), ami az importált és a kézzel írt egyedi címeket
+     *      is besorolja.
      *
      * ISMERETLEN CÍM -> NULL, NEM 'OTHER'. Az OTHER felületi neve „Egyéb imaalkalmak",
      * tagjai a zsolozsma, rózsafüzér, litánia, keresztút. Ha minden felismeretlen szabad
@@ -138,7 +138,99 @@ final class MassDefinitions
             }
         }
 
-        return \IcalEventProperties::detectCategory($title);
+        return $this->categoryByAliases($title);
+    }
+
+    /**
+     * #896: kategóriánkénti szabad szöveges alakok a generált JSON-ból.
+     *
+     * A mesterpéldány a `calendar/src/app/data/mass-definitions.ts` — ott, a definíciók
+     * mellett. Ez a metódus csak a kigenerált indexet adja vissza; ha üres (régi JSON,
+     * ami még az `aliasesByCategory` előtt készült), a felismerés egyszerűen nem talál
+     * semmit, és a kanonikus egyezés marad — nem hasal el.
+     *
+     * @return array<string, string[]>
+     */
+    public function aliasesByCategory(): array
+    {
+        $szotar = [];
+        foreach ($this->arrayValue('aliasesByCategory') as $category => $aliases) {
+            if (is_array($aliases)) {
+                $szotar[(string) $category] = array_values(array_filter(
+                    array_map('strval', $aliases),
+                    static fn(string $a): bool => $a !== ''
+                ));
+            }
+        }
+
+        return $szotar;
+    }
+
+    /**
+     * #157/#896: a címben LEGKORÁBBAN előforduló alias kategóriája.
+     *
+     * A magyar naptárcímek a FŐESEMÉNYT írják előre, ezért a szöveg sorrendje dönt, nem a
+     * kategóriáké:
+     *
+     *   „Szentmise, utána szentségimádás"      -> MASS
+     *   „Szentségimádás a szentmise után"      -> ADORATION
+     *   „Gyóntatás a szentmise előtt"          -> CONFESSION
+     *
+     * Kategória-sorrenddel mindhárom ugyanazt adná, tehát kettő rossz lenne. (Az Angular
+     * oldal pontosan ezt a hibát követte el a #896 előtt.)
+     *
+     * Azonos pozíciónál a HOSSZABB alias nyer: az a szűkebb, tehát a beszédesebb találat.
+     * Így az eredmény nem függ attól, milyen sorrendben soroljuk fel a kategóriákat.
+     */
+    private function categoryByAliases(string $title): ?string
+    {
+        $cim = mb_strtolower($title, 'UTF-8');
+
+        $nyertes = null;
+        $hol = null;
+        $hossz = 0;
+
+        foreach ($this->aliasesByCategory() as $category => $aliases) {
+            foreach ($aliases as $alias) {
+                $pozicio = self::aliasPozicio($cim, $alias);
+                if ($pozicio === null) {
+                    continue;
+                }
+
+                $aliasHossz = mb_strlen($alias);
+                if ($hol === null || $pozicio < $hol || ($pozicio === $hol && $aliasHossz > $hossz)) {
+                    $hol = $pozicio;
+                    $hossz = $aliasHossz;
+                    $nyertes = $category;
+                }
+            }
+        }
+
+        return $nyertes;
+    }
+
+    /**
+     * #896: az alias első olyan előfordulása, ami SZÓ ELEJÉN áll.
+     *
+     * Szóhatár nélkül az „UnknownMassTitle"-ből a `mass` alias misét csinál. Szó VÉGÉT
+     * viszont nem kötünk ki: az aliasok egy része szándékosan tő („szentségimád"), hogy
+     * a ragozott alakok — „szentségimádás", „szentségimádást" — is illeszkedjenek.
+     *
+     * Ugyanez a szabály fut az Angular oldalon (`MassTitleCategoryConfig`), különben a
+     * két felismerés megint elválna egymástól — pont attól, amiért a #896 megszületett.
+     */
+    private static function aliasPozicio(string $cim, string $alias): ?int
+    {
+        $tol = 0;
+        while (($pozicio = mb_strpos($cim, $alias, $tol)) !== false) {
+            $elozo = $pozicio === 0 ? '' : mb_substr($cim, $pozicio - 1, 1);
+            if ($elozo === '' || !preg_match('/\p{L}/u', $elozo)) {
+                return $pozicio;
+            }
+            $tol = $pozicio + 1;
+        }
+
+        return null;
     }
 
     /**
