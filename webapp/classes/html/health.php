@@ -242,7 +242,14 @@ class Health extends Html {
 		}
 
 		$ids = $elastic->churchIdsWithMassesInPeriod(date('Y-01-01'), date('Y-12-31'));
-		$this->churchesWithNoElasticMasses = \Eloquent\Church::whereNotIn('id', $ids)->has('massrules')->get()->toArray();
+		/*
+		 * #881: `with('boundaries')` — a `toArray()` a `varos`-t is kiszámolja, az pedig a
+		 * határokból jön. Eager loading nélkül soronként egy külön lekérdezés lenne, és ez
+		 * a lista pont akkor hosszú (ELSŐSORBAN üres Elasticsearch-nél), amikor a /health
+		 * a legfontosabb — ezerszám indított lekérdezéssel maga a diagnosztika állna meg.
+		 */
+		$this->churchesWithNoElasticMasses = \Eloquent\Church::whereNotIn('id', $ids)->has('massrules')
+			->with('boundaries')->get()->toArray();
 		$this->churchesWithNoElasticMassesCount = count($this->churchesWithNoElasticMasses);
 
 		/*
