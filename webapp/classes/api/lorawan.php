@@ -206,17 +206,38 @@ class LoRaWAN extends Api {
         $this->checkSharedSecret();
 
 
-        $confession = new \Eloquent\Confession();
-
         /*
-         * #866: a MÓD is eltárolódik.
+         * #866: a VÍZSZIVÁRGÁS nem gyóntatás.
          *
-         * Eddig mindkét mód ugyanabba a `status` mezőbe írt 'ON'/'OFF'-ot, a
-         * `Church::getConfessionStatusAttribute()` pedig a templom LEGUTOLSÓ sorát veszi —
-         * módra való szűrés nélkül. Egy jelzett VÍZSZIVÁRGÁSBÓL tehát „Most van gyóntatás
-         * a helyszínen!" lett a templom oldalán.
+         * A végpont két módot ismer (`Mód: 1` ajtó, `Mód: 2` vízszivárgás), de eddig
+         * MINDKETTŐ ugyanabba a `confessions.status` mezőbe írt 'ON'/'OFF'-ot. A
+         * státusz-olvasó pedig a templom LEGUTOLSÓ sorát veszi (`church.php`,
+         * `getConfessionStatusAttribute`) — így egy jelzett szivárgásból „Most van
+         * gyóntatás a helyszínen!" lett a templom oldalán, csukott gyóntatófülke mellett.
+         *
+         * A döntés IMPORTKOR születik meg, nem olvasáskor (borazslo javaslata a #867-ben):
+         * ami nem gyóntatás, az nem kerül a `confessions` táblába. Így nem kell se új
+         * oszlop, se éles migráció, se szűrés az olvasó oldalon — a tábla azt jelenti,
+         * amit a neve mond.
+         *
+         * A szivárgás-jelzést tehát nem tároljuk. Ma sem használtuk semmire; ha egyszer
+         * kell (riasztás a sekrestyésnek), annak úgyis saját tábla és saját életciklus
+         * kell — a `confessions` sosem volt jó helye.
          */
-        $confession->device_mode = (int) $this->input['object']['Mód'];
+        if ((int) $this->input['object']['Mód'] === 2) {
+            if (!isset($this->input['object']['Status_Leak'])) {
+                throw new \Exception('Status_Leak field is required when Mód is 2.');
+            }
+            error_log(sprintf(
+                '[miserend] LoRaWAN: vízszivárgás-jelzés (templom %s, eszköz %s, Status_Leak=%s) — nem gyóntatás, nem tároljuk.',
+                $this->input['deviceInfo']['tags']['templom_id'] ?? '?',
+                $this->input['deviceInfo']['tags']['local_id'] ?? '?',
+                $this->input['object']['Status_Leak']
+            ));
+            return;
+        }
+
+        $confession = new \Eloquent\Confession();
 
         if ($this->input['object']['Mód'] == 1) {
             // #866: a helyesen írt `Status_Door` alakot is elfogadjuk (l. a mezőknél).
@@ -225,17 +246,6 @@ class LoRaWAN extends Api {
                 throw new \Exception('Satus_Door (or Status_Door) field is required when Mód is 1.');
             }
             $confession->status = ($ajto == 1) ? 'ON' : 'OFF';
-        }
-        if ($this->input['object']['Mód'] == 2) {
-            if (!isset($this->input['object']['Status_Leak'])) {
-                throw new \Exception('Status_Leak field is required when Mód is 2.');
-            }
-            /*
-             * A szivárgás-sor `status`-a is 'ON'/'OFF', de a `mod = 2` miatt a
-             * gyóntatás-olvasó már nem veszi figyelembe. A sort eltesszük, mert az adat
-             * érték — csak nem gyóntatás.
-             */
-            $confession->status = ($this->input['object']['Status_Leak'] == 1) ? 'ON' : 'OFF';
         }
 
         
