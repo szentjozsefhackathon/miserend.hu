@@ -109,7 +109,28 @@ jobs:
         env:
           COVERAGE_IMAGE_TAG: ${{ steps.tag.outputs.TAG }}
         run: |
-            docker compose $COMPOSE_FILES cp scripts/check-undefined-methods.php miserend:/tmp/check-undefined-methods.php
+            # #888: az ellenőrző szkript a REPÓ eszköze, nem a vizsgált kód.
+            #
+            # A futás a nyers PR-fejet checkoutolja (l. fentebb a REF-et), tehát egy
+            # néhány hetes ágon a szkript egyszerűen nincs ott — a `cp` `lstat ... no such
+            # file`-lal elhasal, és a PR a TARTALMÁTÓL FÜGGETLENÜL piros lesz, még mielőtt
+            # egyetlen teszt lefutna. Pontosan ez történt a #879-cel.
+            #
+            # Ezért: ha az ágon nincs, a bázisról vesszük elő. Ha ott sincs, kihagyjuk —
+            # a hiányzó ellenőrző nem hiba, csak nem alkalmazható.
+            SCRIPT=scripts/check-undefined-methods.php
+            if [ ! -f "$SCRIPT" ]; then
+              BASE="${{ github.base_ref || 'master' }}"
+              echo "A(z) $SCRIPT nincs ezen az ágon; a(z) $BASE példányát próbálom."
+              if git fetch --depth=1 origin "$BASE" \
+                 && git show FETCH_HEAD:"$SCRIPT" > /tmp/check-undefined-methods.php 2>/dev/null; then
+                SCRIPT=/tmp/check-undefined-methods.php
+              else
+                echo "::notice title=Metódus-ellenőrzés kihagyva::A szkript sem az ágon, sem a(z) $BASE ágon nem érhető el."
+                exit 0
+              fi
+            fi
+            docker compose $COMPOSE_FILES cp "$SCRIPT" miserend:/tmp/check-undefined-methods.php
             docker compose $COMPOSE_FILES exec -T miserend php /tmp/check-undefined-methods.php /miserend/webapp
 
       - name: Run PHPUnit tests
