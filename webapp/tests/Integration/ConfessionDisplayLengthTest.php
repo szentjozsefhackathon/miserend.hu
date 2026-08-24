@@ -121,6 +121,76 @@ final class ConfessionDisplayLengthTest extends TestCase {
         self::assertSame(20 * 3600, $szakaszok[0]['duration'], 'korlat nelkul a 20 oras tolerancia');
     }
 
+    /* ---- Az ÉLŐ állapot (a templomoldal jelzője) ---- */
+
+    /**
+     * A LÉNYEG: az elfelejtett kikapcsolás nem hirdet gyóntatást másnap délig.
+     *
+     * Eddig 20 óra volt a „még tart?" ablak, tehát egy reggel bekapcsolt és kikapcsolni
+     * elfelejtett jelzés estig-másnapig azt írta ki, hogy „Most van gyóntatás a
+     * helyszínen!". Ez a látogatót odaviszi hiába — ennél rosszabbat nem is tehetünk.
+     */
+    public function testAForgottenSwitchDoesNotAdvertiseConfession(): void {
+        $this->jelzes('ON', '-5 hours');
+
+        self::assertSame('OFF', \Eloquent\Church::find($this->churchId)->confessionStatus);
+    }
+
+    /** A valóban futó gyóntatás továbbra is látszik. */
+    public function testAnOngoingConfessionIsStillOn(): void {
+        $this->jelzes('ON', '-20 minutes');
+
+        self::assertSame('ON', \Eloquent\Church::find($this->churchId)->confessionStatus);
+    }
+
+    /** A határ pontosan a konstans: két órán belül igen, azon túl nem. */
+    public function testTheLiveWindowIsExactlyTwoHours(): void {
+        $this->jelzes('ON', '-119 minutes');
+        self::assertSame('ON', \Eloquent\Church::find($this->churchId)->confessionStatus);
+
+        DB::table('confessions')->where('church_id', $this->churchId)->delete();
+
+        $this->jelzes('ON', '-121 minutes');
+        self::assertSame('OFF', \Eloquent\Church::find($this->churchId)->confessionStatus);
+    }
+
+    /** Kikapcsolt jelzés: nem gyóntatnak. */
+    public function testAnOffSignalMeansNoConfession(): void {
+        $this->jelzes('ON',  '-40 minutes');
+        $this->jelzes('OFF', '-10 minutes');
+
+        self::assertSame('OFF', \Eloquent\Church::find($this->churchId)->confessionStatus);
+    }
+
+    /**
+     * Adat nélkül `false` — ez NEM ugyanaz, mint az 'OFF'.
+     *
+     * A `false` azt jelenti, hogy ebben a templomban nincs érzékelő; a felület ilyenkor
+     * mást ír ki („Nincs jelzőkapcsoló"), mint amikor van, de épp nem gyóntatnak.
+     */
+    public function testWithoutAnySignalTheStatusIsFalse(): void {
+        self::assertFalse(\Eloquent\Church::find($this->churchId)->confessionStatus);
+    }
+
+    /** Az élő ablak konstansból jön, és két óra. */
+    public function testTheLiveToleranceIsTheDeclaredConstant(): void {
+        self::assertSame('2 hours', \Eloquent\Church::CONFESSION_TOLERANCE);
+    }
+
+    /**
+     * A „20 hours" nem maradhat beégetve sehol.
+     *
+     * A #884-ben pont az volt a baj, hogy ugyanaz az érték három helyen állt külön
+     * (`church.php` kétszer, `ajax/calendar/church.php` egyszer). Ha valaki
+     * visszacsempészi, itt derül ki, nem élesben.
+     */
+    public function testTheToleranceIsNotHardcodedAnywhere(): void {
+        foreach (['classes/eloquent/church.php', 'classes/html/ajax/calendar/church.php'] as $fajl) {
+            self::assertStringNotContainsString("'20 hours'", file_get_contents(PATH . $fajl),
+                "beégetett tolerancia: $fajl");
+        }
+    }
+
     /** Több szakasz esetén mindegyikre külön érvényes a korlát. */
     public function testEveryPeriodIsCappedSeparately(): void {
         $this->jelzes('ON',  '-3 days');
