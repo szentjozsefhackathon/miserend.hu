@@ -135,16 +135,17 @@ class UploadImage extends Html {
             header('Content-Type: application/json');
             http_response_code(400); // Changed from 500 to 400 (Bad Request)
             
+            /*
+             * #893: a válaszban NINCS `debug_info`. Eddig a fájlnév, a sorszám és a
+             * TELJES hívási lánc kiment a böngészőbe — bárkinek, aki elő tud idézni egy
+             * hibát. Ugyanaz a szivárgás, mint amit a #860-ban kivettünk innen. Az ok
+             * továbbra is megvan, csak ott, ahol való: az alábbi naplósorban.
+             */
             $errorResponse = [
                 'success' => false,
                 'error' => true,
                 'text' => $e->getMessage(),
                 'message' => 'Hiba történt a feltöltés során: ' . $e->getMessage(),
-                'debug_info' => [
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                    'trace' => $e->getTraceAsString()
-                ]
             ];
             
             // Log the error for debugging

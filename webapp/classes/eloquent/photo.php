@@ -156,18 +156,21 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
          * véd; egyik sem hagyható el.
          */
         $safeExtension = self::safeExtensionFor($inputFile['tmp_name']);
+
+        /*
+         * #893: a templom könyvtárát ÉS a `kicsi/` alkönyvtárát külön-külön kell
+         * megkövetelni, még a fájl mozgatása előtt.
+         *
+         * Eddig a `kicsi/` csak akkor jött létre, ha a templom könyvtára is épp akkor
+         * született. Ha a könyvtár már megvolt, de a `kicsi/` nem, a feltöltés SIKERT
+         * jelentett: a nagy kép és az adatbázis-sor elkészült, a bélyegkép viszont nem.
+         * Kimértem — a válasz „Elmentettük", a naplóban meg
+         * `imagepng(.../kicsi/...): Failed to open stream: No such file or directory`.
+         * A templom oldalán ilyenkor törött kép áll, és senki nem tud róla.
+         */
         $konyvtar = $this->pathToPhotos . "/" . $this->church_id;
-        if (!is_dir("$konyvtar")) {
-            if (!mkdir("$konyvtar", 0775)) {
-                throw new \Exception("Could not create the folder.");
-            }
-            if (!mkdir("$konyvtar/kicsi", 0775)) {
-                throw new \Exception("Could not create the folder.");
-            }
-        }
-        if (!is_writable($konyvtar)) {
-            throw new \Exception("Upload directory is not writable.");            
-        }
+        self::keszenAllKonyvtar($konyvtar);
+        self::keszenAllKonyvtar($konyvtar . "/kicsi");
         // #709: a kiterjesztés a FELISMERT képtípusból jön, nem a kliens fájlnevéből.
         $Random_Number = rand(0, 9999999999); //Random number to be added to name.
         $this->filename = $Random_Number . $safeExtension; //new file name
@@ -231,6 +234,15 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
         } catch (\Throwable $e) {
             @\unlink($kimenet);
             @\unlink($kimenet1);
+            /*
+             * #893: a valódi okot eddig elnyelte ez az ág — a `$e` felhasználatlan volt.
+             * A felhasználónak adott mondat („sérült vagy nem valódi képfájl") csak az
+             * esetek egy részére igaz: ha a bélyegkép azért nem készült el, mert nem
+             * lehetett kiírni, akkor a képére fogtuk a szerver hibáját. A napló mostantól
+             * megmondja, melyikről van szó.
+             */
+            error_log('[miserend] képfeldolgozás elhasalt (templom: ' . $this->church_id . ', fájl: '
+                . basename($kimenet) . '): ' . $e->getMessage());
             throw new \Exception("A képet nem sikerült feldolgozni, ezért nem mentettük el. "
                 . "Valószínűleg sérült vagy nem valódi képfájl.");
         }
@@ -355,15 +367,79 @@ class Photo extends \Illuminate\Database\Eloquent\Model {
         \imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $new_w, $new_h, \imagesx($src_img), \imagesy($src_img));
 
         // Ugyanabban a formátumban írunk vissza, amilyen a forrás volt.
+        //
+        // #893: a GD `false`-szal jelzi, ha nem tudott írni (nincs meg a könyvtár, nem
+        // írható, betelt a lemez). Eddig ez a visszatérési érték elveszett, ezért a hívó
+        // sikeresnek látta a kicsinyítést akkor is, ha egyetlen bájt sem került ki.
         switch ($info[2]) {
-            case IMAGETYPE_PNG: \imagepng($dst_img, "$kimenet");  break;
-            case IMAGETYPE_GIF: \imagegif($dst_img, "$kimenet");  break;
-            default:            \imagejpeg($dst_img, "$kimenet"); break;
+            case IMAGETYPE_PNG: $sikerult = \imagepng($dst_img, "$kimenet");  break;
+            case IMAGETYPE_GIF: $sikerult = \imagegif($dst_img, "$kimenet");  break;
+            default:            $sikerult = \imagejpeg($dst_img, "$kimenet"); break;
         }
 
         // Free up memory
         \imagedestroy($src_img);
         \imagedestroy($dst_img);
+
+        if ($sikerult !== true) {
+            throw new \Exception("A képet nem sikerült kiírni: " . basename($kimenet));
+        }
+    }
+
+    /**
+     * #893: a képkönyvtár legyen meg és legyen írható — vagy derüljön ki, miért nem.
+     *
+     * A `webapp/kepek` az egyetlen hoszt-bind mount (`docker/compose.yml:180`), a
+     * konténer pedig `www-data`-ként fut (`compose.yml:187`): a jogosultság a HOSZTON
+     * dől el, és a kód nem tudja megjavítani — a `chown`-hoz tulajdonosnak kellene
+     * lenni. Amit tehetünk, az kettő: a felhasználó kapjon érthető mondatot, a napló
+     * pedig a tényeket. Enélkül a hiba egy angol félmondat egy gondnok észrevételében,
+     * és minden vizsgálat nulláról indul.
+     */
+    private static function keszenAllKonyvtar(string $ut): void {
+        /*
+         * A stat-gyorstár ürítése nem óvatoskodás: a fejlesztői példányon kimértem, hogy
+         * egy Apache-munkásfolyamat `is_dir()`-je IGAZ-at adott egy közben megszűnt
+         * könyvtárra. A `mkdir` így el sem indult, a hiba pedig csak három lépéssel
+         * később, a bélyegkép írásánál jött elő — pont abban a formában, amit ez a
+         * javítás meg akar szüntetni.
+         */
+        \clearstatcache(true, $ut);
+
+        // A harmadik feltétel nem felesleges: két párhuzamos feltöltés versenyezhet,
+        // és a vesztes `mkdir`-je azért ad `false`-t, mert a könyvtár közben elkészült.
+        if (!is_dir($ut) && !@mkdir($ut, 0775, true) && !is_dir($ut)) {
+            error_log('[miserend] képkönyvtár: nem hozható létre — ' . self::konyvtarAllapot($ut));
+            throw new \Exception("A képkönyvtár nem hozható létre a szerveren, ezért a kép most nem menthető. "
+                . "Jeleztük az üzemeltetésnek.");
+        }
+
+        if (!is_writable($ut)) {
+            error_log('[miserend] képkönyvtár: nem írható — ' . self::konyvtarAllapot($ut));
+            throw new \Exception("A képkönyvtár nem írható a szerveren, ezért a kép most nem menthető. "
+                . "Jeleztük az üzemeltetésnek; kérlek, próbáld meg később.");
+        }
+    }
+
+    /**
+     * #893: amit a naplóba írunk egy könyvtár-hibánál.
+     *
+     * Pontosan az, amiből eldönthető, hogy jogosultsági baj van-e vagy más: kié a
+     * könyvtár, mi a módja, ki futtat minket, és a szülőbe bele lehet-e írni.
+     */
+    private static function konyvtarAllapot(string $ut): string {
+        \clearstatcache(true, $ut);
+        $szulo = \dirname($ut);
+
+        return \json_encode([
+            'ut'           => $ut,
+            'letezik'      => \is_dir($ut),
+            'jogosultsag'  => \is_dir($ut) ? \substr(\sprintf('%o', \fileperms($ut)), -4) : null,
+            'tulajdonos'   => \is_dir($ut) ? (\fileowner($ut) . ':' . \filegroup($ut)) : null,
+            'szulo'        => $szulo,
+            'szulo_irhato' => \is_dir($szulo) ? \is_writable($szulo) : false,
+            'futo_uid'     => \function_exists('posix_geteuid') ? \posix_geteuid() : null,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
 }
