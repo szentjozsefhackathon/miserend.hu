@@ -15,7 +15,14 @@ class Church extends \Illuminate\Database\Eloquent\Model {
     use \Illuminate\Database\Eloquent\SoftDeletes;
     
     protected $table = 'templomok';
-    protected $appends = array('names', 'alternative_names', 'fullName','location','links','fullNetwork');
+    /*
+     * #881: a `varos` azért van itt, mert a kereső-találatok nem a modellt adják a
+     * sablonnak, hanem `$church->toArray()`-t (`searchresultsmasses.php:408`, `:475`) —
+     * oda az accessor önmagában nem jut el. Az `orszag`/`megye` szándékosan marad ki:
+     * azokat csak a /josm sablonja használja, ott viszont modellobjektumon, tehát az
+     * accessor elég. Minden fölösleges append ára egy lekérdezés soronként.
+     */
+    protected $appends = array('names', 'alternative_names', 'fullName','location','links','fullNetwork','varos');
     protected $fillable = [
         'nev', 'cim', 'orszag', 'megye', 'varos', 'plebania', 'pleb_eml', 'leiras',
         'lat', 'lon', 'miseaktiv', 'ok', 'frissites', 'misemegj','osmid','osmtype',
@@ -1906,16 +1913,88 @@ class Church extends \Illuminate\Database\Eloquent\Model {
             . " ORDER BY FIELD(b.admin_level, $lista) LIMIT 1)";
     }
 
+    /** #881: a templom közigazgatási határai, egyszer lekérve. `null` = még nem kértük le. */
+    private ?array $kozigHatarokCache = null;
+
+    /**
+     * #881: EGY lekérdezés templomonként, szintenkénti helyett.
+     *
+     * Eddig minden szint-kérés külön `SELECT`-et indított, és a `locationCityName()`
+     * ebből 1–4-et hív. Amíg ezt csak az API-tömbök használták (templomonként egyszer),
+     * ez elfért. A `varos` accessorral viszont MINDEN listasor meghívja — egy 50 soros
+     * katalógus 100+ lekérdezés lenne, holott a régi `varos` oszlop kiolvasása ingyen
+     * volt. Ezért egyszer lekérjük a templom összes közigazgatási határát (jellemzően
+     * 4-6 sor), és utána PHP-ben válogatunk.
+     *
+     * Ha a `boundaries` reláció már be van töltve (eager loading), lekérdezés sincs.
+     */
+    private function kozigHatarok(): array {
+        if ($this->kozigHatarokCache !== null) {
+            return $this->kozigHatarokCache;
+        }
+
+        $sorok = $this->relationLoaded('boundaries')
+            ? $this->boundaries->where('boundary', 'administrative')
+            : $this->boundaries()->where('boundary', 'administrative')->get();
+
+        $this->kozigHatarokCache = [];
+        foreach ($sorok as $hatar) {
+            $szint = (int) $hatar->admin_level;
+            $nev = trim((string) $hatar->name);
+            // Egy szinten több sor is lehet; az elsőt tartjuk meg, ahogy a régi
+            // `orderBy('admin_level','desc')` + `first()` is egyet adott vissza.
+            if ($nev !== '' && !isset($this->kozigHatarokCache[$szint])) {
+                $this->kozigHatarokCache[$szint] = $nev;
+            }
+        }
+
+        return $this->kozigHatarokCache;
+    }
+
     private function adminBoundaryName(array $szintek): ?string {
-        $talalat = $this->boundaries()
-                ->where('boundary', 'administrative')
-                ->whereIn('admin_level', $szintek)
-                ->orderBy('admin_level', 'desc')
-                ->first();
+        $hatarok = $this->kozigHatarok();
 
-        $nev = trim((string) ($talalat->name ?? ''));
+        // A régi lekérdezés a megadott szintek közül a LEGMAGASABBAT vette
+        // (`orderBy('admin_level','desc')`), ezért itt is csökkenő sorrendben keresünk.
+        rsort($szintek);
+        foreach ($szintek as $szint) {
+            if (isset($hatarok[$szint])) {
+                return $hatarok[$szint];
+            }
+        }
 
-        return $nev !== '' ? $nev : null;
+        return null;
+    }
+
+    /**
+     * #881: `varos` — a régi oszlop neve alatt, a határokból számolva.
+     *
+     * A #496/#497/#498 eldobta a `templomok.varos` oszlopot, és a helyére a
+     * `locationCityName()` lépett. Az API-tömbök át is álltak rá — a FELÜLET viszont
+     * nem: tizenhét sablon hivatkozik `church.varos`-ra. Oszlop és accessor híján az
+     * Eloquent üres értéket adott, és a település egyszerűen eltűnt:
+     *
+     *   /templom/list        ->  <strong>Szent Anna-templom</strong> ()
+     *   /egyhazmegye/list    ->  a „város" oszlop üres
+     *   /home                ->  a javaslat-lista templomneve mögött üres zárójel
+     *   mise-keresés         ->  ugyanaz
+     *
+     * Az accessor a legkisebb javítás, ami MINDET megfogja egyszerre, és a sablonokat
+     * nem kell egyenként átírni. A név szándékosan marad `varos`: az API-ban, a v5
+     * sqlite-ban és a mobilappban is ez a mező neve.
+     */
+    public function getVarosAttribute(): string {
+        return $this->locationCityName();
+    }
+
+    /** #881: `orszag` — ugyanaz a történet, a /josm oldal két táblázata használja. */
+    public function getOrszagAttribute(): string {
+        return $this->locationCountryName();
+    }
+
+    /** #881: `megye` — a teljesség kedvéért, ugyanabból a forrásból. */
+    public function getMegyeAttribute(): string {
+        return $this->locationCountyName();
     }
 
     /**
