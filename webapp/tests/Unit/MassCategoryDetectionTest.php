@@ -89,12 +89,22 @@ final class MassCategoryDetectionTest extends TestCase
             'ragozott mise'           => ['Kollégistáink szentmiséje (P. Szőcs)', 'MASS'],
             'újmise'                  => ['P. Phamdinh Ngoc József SJ újmiséje', 'MASS'],
 
-            // Ezek TOVÁBBRA IS kategória nélkül maradnak, és ez a helyes: liturgiák, de
-            // egyik sem a négy kategória valamelyike. A „szertartás" önmagában ezért nem
-            // lehet alias — a temetésből is misét csinálna.
-            'temetés'                 => ['BOHAN BÉLA ATYA TEMETÉSE 12 ÓRAKOR', null],
-            'keresztelő'              => ['Keresztelő (P. Vértesaljai)', null],
-            'esküvő'                  => ['Esküvő (Alácsi Ervin atya)', null],
+            // #896: borazslo döntése szerint ezek EGYÉB-be tartoznak. Nem definícióként,
+            // hanem kategória-aliasként — így a kereső megtalálja őket, a naptárszerkesztő
+            // cím-választójában viszont nem jelennek meg.
+            'temetés'                 => ['BOHAN BÉLA ATYA TEMETÉSE 12 ÓRAKOR', 'OTHER'],
+            'keresztelő'              => ['Keresztelő (P. Vértesaljai)', 'OTHER'],
+            'ékezet nélküli keresztelő' => ['Keresztelõ, P. Szőcs', 'OTHER'],
+            'esküvő'                  => ['Esküvő (Alácsi Ervin atya)', 'OTHER'],
+            'requiem'                 => ['BOHAN BÉLA ATYA - REQUIEM, SZEGEDI SZENT JÓZSEF Templomban', 'OTHER'],
+
+            // De a MISE marad mise: a „10 misén keresztelő" elsősorban szentmise, és a
+            // korábbi találat nyer — a „misé" a 3. karakternél áll, a „keresztel" a 9-nél.
+            'keresztelő a misén'      => ['10 misén keresztelő, Mária Teodóra', 'MASS'],
+
+            // A „szertartás" önmagában továbbra sem lehet alias: abból a temetés is mise
+            // lenne. Csak a nagypénteki/nagycsütörtöki/feltámadási alak szerepel.
+            'lelkinap'                => ['Lelkinap', null],
         ];
     }
 

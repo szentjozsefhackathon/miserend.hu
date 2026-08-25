@@ -91,7 +91,10 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
   // Build category index
   MASS_DEFINITIONS_DATA.categories.forEach((cat: CategoryDefinition) => {
     titlesByCategory[cat.key] = [];
-    aliasesByCategory[cat.key] = [];
+
+    // #896: a kategória saját aliasai (keresztelő, esküvő, temetés) — ezekhez nincs
+    // definíció, mert nem szabad felkínálni őket a naptárszerkesztőben.
+    aliasesByCategory[cat.key] = cat.aliases ? [...cat.aliases] : [];
   });
   
   // Build rite index
@@ -143,7 +146,9 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
   return {
     _generator: 'mass-definitions-export.ts',
     _warning: 'Auto-generated from calendar/src/app/data/mass-definitions.ts during Angular build',
-    categories: MASS_DEFINITIONS_DATA.categories,
+    // A kategória-aliasok az `aliasesByCategory`-ban vannak; itt csak a kulcs és a szín,
+    // hogy ugyanaz az adat ne szerepeljen két helyen a kimenetben.
+    categories: MASS_DEFINITIONS_DATA.categories.map(({ key, color }) => ({ key, color })),
     rites: ritesWithMasstypes,
     definitions: exportDefinitions,
     titlesByCategory,

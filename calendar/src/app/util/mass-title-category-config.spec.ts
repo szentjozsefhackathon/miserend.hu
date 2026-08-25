@@ -327,6 +327,27 @@ describe('MassTitleCategoryConfig', () => {
         .toBe(MassTitleCategory.OTHER);
     });
 
+    it('#896: a keresztelő, esküvő, temetés EGYÉB — de nem választható cím', () => {
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Keresztelő (P. Vértesaljai)'))
+        .toBe(MassTitleCategory.OTHER);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Esküvő (Alácsi Ervin atya)'))
+        .toBe(MassTitleCategory.OTHER);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('BOHAN BÉLA ATYA TEMETÉSE 12 ÓRAKOR'))
+        .toBe(MassTitleCategory.OTHER);
+
+      // A mise marad mise: a korábbi találat nyer.
+      expect(MassTitleCategoryConfig.getCategoryByTitle('10 misén keresztelő, Mária Teodóra'))
+        .toBe(MassTitleCategory.MASS);
+
+      // És egyikük sem jelenhet meg a szerkesztő cím-választójában.
+      const cimek = Object.values(MassTitleCategoryConfig.CATEGORY_TITLES).flat();
+      for (const kulcs of cimek) {
+        expect(kulcs.toLowerCase()).not.toContain('keresztel');
+        expect(kulcs.toLowerCase()).not.toContain('wedding');
+        expect(kulcs.toLowerCase()).not.toContain('funeral');
+      }
+    });
+
     it('a szótár mind a négy kategóriára ad alakokat', () => {
       const aliases = MassTitleCategoryConfig.CATEGORY_ALIASES;
 

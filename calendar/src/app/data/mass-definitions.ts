@@ -50,6 +50,14 @@ export interface MassDefinition {
 export interface CategoryDefinition {
   key: MassTitleCategory;
   color: string;
+
+  /**
+   * #896: kategória-szintű aliasok — olyan alkalmak, amikhez nem tartozik definíció.
+   *
+   * Azért nem definíció, mert az megjelenne a naptárszerkesztő cím-választójában. L. a
+   * `MASS_CATEGORY_DEFINITIONS` megjegyzését.
+   */
+  aliases?: string[];
 }
 
 /**
@@ -57,9 +65,11 @@ export interface CategoryDefinition {
  * MASS_CATEGORY_DEFINITIONS az egyetlen hely az értékek definiálásához!
  */
 const generateCategories = (): CategoryDefinition[] => {
-  return MASS_CATEGORY_DEFINITIONS.map(({ key, color }) => ({
-    key: key as MassTitleCategory,
-    color
+  return MASS_CATEGORY_DEFINITIONS.map((def) => ({
+    key: def.key as MassTitleCategory,
+    color: def.color,
+    // `as const` miatt readonly a forrás; másolat kell, hogy a típus egyezzen.
+    aliases: 'aliases' in def ? [...(def.aliases as readonly string[])] : []
   }));
 };
 

@@ -110,10 +110,14 @@ final class MassDefinitions
      *      `aliases` szótára (#896), ami az importált és a kézzel írt egyedi címeket
      *      is besorolja.
      *
-     * ISMERETLEN CÍM -> NULL, NEM 'OTHER'. Az OTHER felületi neve „Egyéb imaalkalmak",
-     * tagjai a zsolozsma, rózsafüzér, litánia, keresztút. Ha minden felismeretlen szabad
-     * szöveg oda kerülne, a szűrő hazudna: a „Képviselőtestületi ülés" és a „Hittanóra"
+     * ISMERETLEN CÍM -> NULL, NEM 'OTHER'. Ha minden felismeretlen szabad szöveg az
+     * OTHER-be kerülne, a szűrő hazudna: a „Képviselőtestületi ülés" és a „Hittanóra"
      * imaalkalomként jelenne meg. A hiányzó mező őszinte, és mérhető is.
+     *
+     * #896: a keresztelő, az esküvő és a temetés viszont SZÁNDÉKOSAN OTHER — borazslo
+     * döntése. Ezek csak importból kerülnek be, keresni sem fog rájuk senki, de a teljes
+     * elrejtésük már átverés lenne. Kategória-aliasként szerepelnek (nem definícióként),
+     * hogy a naptárszerkesztő cím-választójában ne jelenjenek meg.
      */
     public function categoryForTitle(string $title): ?string
     {

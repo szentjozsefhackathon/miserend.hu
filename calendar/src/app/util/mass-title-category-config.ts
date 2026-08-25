@@ -59,7 +59,9 @@ export class MassTitleCategoryConfig {
     const aliases: Record<MassTitleCategory, string[]> = {} as Record<MassTitleCategory, string[]>;
 
     for (const categoryDef of MASS_DEFINITIONS_DATA.categories) {
-      aliases[categoryDef.key as MassTitleCategory] = [];
+      // #896: a kategória saját aliasai (keresztelő, esküvő, temetés) — ezekhez nincs
+      // definíció, mert a naptárszerkesztőben nem szabad megjelenniük.
+      aliases[categoryDef.key as MassTitleCategory] = categoryDef.aliases ? [...categoryDef.aliases] : [];
     }
 
     for (const definition of MASS_DEFINITIONS_DATA.definitions) {

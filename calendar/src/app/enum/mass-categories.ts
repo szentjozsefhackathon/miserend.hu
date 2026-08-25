@@ -22,6 +22,25 @@ export const MASS_CATEGORY_DEFINITIONS = [
   {
     key: 'OTHER',
     color: '#A8B8D0',
+
+    /*
+     * #896: olyan alkalmak, amiket FEL kell ismerni, de NEM szabad felkínálni.
+     *
+     * borazslo döntése: a keresztelő, az esküvő és a temetés csak importból kerül be
+     * („a szerkesztő felületen keresztül nem akarunk ilyet állítani"), a keresőben
+     * viszont az „egyéb" jó nekik — a teljes elrejtésük már átverés lenne.
+     *
+     * Ezért KATEGÓRIA-szintű aliasok, nem definíciók: egy új definíció (BAPTISM,
+     * WEDDING, …) megjelenne a naptárszerkesztő cím-választójában is, tehát pont azt
+     * csinálná, amit nem akarunk. Így viszont a felismerés tud róluk, a szerkesztő nem.
+     */
+    aliases: [
+      'keresztel',            // keresztelő, keresztelõ, keresztelője, keresztelés
+      'esküvő', 'eskuvo',
+      'temetés', 'temetes',
+      'requiem',
+      'gyászszertartás', 'gyaszszertartas',
+    ],
   }
 ] as const;
 
