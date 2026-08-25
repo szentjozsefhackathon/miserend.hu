@@ -37,8 +37,23 @@
 
         <div class="row mb-3">
             <div class="col-12 font-weight-bold">
-                <h4>Koordináta:</h4> 
-                <p>A térképen mozgatva a jelölőt változik a mentendő koordináta.</p>               
+                <h4>Koordináta:</h4>
+                <p>A térképen mozgatva a jelölőt változik a mentendő koordináta. Ha nem tudod
+                   fejből, keress rá a településre — a térkép odaugrik, és onnan igazítod.</p>
+            </div>
+            {# #898: helynév -> koordináta. A meglévő, szerveroldali és cache-elt
+               /ajax/Geocode végpontot hívja, ugyanazt, amit a kereső űrlapja. #}
+            <div class="col-md-8 mb-2">
+                <input type="text" id="hely-kereso" class="form-control"
+                       placeholder="Település, cím vagy templomnév — pl. Hajdúnánás">
+            </div>
+            <div class="col-md-4 mb-2">
+                <button type="button" id="hely-keres-gomb" class="btn btn-outline-secondary w-100">
+                    Ugrás a térképen
+                </button>
+            </div>
+            <div class="col-12 mb-2">
+                <small id="hely-allapot" class="text-muted"></small>
             </div>
             <div class="col-md-5">
                 <input type="text" name="church[lat]" value="" class="form-control" placeholder="szélességi fok">
@@ -75,6 +90,10 @@
             </div>
             <div class="col-md-12">
                 
+                <div id="osm-allapot" class="alert alert-light py-2 px-3 mb-2" role="status">
+                    Adj meg koordinátát, és megnézzük, van-e a környéken OSM-ben ismert templom.
+                </div>
+
                  <!-- Táblázat a közeli helyek megjelenítéséhez -->
                 <table id="nearby-places" class="table table-striped">
                     <thead>
@@ -121,199 +140,342 @@
     <link rel="stylesheet" href="/node_modules/leaflet/dist/leaflet.css"/>
 
     <script>
-  $( function() {
-		  
-  
-    $( ".info" ).on( "click", function() { 
-        console.log($( this ).data('id'));
-               $('#help' + $( this ).data('id') ).toggle(600);
+    $(function () {
+        $('.info').on('click', function () {
+            $('#help' + $(this).data('id')).toggle(600);
+        });
     });
- });
-  
-    
+
+    /*
+     * #898: „Feladtam az új misézőhely felvitelét… A koordináták beírása után vagy szép
+     * fővárosunk valamelyik kerületébe téved, hogy mozgassam a helyet fél Magyarországon
+     * át vagy egy teljesen más településre visz."
+     *
+     * Az ok a régi kódban a BEMENET kezelése volt, három hibával:
+     *
+     *  1. Az `input` esemény MINDEN leütésre lefutott. A „47.4979" begépelése közben a
+     *     mező tartalma sorra „4", „47", „47.", „47.4" — és mindegyikre elmozdult a
+     *     térkép. Amíg a másik mező üres volt, a Leaflet a `""`-t 0-nak vette, tehát a
+     *     jelölő az Atlanti-óceánra ugrott, majd vissza. Innen a „fél Magyarországon át".
+     *  2. Ugyanezekre a félkész értékekre indult egy-egy Overpass-lekérdezés is,
+     *     leütésenként — a válaszok pedig tetszőleges sorrendben értek vissza, tehát a
+     *     táblázatban egy KORÁBBI koordináta találatai maradhattak. Ráadásul a kevés
+     *     találat miatti újrapróbálkozás (1000 -> 6000 -> … -> 21000 m) leütésenként öt
+     *     kérést jelentett: egy koordináta beírása simán ötven kérés, amire az Overpass
+     *     jogosan kizár — az meg a némán elnyelt hibaágra futott.
+     *  3. Tizedesvesszővel (magyar számformátum, magyar billentyűzet) a Leaflet
+     *     „Invalid LatLng"-gel elszállt, és onnantól a térkép mozdíthatatlan volt.
+     *
+     * Mostantól: a beírás UTÁN, kis várakozással dolgozunk, csak érvényes koordinátára,
+     * egyszerre egy Overpass-kéréssel, és ami történik, az látszik is a felületen.
+     */
     $(function () {
 
-         // Mezők változásának figyelése
-        $('input[name="church[lat]"], input[name="church[lon]"]').on('input', function () {
-            var lat = $('input[name="church[lat]"]').val();
-            var lon = $('input[name="church[lon]"]').val();
+        var ALAP_LAT = 47.497913;
+        var ALAP_LON = 19.040236;
 
-            // OSM szerkesztési link frissítése
-            $('#osm-edit-link').attr('href', `https://www.openstreetmap.org/edit?editor=id#map=19/${lat}/${lon}`);  
+        var latMezo   = $('input[name="church[lat]"]');
+        var lonMezo   = $('input[name="church[lon]"]');
+        var osmTipus  = $('select[name="church[osmtype]"]');
+        var osmAzon   = $('input[name="church[osmid]"]');
+        var tablaTest = $('#nearby-places tbody');
+        var osmAllapot = $('#osm-allapot');
+        var helyAllapot = $('#hely-allapot');
 
-            // osmtype és osmid mezők ürítése
-            $('select[name="church[osmtype]"]').val('');
-            $('input[name="church[osmid]"]').val('');
+        /** Tizedesvessző is jó — a mentés (create.php) ugyanígy fogadja el. */
+        function szamma(ertek) {
+            var szoveg = String(ertek === undefined || ertek === null ? '' : ertek).trim().replace(',', '.');
+            if (szoveg === '') return null;
 
-            // Térkép frissítése
-            marker.setLatLng([lat, lon]);
-            map.setView([lat, lon], map.getZoom());
-                        
-            // Overpass Turbo API lekérés
-            fetchOverpassData(lat, lon);     
-        });
+            var szam = Number(szoveg);
+            return isFinite(szam) ? szam : null;
+        }
 
-        function fetchOverpassData(lat, lon, radius = 1000) {
-            // Overpass Turbo lekérdezés
-            var query = `
-                [out:json][timeout:25];
-                (
-                    node["amenity"="place_of_worship"]["religion"="christian"](around:${radius},${lat},${lon});
-                    way["amenity"="place_of_worship"]["religion"="christian"](around:${radius},${lat},${lon});
-                    relation["amenity"="place_of_worship"]["religion"="christian"](around:${radius},${lat},${lon});
-                );
-                out body center;
-            `;
+        /** A két mező együtt, csak ha MINDKETTŐ érvényes. Félkész értékre nem mozdulunk. */
+        function koordinata() {
+            var lat = szamma(latMezo.val());
+            var lon = szamma(lonMezo.val());
 
-            $.ajax({
+            if (lat === null || lon === null) return null;
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+
+            return { lat: lat, lon: lon };
+        }
+
+        var map = L.map('map').setView([ALAP_LAT, ALAP_LON], 15);
+        L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas).addTo(map);
+        var marker = L.marker([ALAP_LAT, ALAP_LON], { draggable: true }).addTo(map);
+
+        function osmLinkFrissit(pont) {
+            $('#osm-edit-link').attr('href',
+                'https://www.openstreetmap.org/edit?editor=id#map=19/' + pont.lat + '/' + pont.lon);
+        }
+
+        function osmAzonositoTorol() {
+            osmTipus.val('');
+            osmAzon.val('');
+        }
+
+        /* ---- Overpass: egyszerre EGY kérés, és a válasza látszik ---- */
+
+        var futoKeres = null;
+        var idozito = null;
+        var sorszam = 0;
+
+        function osmUzenet(szoveg, tipus) {
+            osmAllapot.attr('class', 'alert alert-' + (tipus || 'light') + ' py-2 px-3 mb-2').text(szoveg);
+        }
+
+        function keresEsedekes(pont) {
+            if (idozito) clearTimeout(idozito);
+
+            // Fél másodperc: ennyi alatt a gépelés befejeződik, tehát egy koordináta
+            // beírásából EGY lekérdezés lesz, nem tíz.
+            idozito = setTimeout(function () { kozeliekKeresese(pont, 1000, 0); }, 500);
+        }
+
+        function kozeliekKeresese(pont, sugar, probalkozas) {
+            if (futoKeres) {
+                futoKeres.abort();
+            }
+
+            var sajatSorszam = ++sorszam;
+            osmUzenet('Keressük a közeli templomokat az OSM-ben… (' + Math.round(sugar / 1000) + ' km)', 'light');
+
+            var lekerdezes = '[out:json][timeout:25];('
+                + 'node["amenity"="place_of_worship"]["religion"="christian"](around:' + sugar + ',' + pont.lat + ',' + pont.lon + ');'
+                + 'way["amenity"="place_of_worship"]["religion"="christian"](around:' + sugar + ',' + pont.lat + ',' + pont.lon + ');'
+                + 'relation["amenity"="place_of_worship"]["religion"="christian"](around:' + sugar + ',' + pont.lat + ',' + pont.lon + ');'
+                + ');out body center;';
+
+            futoKeres = $.ajax({
                 url: '{{ overpass_api_url }}',
                 type: 'POST',
-                data: { data: query },
-                success: function (response) {
-                    // Eredmények feldolgozása
-                    var results = response.elements.map(function (element) {
-                        var distance = getDistanceFromLatLonInKm(lat, lon, element.lat || element.center.lat, element.lon || element.center.lon);
+                data: { data: lekerdezes },
+                success: function (valasz) {
+                    // Elavult válasz: közben újabb kérés indult. Ne írjuk felül vele a
+                    // frissebb találatokat — pont ez zavarta össze a régi felületet.
+                    if (sajatSorszam !== sorszam) return;
+
+                    var talalatok = (valasz.elements || []).map(function (elem) {
+                        var elemLat = elem.lat || (elem.center && elem.center.lat);
+                        var elemLon = elem.lon || (elem.center && elem.center.lon);
+                        var cimkek = elem.tags || {};
+
                         return {
-                            id: element.id,
-                            type: element.type,
-                            lat: element.lat || element.center.lat,
-                            lon: element.lon || element.center.lon,
-                            distance: distance,
-                            name: element.tags.name || element.tags.name_hu || element.tags.alt_name,
-                            denomination: element.tags.denomination || element.tags.religion || 'unknown',
-                            miserend: element.tags['url:miserend']
+                            id: elem.id,
+                            type: elem.type,
+                            lat: elemLat,
+                            lon: elemLon,
+                            distance: tavolsagKm(pont.lat, pont.lon, elemLat, elemLon),
+                            name: cimkek.name || cimkek.name_hu || cimkek.alt_name,
+                            denomination: cimkek.denomination || cimkek.religion || 'ismeretlen',
+                            miserend: cimkek['url:miserend']
                         };
+                    }).filter(function (t) {
+                        return t.lat !== undefined && t.lon !== undefined;
                     });
 
-                    // Ha az eredmények száma 1 vagy kevesebb, újrapróbálkozás nagyobb radius értékkel
-                    if (results.length <= 1 && radius < 20000) {
-                        console.log(`Kevés találat (${results.length}), újrapróbálkozás nagyobb körrel (${radius + 5000}m)...`);
-                        fetchOverpassData(lat, lon, radius + 5000);
+                    // Ha semmi nincs a közelben, egyszer tágítunk — de csak egyszer, és
+                    // csak akkor, ha tényleg üres. A régi kód ötször tágított, minden
+                    // leütésre.
+                    if (talalatok.length === 0 && probalkozas < 1) {
+                        kozeliekKeresese(pont, 10000, probalkozas + 1);
                         return;
                     }
 
-                    // Távolság szerint rendezés
-                    results.sort(function (a, b) {
-                        return a.distance - b.distance;
-                    });
+                    talalatok.sort(function (a, b) { return a.distance - b.distance; });
+                    tablaTest.html(talalatok.map(sorHtml).join(''));
 
-                    // Táblázat frissítése
-                    var rows = results.map(function (result) {
-                        return `
-                            <tr>
-                                <td>${result.name ? result.name : `${result.type}:${result.id}`}<br/><small>${result.denomination}</small></td>
-                                <td>${(result.distance * 1000).toFixed(0)} m</td>
-                                <td style="text-align:center"><a href="https://www.openstreetmap.org/${result.type}/${result.id}" target="_blank"><span class="{{ ICONS_MAP_SEE }}" title="OSM elem megtekintése."></span></a></td>                                
-                                <td style="text-align:center">
-                                    ${result.miserend ? `
-                                        <a href="${result.miserend}" target="_blank">
-                                            <span class="{{ ICONS_CHURCH_SEE }}" title="Misézőhely megtalálható a Miserend.hu-n. Lássuk."></span>
-                                        </a>
-                                    ` : ''}
-                                </td>
-                                <td style="text-align:center">
-                                ${result.miserend ? `` : `
-                                    <span class="{{ ICONS_ADD }} select-location" 
-                                        title="Legyen ez az OSM entitás a templom adata!"
-                                        data-lat="${result.lat}" 
-                                        data-lon="${result.lon}" 
-                                        data-osmtype="${result.type}" 
-                                        data-osmid="${result.id}">
-                                    </span>`}
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
-
-                    $('#nearby-places tbody').html(rows);
-
-                    // Gomb eseménykezelő hozzáadása
-                    $('#nearby-places').on('click', '.select-location', function () {
-                        var lat = $(this).data('lat');
-                        var lon = $(this).data('lon');
-                        var osmtype = $(this).data('osmtype');
-                        var osmid = $(this).data('osmid');
-
-                        // Mezők kitöltése
-                        $('input[name="church[lat]"]').val(lat.toFixed(6));
-                        $('input[name="church[lon]"]').val(lon.toFixed(6));
-                        $('select[name="church[osmtype]"]').val(osmtype);
-                        $('input[name="church[osmid]"]').val(osmid);
-
-                        // Térkép frissítése
-                        marker.setLatLng([lat, lon]);
-                        map.setView([lat, lon], map.getZoom());
-                        
-                    });
+                    if (talalatok.length === 0) {
+                        osmUzenet('Nincs OSM-ben ismert templom ' + Math.round(sugar / 1000)
+                            + ' km-en belül. Ez nem baj: a misézőhely OSM-azonosító nélkül is létrehozható, '
+                            + 'csak addig letiltva marad.', 'warning');
+                    } else {
+                        osmUzenet(talalatok.length + ' templom az OSM-ben, '
+                            + Math.round(sugar / 1000) + ' km-en belül. Ha a tiéd köztük van, '
+                            + 'a jobb szélső gombbal kötheted hozzá.', 'light');
+                    }
                 },
-                error: function () {
-                    console.error('Hiba történt az Overpass Turbo API lekérése során.');
+                error: function (xhr, allapot) {
+                    if (allapot === 'abort' || sajatSorszam !== sorszam) return;
+
+                    /*
+                     * #898: „Tök rossz a hibakezelése. Az OSM azonosítós részben ha
+                     * overpass turbo api hibás lekérdezés van, akkor csak olyan mintha nem
+                     * is húztuk volna arrébb a markert."
+                     *
+                     * Eddig ez az ág csak egy console.error volt: a táblázatban ott
+                     * maradtak az ELŐZŐ koordináta találatai, és semmi nem jelezte, hogy a
+                     * lekérdezés elhasalt. A leggyakoribb ok a 429 — az Overpass kizár, ha
+                     * túl sűrűn kérdezünk (amit a régi, leütésenkénti kérés ki is váltott).
+                     */
+                    tablaTest.empty();
+
+                    var uzenet = xhr.status === 429 || xhr.status === 504
+                        ? 'Az OSM lekérdező (Overpass) most nem áll szóba velünk — túl sok kérés vagy '
+                          + 'túlterhelés. Várj fél percet, és mozdítsd meg a jelölőt újra.'
+                        : 'Nem sikerült lekérdezni az OSM-et (' + (xhr.status || 'nincs válasz') + '). '
+                          + 'A misézőhely enélkül is létrehozható, OSM-azonosító nélkül.';
+
+                    osmUzenet(uzenet, 'danger');
+                },
+                complete: function () {
+                    if (sajatSorszam === sorszam) futoKeres = null;
                 }
             });
         }
 
-    // Alapértelmezett koordináták az input mezőkből
-    var defaultLat = parseFloat($('input[name="church[lat]"]').val()) || 47.497913;
-    var defaultLon = parseFloat($('input[name="church[lon]"]').val()) || 19.040236;
+        function sorHtml(talalat) {
+            var nev = talalat.name ? talalat.name : (talalat.type + ':' + talalat.id);
 
-    // Térkép inicializálása
-    var map = L.map('map').setView([defaultLat, defaultLon], 15);
+            return '<tr>'
+                + '<td>' + nev + '<br/><small>' + talalat.denomination + '</small></td>'
+                + '<td>' + (talalat.distance * 1000).toFixed(0) + ' m</td>'
+                + '<td style="text-align:center"><a href="https://www.openstreetmap.org/'
+                    + talalat.type + '/' + talalat.id + '" target="_blank">'
+                    + '<span class="{{ ICONS_MAP_SEE }}" title="OSM elem megtekintése."></span></a></td>'
+                + '<td style="text-align:center">'
+                    + (talalat.miserend
+                        ? '<a href="' + talalat.miserend + '" target="_blank"><span class="{{ ICONS_CHURCH_SEE }}"'
+                          + ' title="Misézőhely megtalálható a Miserend.hu-n. Lássuk."></span></a>'
+                        : '')
+                + '</td>'
+                + '<td style="text-align:center">'
+                    + (talalat.miserend
+                        ? ''
+                        : '<span class="{{ ICONS_ADD }} select-location" title="Legyen ez az OSM entitás a templom adata!"'
+                          + ' data-lat="' + talalat.lat + '" data-lon="' + talalat.lon + '"'
+                          + ' data-osmtype="' + talalat.type + '" data-osmid="' + talalat.id + '"></span>')
+                + '</td>'
+                + '</tr>';
+        }
 
-    // #376/#817: CARTO Voyager basemap (a direkt tile.openstreetmap.org produkcióra
-    // tiltott). A konfiguráció a /js/map-tiles.js-ben van, egy helyen.
-    L.tileLayer(window.MISEREND_CSEMPE.url, window.MISEREND_CSEMPE.beallitas).addTo(map);
+        /*
+         * Az eseménykezelő EGYSZER kötődik, a táblázatra delegálva. A régi kód minden
+         * sikeres Overpass-válasznál újra rákötött, tehát tíz lekérdezés után egy
+         * kattintás tízszer futott le.
+         */
+        $('#nearby-places').on('click', '.select-location', function () {
+            var pont = { lat: Number($(this).data('lat')), lon: Number($(this).data('lon')) };
 
-    // Marker inicializálása
-    var marker = L.marker([defaultLat, defaultLon], { draggable: true }).addTo(map);
+            latMezo.val(pont.lat.toFixed(6));
+            lonMezo.val(pont.lon.toFixed(6));
+            osmTipus.val($(this).data('osmtype'));
+            osmAzon.val(String($(this).data('osmid')));
 
-    // Marker mozgatásának kezelése
-    marker.on('moveend', function (e) {
-        var lat = e.target.getLatLng().lat.toFixed(6);
-        var lon = e.target.getLatLng().lng.toFixed(6);
+            marker.setLatLng([pont.lat, pont.lon]);
+            map.setView([pont.lat, pont.lon], map.getZoom());
+            osmLinkFrissit(pont);
 
-        // Mezők frissítése
-        $('input[name="church[lat]"]').val(lat);
-        $('input[name="church[lon]"]').val(lon);
+            osmUzenet('Hozzákötve: ' + $(this).data('osmtype') + ':' + $(this).data('osmid')
+                + '. A mentés után a /templom/…/edit oldalon folytatod.', 'success');
+        });
 
-        // OSM szerkesztési link frissítése
-        $('#osm-edit-link').attr('href', `https://www.openstreetmap.org/edit?editor=id#map=19/${lat}/${lon}`);  
+        /* ---- A koordináta-mezők ---- */
 
-        // osmtype és osmid mezők ürítése
-        $('select[name="church[osmtype]"]').val('');
-        $('input[name="church[osmid]"]').val('');
-        
-        // Overpass Turbo API lekérés
-        fetchOverpassData(lat, lon);
+        latMezo.add(lonMezo).on('input', function () {
+            var pont = koordinata();
 
+            if (pont === null) {
+                // Félkész vagy hibás érték: NEM mozdítunk semmit. Csak szólunk, ha a
+                // beírt szöveg egyáltalán nem szám — a félkész gépelés nem hiba.
+                var nyers = String($(this).val()).trim();
+                if (nyers !== '' && szamma(nyers) === null) {
+                    osmUzenet('A koordináta nem szám: „' + nyers + '". Tizedesjelnek a pont és a '
+                        + 'vessző is jó.', 'warning');
+                }
+                return;
+            }
 
-        
-        
-        
+            osmAzonositoTorol();
+            marker.setLatLng([pont.lat, pont.lon]);
+            map.setView([pont.lat, pont.lon], map.getZoom());
+            osmLinkFrissit(pont);
+            keresEsedekes(pont);
+        });
+
+        marker.on('dragend', function (esemeny) {
+            var helyzet = esemeny.target.getLatLng();
+            var pont = { lat: Number(helyzet.lat.toFixed(6)), lon: Number(helyzet.lng.toFixed(6)) };
+
+            latMezo.val(pont.lat.toFixed(6));
+            lonMezo.val(pont.lon.toFixed(6));
+            osmAzonositoTorol();
+            osmLinkFrissit(pont);
+            keresEsedekes(pont);
+        });
+
+        /* ---- Helynév -> koordináta ---- */
+
+        function helyKereses() {
+            var hely = $('#hely-kereso').val().trim();
+
+            if (hely.length < 3) {
+                helyAllapot.text('Írj be legalább három karaktert.');
+                return;
+            }
+
+            helyAllapot.text('Keressük…');
+
+            // Ugyanaz a végpont, amit a kereső űrlapja hív: szerveroldali és cache-elt,
+            // tehát a Nominatim használati szabályzatát is betartja.
+            $.getJSON('/index.php?q=ajax/Geocode&hely=' + encodeURIComponent(hely))
+                .done(function (adat) {
+                    if (!adat || !adat.found) {
+                        helyAllapot.text(adat && adat.message ? adat.message : 'Ezt a helyet nem találtuk meg.');
+                        return;
+                    }
+
+                    var pont = { lat: adat.lat, lon: adat.lon };
+
+                    latMezo.val(pont.lat.toFixed(6));
+                    lonMezo.val(pont.lon.toFixed(6));
+                    osmAzonositoTorol();
+                    marker.setLatLng([pont.lat, pont.lon]);
+
+                    // A településre 15-ös zoom: a templom onnan már látszik, és a jelölő
+                    // pár mozdulattal a helyére húzható.
+                    map.setView([pont.lat, pont.lon], 15);
+                    osmLinkFrissit(pont);
+
+                    helyAllapot.text('Ide ugrottunk: ' + adat.name + '. Húzd a jelölőt a templomra.');
+                    keresEsedekes(pont);
+                })
+                .fail(function () {
+                    helyAllapot.text('A helykeresés most nem érhető el. Add meg a koordinátát kézzel.');
+                });
+        }
+
+        $('#hely-keres-gomb').on('click', helyKereses);
+        $('#hely-kereso').on('keydown', function (esemeny) {
+            // Enter itt NE küldje be az űrlapot — a felhasználó keresni akar, nem menteni.
+            if (esemeny.key === 'Enter') {
+                esemeny.preventDefault();
+                helyKereses();
+            }
+        });
+
+        /* ---- Távolság ---- */
+
+        function tavolsagKm(lat1, lon1, lat2, lon2) {
+            var R = 6371;
+            var dLat = fokRadian(lat2 - lat1);
+            var dLon = fokRadian(lon2 - lon1);
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(fokRadian(lat1)) * Math.cos(fokRadian(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function fokRadian(fok) {
+            return fok * (Math.PI / 180);
+        }
     });
+    </script>
 
-    // Távolság számítása két koordináta között
-    function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-        var R = 6371; // Föld sugara km-ben
-        var dLat = deg2rad(lat2 - lat1);
-        var dLon = deg2rad(lon2 - lon1);
-        var a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        var d = R * c; // Távolság km-ben
-        return d;
-    }
 
-    function deg2rad(deg) {
-        return deg * (Math.PI / 180);
-    }
-});
-
-   
-  </script>
-
-    
 {% endblock %}
 
 
