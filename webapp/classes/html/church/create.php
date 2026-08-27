@@ -51,9 +51,29 @@ class Create extends \Html\Html {
                 . 'vagy hagyd üresen mind a kettőt.');
         }
 
+        /*
+         * #908: a frissen felvitt misézőhely „áttekintésre vár", nem „letiltva".
+         *
+         * borazslo a #898-ban: „ha nem választunk ki osm lehetséges elemet, akkor
+         * letiltva marad a templom az összekötés hiánya miatt. Ami rendben van sok régi
+         * templomnál, de újnál nem. Hiszen a felhasználó most hozta létre."
+         *
+         * Nincs külön gépezet, ami az OSM-kapcsolat hiánya miatt tiltana: egyszerűen ez a
+         * sor írt mindig `n`-t. A `n` jelentése „nem engedélyezett" — az egy elutasított
+         * vagy visszavont templom állapota, nem egy épp mostani felvitelé.
+         *
+         * Az `f` („feltöltött, áttekintésre vár") pontosan ezt fejezi ki, és a kódbázis
+         * már használja ugyanerre a gondolatra: a koordináta nélkül maradt templomok is
+         * ide kerülnek (`Crons::KOORDINATA_NELKUL_ALLAPOT`), azzal az indoklással, hogy
+         * „nem szabályszegés miatt kerülnek ki, hanem mert hiányzik az adatuk".
+         *
+         * A NYILVÁNOSSÁGON nem változtat semmit: a listák és a kereső `ok = 'i'`-re
+         * szűrnek, tehát az `f` ugyanúgy nem jelenik meg, mint az `n`. Csak az admin
+         * felületén más a felirata — és a gondnok látja, hogy a felvitele megtörtént.
+         */
         $church = \Eloquent\Church::create([
             'nev' => $name,
-            'ok' => 'n',
+            'ok' => 'f',
             'frissites' => date('Y-m-d'),
             'lat' => $lat,
             'lon' => $lon,

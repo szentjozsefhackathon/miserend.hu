@@ -163,12 +163,19 @@ class ChurchCreateFormTest extends TestCase {
         self::assertStringContainsString('biztonsági token', $valasz);
     }
 
-    /** OSM-azonosító nélkül is létre KELL jönnie — csak letiltva. */
+    /**
+     * OSM-azonosító nélkül is létre KELL jönnie — és „áttekintésre vár" állapotban.
+     *
+     * #908: eddig `n` („nem engedélyezett") lett belőle, ami egy elutasított templom
+     * állapota. borazslo szerint (#898) egy épp most felvitt misézőhelynél ez nem jó. Az
+     * `f` a nyilvánosságon nem változtat — a listák `ok = 'i'`-re szűrnek —, csak azt
+     * mondja meg helyesen, hogy miért nincs kint.
+     */
     public function testAChurchCanBeCreatedWithoutAnOsmLink(): void {
         $this->post($this->mezok('osm-nélkül'));
 
         $sor = $this->sor('osm-nélkül');
         self::assertNotNull($sor, 'OSM-azonosító nélkül is létre kell jönnie');
-        self::assertSame('n', (string) $sor->ok, 'a friss templom még nem engedélyezett');
+        self::assertSame('f', (string) $sor->ok, 'áttekintésre vár, nem letiltva');
     }
 }
