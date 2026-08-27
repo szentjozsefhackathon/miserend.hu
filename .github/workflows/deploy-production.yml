@@ -27,9 +27,17 @@ on:
 # #662: a staging és a production UGYANAZON a gépen fut, és mindkét deploy teljes
 # `docker build`-et csinál. Külön csoportban egyszerre indulhattak, és a párhuzamos
 # buildek megfojtották a gépet. Közös csoport: egyszerre csak EGY deploy fut.
+# #903: a kiadásnak SAJÁT csoportja van, hogy egy staging futás ne üthesse ki.
+#
+# A közös `deploy-server` csoportban a GitHub a VÁRAKOZÓ futást törli, amint újabb
+# érkezik. 2026-08-27-én pontosan ez történt: a #900 kiadás deployja beállt a sorba, egy
+# perccel később egy staging pusholás kiütötte, és a production némán a régi kódon maradt.
+# Ugyanez volt 08-24-én is, akkor kézzel pótoltuk.
+#
+# A gép védelme (#662) nem veszett el: a szkript zárat vesz fel — l. lentebb.
 concurrency:
-  group: deploy-server
-  # Production-ben NEM töröljük a futó deployt — megvárjuk, hogy befejezze.
+  group: deploy-server-production
+  # A futó kiadást soha nem szakítjuk félbe.
   cancel-in-progress: false
 
 jobs:
@@ -42,10 +50,13 @@ jobs:
     # `command_timeout`-ja ellenére), a mögötte várakozó KIADÁS deployja pedig
     # törlődött. A production így a régi kódot szolgálta ki, és semmi nem szólt.
     #
-    # 50 perc: a 40 perces parancs-korlát fölött annyi ráhagyással, hogy a
-    # kapcsolódás és a lépés-overhead is elférjen, de a blokkolás órák helyett
-    # legfeljebb egy munkamenetnyi legyen.
-    timeout-minutes: 50
+    # 80 perc: a #903 óta a szkript ELŐBB a gépi zárra vár (legfeljebb 20 perc), és
+    # csak utána épít (a parancs-korlát 70 perc). A kettő együtt fér el alatta.
+    #
+    # Hosszabb, mint a stagingé, és ez rendben van: a kiadásnak saját csoportja van,
+    # tehát egy elhúzódó production deploy már nem tart fel semmi mást — csak a
+    # következő kiadást, ami helyes.
+    timeout-minutes: 80
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.5
@@ -54,12 +65,29 @@ jobs:
           username: ${{ secrets.STAGING_SSH_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           port: ${{ secrets.STAGING_SSH_PORT || 22 }}
-          command_timeout: 40m
+          # #903: ebbe a korlátba a gépi zárra várás IS beleszámít (a szkript első
+          # lépése), nem csak a build. 70 perc = legfeljebb 20 perc várakozás + a
+          # build. A 40 perc kevés lett volna: a várakozás megette volna a build idejét.
+          command_timeout: 70m
           # Lásd a staging-workflow indoklását: a 30 másodperces alapértelmezés
           # kevés, ha a gépen épp egy másik deploy buildje fut.
           timeout: 2m
           script: |
             set -euo pipefail
+
+            # #903: ugyanaz a zár, mint a stagingnél — de a KIADÁS VÁR rá, nem marad ki.
+            #
+            # 20 perc: ennyi alatt egy futó staging deploy befejeződik. Nem több, mert a
+            # várakozás az ssh parancs-korlátjából (70 perc) megy el, és utána még a
+            # kiadás buildjének is el kell férnie.
+            echo "▶ Várakozás a deploy-zárra…"
+            exec 9>/tmp/miserend-deploy.lock
+            if ! flock -w 1200 9; then
+              echo "❌ 20 perc alatt sem szabadult fel a deploy-zár. Valami beragadt a gépen:"
+              echo "   fuser -v /tmp/miserend-deploy.lock"
+              exit 1
+            fi
+            echo "✅ Zár megvan."
 
             DEPLOY_DIR=/var/www/production.miserend.hu
             cd "$DEPLOY_DIR"
