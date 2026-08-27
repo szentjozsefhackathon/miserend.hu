@@ -120,6 +120,8 @@ class EditOsm extends \Html\Html {
 
 		// Ha beküldtünk adatokatt.
         $isForm = \Request::Text('submit');
+        // #873: a mentés OSM-be is visszaír — POST + token.
+        if ($isForm) { \Csrf::guard(); }
         if ($isForm AND $this->readingAccessOnly == false ) {
 			// Változtatunk, elmentünk, ilyenek.
             $this->modify();

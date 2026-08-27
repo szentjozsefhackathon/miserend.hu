@@ -59,7 +59,9 @@ class Church extends \Html\Ajax\Calendar\CalendarApi {
             case 'GET':
                 // Append external calendar info
                 $this->church->append(['hasExternalCalendar']);
-                $confessions = $this->church->getConfessions('-40 days', '20 hours');
+                // #884: a tolerancia a modell konstansából, nem beégetve (eddig három
+                // helyen állt külön ugyanaz a „20 hours").
+                $confessions = $this->church->getConfessions('-40 days', \Eloquent\Church::CONFESSION_TOLERANCE);
                 $c = 1;
                 /*
                  * #832: az időzóna KIMONDVA, nem a szerver beállításából.

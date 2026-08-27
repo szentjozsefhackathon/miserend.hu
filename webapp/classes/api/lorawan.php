@@ -76,9 +76,64 @@ class LoRaWAN extends Api {
             'validation' => [
                 'enum' => [0,1]
             ],  
-            'description' => 'Mód 1 esetén kötelező. Az eszköz ajtó állapotának érzékelése: 1 - nyitva, 0 - zárva.',
+            'description' => 'Mód 1 esetén kötelező. Az eszköz ajtó állapotának érzékelése: 1 - nyitva, 0 - zárva. '
+                . 'A helyesen írt „Status_Door" alakot is elfogadjuk.',
             'example' => 1
-        ] 
+        ],
+        /*
+         * #866: a helyesen írt alak IS működjön.
+         *
+         * A mező neve a kódban `Satus_Door` — elgépelés, de az eszközök így küldik, tehát
+         * nem lehet csak úgy átnevezni. Aki viszont a DOKUMENTÁCIÓBÓL dolgozik és a
+         * helyes `Status_Door`-t kódolja be, annak a kulcsa némán elveszett (a gyökér-szűrő
+         * csak a legfelső szintet nézi), és a kérés a „Satus_Door field is required"
+         * hibán bukott el — érthetetlenül.
+         */
+        'object/Status_Door' => [
+            'validation' => [
+                'enum' => [0,1]
+            ],
+            'description' => 'A „Satus_Door" helyesen írt alakja; ugyanazt jelenti. Mód 1 esetén '
+                . 'a kettő közül az egyik kötelező.',
+            'example' => 1
+        ],
+        /*
+         * #866: AZONOSÍTÁS a JSON törzsben.
+         *
+         * A dokumentáció (l. `docs()`) két utat ígér: `X-Miserend-Token` fejléc VAGY
+         * `token` mező a törzsben. A `token` viszont nem szerepelt a mezők közt, a
+         * `getInputJson()` gyökér-szűrője pedig a hitelesítés ELŐTT fut — vagyis a
+         * törzsben küldött token „Unknown field 'token'" hibát adott, MIELŐTT bárki
+         * megnézte volna, hogy jó-e. A dokumentált két út egyike egyáltalán nem működött.
+         */
+        'token' => [
+            'description' => 'Azonosító token. Alternatívája az X-Miserend-Token fejlécnek — '
+                . 'elég az egyiket küldeni.',
+            'example' => 'kerj-tolunk-egyet'
+        ],
+        /*
+         * #866: a ChirpStack-boríték saját metaadatai.
+         *
+         * Az átjáró a szenzoradat mellé beleteszi a sajátjait is (címzés, jelerősség,
+         * rádió-paraméterek). Ezeket nem használjuk, de a gyökér-szűrő ELUTASÍTOTTA a
+         * küldeményt miattuk — beleértve a SAJÁT mintaadatunkat az /apitest oldalon,
+         * amire az integrátort ráirányítottuk.
+         *
+         * Ez szemben állt a szűrő fölött álló saját indoklásunkkal is: „a LoRaWAN-átjárók
+         * a saját metaadataikat is beleteszik a küldeménybe … szigorú almező-ellenőrzésnél
+         * ezek MIND elutasítást okoznának". Az almezőkre tényleg engedékenyek voltunk, a
+         * gyökérre viszont épp nem.
+         */
+        'devAddr' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'adr' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'dr' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'fCnt' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'fPort' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'confirmed' => ['description' => 'ChirpStack-metaadat; nem használjuk.'],
+        'data' => ['description' => 'A nyers hasznos adat base64-ben; nem használjuk (az `object` a feldolgozott alak).'],
+        'rxInfo' => ['description' => 'ChirpStack vételi metaadat; nem használjuk.'],
+        'txInfo' => ['description' => 'ChirpStack adási metaadat; nem használjuk.'],
+        'regionConfigId' => ['description' => 'ChirpStack-metaadat; nem használjuk.']
     ];
         
      public function docs() {
@@ -151,19 +206,46 @@ class LoRaWAN extends Api {
         $this->checkSharedSecret();
 
 
-        $confession = new \Eloquent\Confession();
-        
-        if ($this->input['object']['Mód'] == 1) {
-            if (!isset($this->input['object']['Satus_Door'])) {
-                throw new \Exception('Satus_Door field is required when Mód is 1.');
-            }
-            $confession->status = ($this->input['object']['Satus_Door'] == 1) ? 'ON' : 'OFF';
-        }
-        if ($this->input['object']['Mód'] == 2) {
+        /*
+         * #866: a VÍZSZIVÁRGÁS nem gyóntatás.
+         *
+         * A végpont két módot ismer (`Mód: 1` ajtó, `Mód: 2` vízszivárgás), de eddig
+         * MINDKETTŐ ugyanabba a `confessions.status` mezőbe írt 'ON'/'OFF'-ot. A
+         * státusz-olvasó pedig a templom LEGUTOLSÓ sorát veszi (`church.php`,
+         * `getConfessionStatusAttribute`) — így egy jelzett szivárgásból „Most van
+         * gyóntatás a helyszínen!" lett a templom oldalán, csukott gyóntatófülke mellett.
+         *
+         * A döntés IMPORTKOR születik meg, nem olvasáskor (borazslo javaslata a #867-ben):
+         * ami nem gyóntatás, az nem kerül a `confessions` táblába. Így nem kell se új
+         * oszlop, se éles migráció, se szűrés az olvasó oldalon — a tábla azt jelenti,
+         * amit a neve mond.
+         *
+         * A szivárgás-jelzést tehát nem tároljuk. Ma sem használtuk semmire; ha egyszer
+         * kell (riasztás a sekrestyésnek), annak úgyis saját tábla és saját életciklus
+         * kell — a `confessions` sosem volt jó helye.
+         */
+        if ((int) $this->input['object']['Mód'] === 2) {
             if (!isset($this->input['object']['Status_Leak'])) {
                 throw new \Exception('Status_Leak field is required when Mód is 2.');
             }
-            $confession->status = ($this->input['object']['Status_Leak'] == 1) ? 'ON' : 'OFF';
+            error_log(sprintf(
+                '[miserend] LoRaWAN: vízszivárgás-jelzés (templom %s, eszköz %s, Status_Leak=%s) — nem gyóntatás, nem tároljuk.',
+                $this->input['deviceInfo']['tags']['templom_id'] ?? '?',
+                $this->input['deviceInfo']['tags']['local_id'] ?? '?',
+                $this->input['object']['Status_Leak']
+            ));
+            return;
+        }
+
+        $confession = new \Eloquent\Confession();
+
+        if ($this->input['object']['Mód'] == 1) {
+            // #866: a helyesen írt `Status_Door` alakot is elfogadjuk (l. a mezőknél).
+            $ajto = $this->input['object']['Satus_Door'] ?? $this->input['object']['Status_Door'] ?? null;
+            if ($ajto === null) {
+                throw new \Exception('Satus_Door (or Status_Door) field is required when Mód is 1.');
+            }
+            $confession->status = ($ajto == 1) ? 'ON' : 'OFF';
         }
 
         

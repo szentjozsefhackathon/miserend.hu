@@ -13,7 +13,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # #886: a `Create GitHub Release` lépéshez `contents: write` kell. `read` mellett
+      # a lépés 403-mal elhasalt („Resource not accessible by integration"), és ezzel a
+      # futás pirosra váltott — nyolc hét óta minden hétfőn. A kép közben rendben
+      # elkészült és fel is került; csak a release nem jött létre hozzá.
+      contents: write
       packages: write
 
     steps:

@@ -10,6 +10,8 @@ class Edit extends \Html\Html {
         $this->uid = \Request::IntegerwDefault('uid', $user->uid);
 
         $isForm = \Request::Text('submit');
+        // #873: a felhasználói adatok (jelszó, email, értesítések) mentése — POST + token.
+        if ($isForm) { \Csrf::guard(); }
         if ($isForm) {
             if($this->modify()) {
                 /* Ha az aktuális felhasználót frissítettük, akkor be kell töltenünk újra a felhasználót a friss adatokkal */

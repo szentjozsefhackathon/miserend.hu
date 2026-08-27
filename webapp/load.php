@@ -55,8 +55,24 @@ if (isset($_REQUEST['login'])) {
     }
 }
 if (isset($_REQUEST['logout']) AND $_REQUEST['logout'] != 'false') {
-    \User::logout();
-
+    /*
+     * #873: a kiléptetés is állapotváltás — POST + token kell hozzá, különben egy idegen
+     * oldal beágyazott képe kilépteti a látogatót. Kártétel nincs, bosszantás van.
+     *
+     * Itt nem `Csrf::guard()` van, hanem csendes kihagyás: a load.php az index.php
+     * try-blokkja ELŐTT fut, tehát egy kivétel itt nem hibaoldalt adna, hanem elkapatlan
+     * kivételt. Aki a régi `/?logout=true` linket használja (könyvjelző), az kapjon
+     * eligazítást ahelyett, hogy némán bejelentkezve maradna.
+     *
+     * A BELÉPÉS szándékosan marad GET-en is elérhető: az elfelejtett-jelszó levél egy
+     * `?login=...&passw=...` linket küld (l. emails/user_newpassword.twig), azt ez a
+     * változtatás nem törheti el. (Hogy a jelszó URL-ben utazik, az külön gond — nem ide.)
+     */
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' AND \Csrf::valid()) {
+        \User::logout();
+    } else {
+        addMessage('A kilépéshez használd a menüben a „Kilépés" gombot.', 'warning');
+    }
 }
 $user = \User::load();
 

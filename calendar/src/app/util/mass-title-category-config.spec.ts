@@ -296,6 +296,70 @@ describe('MassTitleCategoryConfig', () => {
     });
   });
 
+  /**
+   * #896: a közös alias-szótár.
+   *
+   * A lényeg nem az, hogy több címet ismerünk fel, hanem hogy UGYANAZT ismerjük fel,
+   * mint a PHP oldal. A szótár egy helyen van (`mass-definitions.ts` -> `aliases`), és a
+   * szabály is közös: a szövegben legkorábban előforduló alias nyer.
+   */
+  describe('getCategoryByTitle – közös alias-szótár (#896)', () => {
+    it('a szöveg sorrendje dönt, nem a kategóriáké', () => {
+      // Ez a három a régi, kategória-sorrendes illesztéssel mind MASS lett volna.
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Szentmise, utána szentségimádás'))
+        .toBe(MassTitleCategory.MASS);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Szentségimádás a szentmise után'))
+        .toBe(MassTitleCategory.ADORATION);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Gyóntatás a szentmise előtt'))
+        .toBe(MassTitleCategory.CONFESSION);
+    });
+
+    it('felismeri a valódi adatból vett címeket, TranslateService nélkül is', () => {
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Nagypénteki szertartás (P. Szőcs)'))
+        .toBe(MassTitleCategory.MASS);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Szentmsie'))
+        .toBe(MassTitleCategory.MASS);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Kollégistáink szentmiséje (P. Szőcs)'))
+        .toBe(MassTitleCategory.MASS);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Csendes szentségimádás'))
+        .toBe(MassTitleCategory.ADORATION);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Keresztút a kálvárián'))
+        .toBe(MassTitleCategory.OTHER);
+    });
+
+    it('#896: a keresztelő, esküvő, temetés EGYÉB — de nem választható cím', () => {
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Keresztelő (P. Vértesaljai)'))
+        .toBe(MassTitleCategory.OTHER);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('Esküvő (Alácsi Ervin atya)'))
+        .toBe(MassTitleCategory.OTHER);
+      expect(MassTitleCategoryConfig.getCategoryByTitle('BOHAN BÉLA ATYA TEMETÉSE 12 ÓRAKOR'))
+        .toBe(MassTitleCategory.OTHER);
+
+      // A mise marad mise: a korábbi találat nyer.
+      expect(MassTitleCategoryConfig.getCategoryByTitle('10 misén keresztelő, Mária Teodóra'))
+        .toBe(MassTitleCategory.MASS);
+
+      // És egyikük sem jelenhet meg a szerkesztő cím-választójában.
+      const cimek = Object.values(MassTitleCategoryConfig.CATEGORY_TITLES).flat();
+      for (const kulcs of cimek) {
+        expect(kulcs.toLowerCase()).not.toContain('keresztel');
+        expect(kulcs.toLowerCase()).not.toContain('wedding');
+        expect(kulcs.toLowerCase()).not.toContain('funeral');
+      }
+    });
+
+    it('a szótár mind a négy kategóriára ad alakokat', () => {
+      const aliases = MassTitleCategoryConfig.CATEGORY_ALIASES;
+
+      for (const category of [MassTitleCategory.MASS, MassTitleCategory.ADORATION,
+                              MassTitleCategory.CONFESSION, MassTitleCategory.OTHER]) {
+        expect(aliases[category].length).toBeGreaterThan(0);
+      }
+      expect(aliases[MassTitleCategory.MASS]).toContain('szentmise');
+      expect(aliases[MassTitleCategory.CONFESSION]).toContain('gyóntat');
+    });
+  });
+
   describe('getAllCategories', () => {
     it('should return all category values', () => {
       const categories = MassTitleCategoryConfig.getAllCategories();

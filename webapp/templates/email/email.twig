@@ -5,6 +5,7 @@
 {% block content %}
     {% if mail %}
         <form method=post>
+        {{ csrf_field() }}
             {% block extraInput %}{% endblock %}
             <table class="table table-striped">
                 <tr>

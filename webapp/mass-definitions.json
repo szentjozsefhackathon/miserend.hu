@@ -50,6 +50,31 @@
   "definitions": [
     {
       "key": "HOLY_MASS",
+      "aliases": [
+        "szentmise",
+        "szentmisé",
+        "szentmsie",
+        "szentmse",
+        "sztmise",
+        "mise",
+        "misé",
+        "újmis",
+        "ujmis",
+        "gyászmis",
+        "gyaszmis",
+        "diákmis",
+        "diakmis",
+        "ifimis",
+        "emlékmis",
+        "emlekmis",
+        "aranymis",
+        "ezüstmis",
+        "ezustmis",
+        "szentáldozás",
+        "szentaldozas",
+        "mass",
+        "eucharist"
+      ],
       "category": "MASS",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -59,6 +84,10 @@
     },
     {
       "key": "LITURGY_OF_THE_WORD",
+      "aliases": [
+        "igeliturgia",
+        "igeliturgi"
+      ],
       "category": "MASS",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -68,6 +97,10 @@
     },
     {
       "key": "DIVINE_LITURGY",
+      "aliases": [
+        "szent liturgia",
+        "liturgia"
+      ],
       "category": "MASS",
       "rites": [
         "GREEK_CATHOLIC"
@@ -78,6 +111,10 @@
     },
     {
       "key": "LITURGY_OF_THE_PRESANCTIFIED_GIFTS",
+      "aliases": [
+        "előre megszentelt",
+        "elore megszentelt"
+      ],
       "category": "MASS",
       "rites": [
         "GREEK_CATHOLIC"
@@ -87,6 +124,12 @@
     },
     {
       "key": "MASS_OF_THE_LORD_S_SUPPER",
+      "aliases": [
+        "nagycsütörtöki szertartás",
+        "nagycsutortoki szertartas",
+        "utolsó vacsora",
+        "utolso vacsora"
+      ],
       "category": "MASS",
       "rites": [
         "ROMAN_CATHOLIC",
@@ -97,6 +140,10 @@
     },
     {
       "key": "GOOD_FRIDAY_LITURGY",
+      "aliases": [
+        "nagypénteki szertartás",
+        "nagypenteki szertartas"
+      ],
       "category": "MASS",
       "rites": [
         "ROMAN_CATHOLIC",
@@ -107,6 +154,16 @@
     },
     {
       "key": "EASTER_VIGIL",
+      "aliases": [
+        "húsvét vigíliája",
+        "husvet vigiliaja",
+        "húsvéti vigília",
+        "husveti vigilia",
+        "feltámadási szertartás",
+        "feltamadasi szertartas",
+        "easter vigil",
+        "eastern vigil"
+      ],
       "category": "MASS",
       "rites": [
         "ROMAN_CATHOLIC",
@@ -117,6 +174,12 @@
     },
     {
       "key": "TRADITIONAL_LATIN_MASS",
+      "aliases": [
+        "régi rítusú mise",
+        "regi ritusu mise",
+        "tridenti",
+        "usus antiquior"
+      ],
       "category": "MASS",
       "rites": [
         "TRADITIONAL"
@@ -127,6 +190,13 @@
     },
     {
       "key": "ADORATION",
+      "aliases": [
+        "szentségimád",
+        "szentsegimad",
+        "adorác",
+        "adorac",
+        "adoration"
+      ],
       "category": "ADORATION",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -136,6 +206,17 @@
     },
     {
       "key": "CONFESSION",
+      "aliases": [
+        "gyóntat",
+        "gyontat",
+        "szentgyónás",
+        "szentgyonas",
+        "gyónás",
+        "gyonas",
+        "gyónási",
+        "gyonasi",
+        "confession"
+      ],
       "category": "CONFESSION",
       "rites": [
         "ROMAN_CATHOLIC",
@@ -146,6 +227,15 @@
     },
     {
       "key": "BREVIARY",
+      "aliases": [
+        "zsolozsma",
+        "esti dicséret",
+        "esti dicseret",
+        "imaóra",
+        "imaora",
+        "breviárium",
+        "breviarium"
+      ],
       "category": "OTHER",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -155,6 +245,10 @@
     },
     {
       "key": "ROSARY",
+      "aliases": [
+        "rózsafüzér",
+        "rozsafuzer"
+      ],
       "category": "OTHER",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -164,6 +258,10 @@
     },
     {
       "key": "LITANY",
+      "aliases": [
+        "litánia",
+        "litania"
+      ],
       "category": "OTHER",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -173,6 +271,10 @@
     },
     {
       "key": "STATIONS_OF_THE_CROSS",
+      "aliases": [
+        "keresztút",
+        "keresztut"
+      ],
       "category": "OTHER",
       "rites": [
         "ROMAN_CATHOLIC"
@@ -182,6 +284,9 @@
     },
     {
       "key": "MATINS",
+      "aliases": [
+        "utrenye"
+      ],
       "category": "OTHER",
       "rites": [
         "GREEK_CATHOLIC"
@@ -191,6 +296,9 @@
     },
     {
       "key": "VESPRES",
+      "aliases": [
+        "vecsernye"
+      ],
       "category": "OTHER",
       "rites": [
         "GREEK_CATHOLIC"
@@ -251,6 +359,100 @@
       "MASS_TITLE.GOOD_FRIDAY_LITURGY",
       "MASS_TITLE.EASTER_VIGIL",
       "MASS_TITLE.TRADITIONAL_LATIN_MASS"
+    ]
+  },
+  "aliasesByCategory": {
+    "MASS": [
+      "szentmise",
+      "szentmisé",
+      "szentmsie",
+      "szentmse",
+      "sztmise",
+      "mise",
+      "misé",
+      "újmis",
+      "ujmis",
+      "gyászmis",
+      "gyaszmis",
+      "diákmis",
+      "diakmis",
+      "ifimis",
+      "emlékmis",
+      "emlekmis",
+      "aranymis",
+      "ezüstmis",
+      "ezustmis",
+      "szentáldozás",
+      "szentaldozas",
+      "mass",
+      "eucharist",
+      "igeliturgia",
+      "igeliturgi",
+      "szent liturgia",
+      "liturgia",
+      "előre megszentelt",
+      "elore megszentelt",
+      "nagycsütörtöki szertartás",
+      "nagycsutortoki szertartas",
+      "utolsó vacsora",
+      "utolso vacsora",
+      "nagypénteki szertartás",
+      "nagypenteki szertartas",
+      "húsvét vigíliája",
+      "husvet vigiliaja",
+      "húsvéti vigília",
+      "husveti vigilia",
+      "feltámadási szertartás",
+      "feltamadasi szertartas",
+      "easter vigil",
+      "eastern vigil",
+      "régi rítusú mise",
+      "regi ritusu mise",
+      "tridenti",
+      "usus antiquior"
+    ],
+    "ADORATION": [
+      "szentségimád",
+      "szentsegimad",
+      "adorác",
+      "adorac",
+      "adoration"
+    ],
+    "CONFESSION": [
+      "gyóntat",
+      "gyontat",
+      "szentgyónás",
+      "szentgyonas",
+      "gyónás",
+      "gyonas",
+      "gyónási",
+      "gyonasi",
+      "confession"
+    ],
+    "OTHER": [
+      "keresztel",
+      "esküvő",
+      "eskuvo",
+      "temetés",
+      "temetes",
+      "requiem",
+      "gyászszertartás",
+      "gyaszszertartas",
+      "zsolozsma",
+      "esti dicséret",
+      "esti dicseret",
+      "imaóra",
+      "imaora",
+      "breviárium",
+      "breviarium",
+      "rózsafüzér",
+      "rozsafuzer",
+      "litánia",
+      "litania",
+      "keresztút",
+      "keresztut",
+      "utrenye",
+      "vecsernye"
     ]
   }
 }

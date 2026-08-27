@@ -23,6 +23,24 @@ export interface MassDefinition {
 
   /** Speciális felhasználás (pl. Easter, Christmas) */
   specialUsage?: 'EASTER' | 'CHRISTMAS' | null;
+
+  /**
+   * #896: a szabad szöveges alakok, ragozott formák és ismert elgépelések, amikről ez a
+   * definíció felismerhető egy naptárcímben.
+   *
+   * Eddig ez az adat egy PHP-osztály privát konstansában élt (`IcalEventProperties`),
+   * ezért a böngésző-oldal nem is látta: az Angular csak a lefordított kanonikus címekre
+   * tudott illeszteni, a PHP viszont ezekre is. Ugyanarra a címre így két válasz
+   * születhetett. Innentől egy helyen van, és mindkét oldal ezt olvassa.
+   *
+   * Szabályok:
+   *   - kisbetűvel, mert az illesztés kisbetűs címen fut;
+   *   - az ékezetes ÉS az ékezet nélküli alak is kell (a normalizálás nem ejt ékezetet);
+   *   - tő is lehet („szentségimád"), hogy a ragozott alakok is illeszkedjenek;
+   *   - de csak akkor, ha nem fog mást: a puszta „szertartás" például NEM szerepelhet,
+   *     mert a temetési szertartásból is misét csinálna.
+   */
+  aliases?: string[];
 }
 
 /**
@@ -32,6 +50,14 @@ export interface MassDefinition {
 export interface CategoryDefinition {
   key: MassTitleCategory;
   color: string;
+
+  /**
+   * #896: kategória-szintű aliasok — olyan alkalmak, amikhez nem tartozik definíció.
+   *
+   * Azért nem definíció, mert az megjelenne a naptárszerkesztő cím-választójában. L. a
+   * `MASS_CATEGORY_DEFINITIONS` megjegyzését.
+   */
+  aliases?: string[];
 }
 
 /**
@@ -39,9 +65,11 @@ export interface CategoryDefinition {
  * MASS_CATEGORY_DEFINITIONS az egyetlen hely az értékek definiálásához!
  */
 const generateCategories = (): CategoryDefinition[] => {
-  return MASS_CATEGORY_DEFINITIONS.map(({ key, color }) => ({
-    key: key as MassTitleCategory,
-    color
+  return MASS_CATEGORY_DEFINITIONS.map((def) => ({
+    key: def.key as MassTitleCategory,
+    color: def.color,
+    // `as const` miatt readonly a forrás; másolat kell, hogy a típus egyezzen.
+    aliases: 'aliases' in def ? [...(def.aliases as readonly string[])] : []
   }));
 };
 
@@ -76,6 +104,12 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'HOLY_MASS',
+      // A szóösszetételeknek saját alak kell: az illesztés SZÓ ELEJÉN keres, ezért az
+      // „újmiséje" végén álló „misé" magától nem illeszkedne.
+      aliases: ['szentmise', 'szentmisé', 'szentmsie', 'szentmse', 'sztmise', 'mise', 'misé',
+                'újmis', 'ujmis', 'gyászmis', 'gyaszmis', 'diákmis', 'diakmis', 'ifimis',
+                'emlékmis', 'emlekmis', 'aranymis', 'ezüstmis', 'ezustmis',
+                'szentáldozás', 'szentaldozas', 'mass', 'eucharist'],
       category: MassTitleCategory.MASS,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Roman Catholic Sunday/weekday Mass',
@@ -84,6 +118,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'LITURGY_OF_THE_WORD',
+      aliases: ['igeliturgia', 'igeliturgi'],
       category: MassTitleCategory.MASS,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Liturgy of the Word',
@@ -92,6 +127,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'DIVINE_LITURGY',
+      aliases: ['szent liturgia', 'liturgia'],
       category: MassTitleCategory.MASS,
       rites: [Rite.GREEK_CATHOLIC],
       defaultRite: Rite.GREEK_CATHOLIC,
@@ -101,6 +137,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'LITURGY_OF_THE_PRESANCTIFIED_GIFTS',
+      aliases: ['előre megszentelt', 'elore megszentelt'],
       category: MassTitleCategory.MASS,
       rites: [Rite.GREEK_CATHOLIC],
       description: 'Greek Catholic Liturgy of Presanctified Gifts',
@@ -109,6 +146,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'MASS_OF_THE_LORD_S_SUPPER',
+      aliases: ['nagycsütörtöki szertartás', 'nagycsutortoki szertartas', 'utolsó vacsora', 'utolso vacsora'],
       category: MassTitleCategory.MASS,
       rites: [
         Rite.ROMAN_CATHOLIC,
@@ -120,6 +158,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'GOOD_FRIDAY_LITURGY',
+      aliases: ['nagypénteki szertartás', 'nagypenteki szertartas'],
       category: MassTitleCategory.MASS,
       rites: [
         Rite.ROMAN_CATHOLIC,
@@ -131,6 +170,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'EASTER_VIGIL',
+      aliases: ['húsvét vigíliája', 'husvet vigiliaja', 'húsvéti vigília', 'husveti vigilia', 'feltámadási szertartás', 'feltamadasi szertartas', 'easter vigil', 'eastern vigil'],
       category: MassTitleCategory.MASS,
       rites: [
         Rite.ROMAN_CATHOLIC,
@@ -142,6 +182,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'TRADITIONAL_LATIN_MASS',
+      aliases: ['régi rítusú mise', 'regi ritusu mise', 'tridenti', 'usus antiquior'],
       category: MassTitleCategory.MASS,
       rites: [Rite.TRADITIONAL],
       defaultRite: Rite.TRADITIONAL,
@@ -154,6 +195,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'ADORATION',
+      aliases: ['szentségimád', 'szentsegimad', 'adorác', 'adorac', 'adoration'],
       category: MassTitleCategory.ADORATION,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Eucharistic Adoration',
@@ -164,6 +206,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'CONFESSION',
+      aliases: ['gyóntat', 'gyontat', 'szentgyónás', 'szentgyonas', 'gyónás', 'gyonas', 'gyónási', 'gyonasi', 'confession'],
       category: MassTitleCategory.CONFESSION,
       rites: [
         Rite.ROMAN_CATHOLIC,
@@ -177,6 +220,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'BREVIARY',
+      aliases: ['zsolozsma', 'esti dicséret', 'esti dicseret', 'imaóra', 'imaora', 'breviárium', 'breviarium'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Liturgy of the Hours (Breviary)',
@@ -185,6 +229,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'ROSARY',
+      aliases: ['rózsafüzér', 'rozsafuzer'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Rosary recitation',
@@ -193,6 +238,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'LITANY',
+      aliases: ['litánia', 'litania'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Litany service',
@@ -204,6 +250,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
       // elvetette ("Jó lenne minél lejjebb tartani a szertartástípusok számát"), a
       // keresztutat viszont jóváhagyta.
       key: 'STATIONS_OF_THE_CROSS',
+      aliases: ['keresztút', 'keresztut'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.ROMAN_CATHOLIC],
       description: 'Stations of the Cross (Way of the Cross) devotion',
@@ -212,6 +259,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'MATINS',
+      aliases: ['utrenye'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.GREEK_CATHOLIC],
       description: 'Greek Catholic Matins service',
@@ -220,6 +268,7 @@ export const MASS_DEFINITIONS_DATA: MassDefinitionsData = {
 
     {
       key: 'VESPRES',
+      aliases: ['vecsernye'],
       category: MassTitleCategory.OTHER,
       rites: [Rite.GREEK_CATHOLIC],
       description: 'Greek Catholic Vespres service',

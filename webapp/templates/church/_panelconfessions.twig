@@ -49,36 +49,31 @@
 
 
     {% else %}
-        Legutóbbi gyóntatások:
-        {% for last_period in confessions.last_periods %}
-            {% set days = (last_period.duration // 86400) %}
-            {% set hours = ((last_period.duration % 86400) // 3600) %}
-            {% set minutes = ((last_period.duration % 3600) // 60) %}
-            <h5>
+        {#
+           #884: a MÚLTAT a naptár mutatja, nem ez a panel.
+
+           borazslo kérése: „a panel_confession helyett magába a naptárba kéne on the fly
+           legenerálni gyóntatás eseményeket… és ez mutatja jól a múltat. A panel-ben csak
+           annyi kell, hogy itt nincs érzékelő, de lehetne."
+
+           Az érzékelő-események már ma is bekerülnek a naptárba (`eventsFromSensor`), ott
+           a hét rendje is látszik — itt a hosszú lista csak ugyanazt ismételte, kevesebb
+           összefüggéssel. A panelben az ÉLŐ állapot marad, mert arra a naptár nem ad
+           választ egy pillantásra: „most be lehet-e menni gyónni".
+
+           Az utolsó szakaszt viszont meghagyjuk, mert az a mostani állapot indoklása.
+        #}
+        {% set utolso = confessions.last_periods|last %}
+        {% if utolso %}
+            <p class="alap">
+                Legutóbb:
                 <strong>
-                    {{ last_period.start|miserend_date('H:i')|capitalize }} -
-                    {% if last_period.end is defined %}
-                        {{ last_period.end|date('H:i') }}
-                    {% else %}
-                        még tart
-                    {% endif %}
-                </strong>:
-                {% if days > 0 %}
-                    {{ days }} nap
-                {% endif %}
-                {% if hours > 0 %}
-                    {{ hours }} óra
-                {% endif %}
-                {% if minutes > 0 %}
-                    {{ minutes }} perc
-                {% endif %}
-                {% if days == 0 and hours == 0 and minutes == 0 %}
-                    kevesebb mint 1 perc
-                {% endif %}
-            </h5>
-		{% endfor %}  
-
-
+                    {{ utolso.start|miserend_date('H:i')|capitalize }} –
+                    {% if utolso.end is defined %}{{ utolso.end|date('H:i') }}{% else %}még tart{% endif %}
+                </strong>
+            </p>
+        {% endif %}
+        <p class="alap"><small>A korábbi gyóntatások a fenti naptárban láthatók.</small></p>
     {% endif %}
 
     

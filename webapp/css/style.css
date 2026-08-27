@@ -1254,3 +1254,16 @@ span.toggle.active {
   }
 
 } /* end @media (max-width: 575.98px) */
+/*
+ * #873: az ikon alakú, állapotváltó műveletek POST-űrlapok lettek (linkből gomb).
+ * Ez a szabály tünteti el a gomb saját megjelenését, hogy a felület ugyanaz maradjon,
+ * mint amikor még <a> volt.
+ */
+button.holder-action {
+    border: 0;
+    background: none;
+    padding: 0;
+    line-height: 1;
+    vertical-align: baseline;
+    cursor: pointer;
+}

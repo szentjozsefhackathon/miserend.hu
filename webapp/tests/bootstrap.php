@@ -10,6 +10,11 @@ if (!@include PATH . 'vendor/autoload.php') {
 require_once PATH . 'functions.php';
 require_once PATH . 'twig_extras.php';
 
+// #873: az űrlapokat beküldő integrációs teszteknek CSRF-tokent kell szerezniük,
+// mint a böngészőnek. A közös ügyfél nem a `classes/` alatt van, tehát az app
+// autoloadere nem találja meg — itt töltjük be egyszer.
+require_once __DIR__ . '/Support/CsrfFormClient.php';
+
 // Load configuration for DB connection
 if (!function_exists('env')) {
     function env($key, $default = null) {

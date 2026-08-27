@@ -42,6 +42,11 @@ class Remark extends Html {
 
     function pageList() {
         if (\Request::Simpletext('remark') == 'modify') {
+            // #873: POST + token. A #869-ben a jogosultság-ellenőrzést hoztam előre, de a
+            // művelet GET-en is indítható maradt — egy beágyazott kép a bejelentkezett
+            // gondnok nevében állította volna „feldolgozottra" a bejelentést.
+            \Csrf::guard();
+
             $rid = \Request::IntegerRequired('rid');
             $remark = \Eloquent\Remark::find($rid);
 

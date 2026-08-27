@@ -12,6 +12,18 @@ export interface MassDefinitionJsonExport {
   defaultRite?: Rite;
   description: string;
   specialUsage?: 'EASTER' | 'CHRISTMAS' | null;
+  aliases?: string[];
+}
+
+/**
+ * #896: kategóriánként összefűzött aliasok — a szabad szöveges felismerés szótára.
+ *
+ * A PHP oldal ezt olvassa (`MassDefinitions::aliasesByCategory()`), és ugyanezt használja
+ * az Angular is. Azért kategória szerint csoportosítva, mert a felismerés kimenete a
+ * kategória; a definíció-kulcs ehhez nem kell.
+ */
+export interface AliasesByCategory {
+  [category: string]: string[];
 }
 
 /**
@@ -55,6 +67,7 @@ export interface MassDefinitionsJsonOutput {
   definitions: MassDefinitionJsonExport[];
   titlesByCategory: TitlesByCategory;
   titlesByRite: TitlesByRite;
+  aliasesByCategory: AliasesByCategory;
 }
 
 /**
@@ -68,6 +81,9 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
   
   // Initialize category index
   const titlesByCategory: TitlesByCategory = {};
+
+  // #896: a szabad szöveges alakok ugyanígy, kategóriánként
+  const aliasesByCategory: AliasesByCategory = {};
   
   // Initialize rite index
   const titlesByRite: TitlesByRite = {};
@@ -75,6 +91,10 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
   // Build category index
   MASS_DEFINITIONS_DATA.categories.forEach((cat: CategoryDefinition) => {
     titlesByCategory[cat.key] = [];
+
+    // #896: a kategória saját aliasai (keresztelő, esküvő, temetés) — ezekhez nincs
+    // definíció, mert nem szabad felkínálni őket a naptárszerkesztőben.
+    aliasesByCategory[cat.key] = cat.aliases ? [...cat.aliases] : [];
   });
   
   // Build rite index
@@ -89,6 +109,15 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
     // Add to category index
     if (titlesByCategory[def.category]) {
       titlesByCategory[def.category].push(exportKey);
+    }
+
+    // #896: az aliasok kategóriánként, ismétlődés nélkül
+    if (aliasesByCategory[def.category] && def.aliases) {
+      def.aliases.forEach((alias) => {
+        if (!aliasesByCategory[def.category].includes(alias)) {
+          aliasesByCategory[def.category].push(alias);
+        }
+      });
     }
     
     // Add to rite index (for each rite this definition belongs to)
@@ -117,10 +146,13 @@ export function generateMassDefinitionsJson(): MassDefinitionsJsonOutput {
   return {
     _generator: 'mass-definitions-export.ts',
     _warning: 'Auto-generated from calendar/src/app/data/mass-definitions.ts during Angular build',
-    categories: MASS_DEFINITIONS_DATA.categories,
+    // A kategória-aliasok az `aliasesByCategory`-ban vannak; itt csak a kulcs és a szín,
+    // hogy ugyanaz az adat ne szerepeljen két helyen a kimenetben.
+    categories: MASS_DEFINITIONS_DATA.categories.map(({ key, color }) => ({ key, color })),
     rites: ritesWithMasstypes,
     definitions: exportDefinitions,
     titlesByCategory,
-    titlesByRite
+    titlesByRite,
+    aliasesByCategory
   };
 }
