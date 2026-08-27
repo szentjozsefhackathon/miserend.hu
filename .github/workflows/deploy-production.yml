@@ -35,6 +35,17 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # #903: felső korlát, mert enélkül egy beragadt futás a GitHub 6 órás
+    # alaplimitjéig fogja a `deploy-server` csoportot — és vele mindent, ami
+    # mögötte áll. 2026-08-27-én pontosan ez történt: a 07:26-os staging deploy
+    # négy órán át `in_progress` maradt (az ssh-action 40 perces
+    # `command_timeout`-ja ellenére), a mögötte várakozó KIADÁS deployja pedig
+    # törlődött. A production így a régi kódot szolgálta ki, és semmi nem szólt.
+    #
+    # 50 perc: a 40 perces parancs-korlát fölött annyi ráhagyással, hogy a
+    # kapcsolódás és a lépés-overhead is elférjen, de a blokkolás órák helyett
+    # legfeljebb egy munkamenetnyi legyen.
+    timeout-minutes: 50
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.5
