@@ -73,14 +73,12 @@ class Upload extends Api {
             
         } catch (\Exception $e) {
             // Set error response with detailed message
+            // #893: nincs `debug_info` a válaszban — a fájlnév, a sorszám és a hívási
+            // lánc a naplóba való, nem a hitelesítés nélkül hívható végpont válaszába.
+            // (L. #860: ugyanez a szivárgás már egyszer kikerült ebből a fájlból.)
             $this->return['error'] = '1';
             $this->return['text'] = $e->getMessage();
-            $this->return['debug_info'] = [
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ];
-            
+
             // Set HTTP status code to 400 (Bad Request) instead of 500
             http_response_code(400);
             
