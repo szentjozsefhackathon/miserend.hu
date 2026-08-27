@@ -58,7 +58,54 @@ final class MassCategoryDetectionTest extends TestCase
     /** @dataProvider cimek */
     public function testTheTitleDecidesTheCategory(string $cim, ?string $vart): void
     {
-        self::assertSame($vart, \IcalEventProperties::detectCategory($cim), $cim);
+        self::assertSame($vart, $this->md()->categoryForTitle($cim), $cim);
+    }
+
+    /**
+     * #896: amit a régi, szűk szótár NEM ismert fel.
+     *
+     * Mind a hat alak az éles adatból való — a fejlesztői adatbázis 12 505 sorából ezek
+     * maradtak kategória nélkül, pedig mind mise. A kanonikus cím önmagában kevés volt:
+     * a „Nagypénteki szertartás" pontosan egyezve felismerhető, de egy „(P. Szőcs)" a
+     * végén már kiejtette.
+     *
+     * @dataProvider valodiCimek
+     */
+    public function testTitlesFromTheRealDataAreRecognised(string $cim, ?string $vart): void
+    {
+        self::assertSame($vart, $this->md()->categoryForTitle($cim), $cim);
+    }
+
+    public static function valodiCimek(): array
+    {
+        return [
+            'nagypénteki szertartás'  => ['Nagypénteki szertartás (P. Szőcs)', 'MASS'],
+            'nagycsütörtöki'          => ['Nagycsütörtöki szertartás (P. Elek)', 'MASS'],
+            'húsvéti vigília'         => ['Húsvét vigíliája (P. Elek)', 'MASS'],
+            'feltámadási szertartás'  => ['Feltámadási szertartás (P. Elek)', 'MASS'],
+            'angol vigília elgépelve' => ['Eastern vigil in English (P. Elek)', 'MASS'],
+            'elgépelt szentmise'      => ['Szentmsie', 'MASS'],
+            'elgépelt szentmise 2'    => ['Kollégiumi szentmse', 'MASS'],
+            'ragozott mise'           => ['Kollégistáink szentmiséje (P. Szőcs)', 'MASS'],
+            'újmise'                  => ['P. Phamdinh Ngoc József SJ újmiséje', 'MASS'],
+
+            // #896: borazslo döntése szerint ezek EGYÉB-be tartoznak. Nem definícióként,
+            // hanem kategória-aliasként — így a kereső megtalálja őket, a naptárszerkesztő
+            // cím-választójában viszont nem jelennek meg.
+            'temetés'                 => ['BOHAN BÉLA ATYA TEMETÉSE 12 ÓRAKOR', 'OTHER'],
+            'keresztelő'              => ['Keresztelő (P. Vértesaljai)', 'OTHER'],
+            'ékezet nélküli keresztelő' => ['Keresztelõ, P. Szőcs', 'OTHER'],
+            'esküvő'                  => ['Esküvő (Alácsi Ervin atya)', 'OTHER'],
+            'requiem'                 => ['BOHAN BÉLA ATYA - REQUIEM, SZEGEDI SZENT JÓZSEF Templomban', 'OTHER'],
+
+            // De a MISE marad mise: a „10 misén keresztelő" elsősorban szentmise, és a
+            // korábbi találat nyer — a „misé" a 3. karakternél áll, a „keresztel" a 9-nél.
+            'keresztelő a misén'      => ['10 misén keresztelő, Mária Teodóra', 'MASS'],
+
+            // A „szertartás" önmagában továbbra sem lehet alias: abból a temetés is mise
+            // lenne. Csak a nagypénteki/nagycsütörtöki/feltámadási alak szerepel.
+            'lelkinap'                => ['Lelkinap', null],
+        ];
     }
 
     /**
@@ -69,7 +116,7 @@ final class MassCategoryDetectionTest extends TestCase
      */
     public function testALiturgicalWeekendIsNotAMass(): void
     {
-        self::assertNotSame('MASS', \IcalEventProperties::detectCategory('Régi rítusú liturgikus hétvége'));
+        self::assertNotSame('MASS', $this->md()->categoryForTitle('Régi rítusú liturgikus hétvége'));
     }
 
     /* ---- A kanonikus címek viselkedése NEM változik ---- */
@@ -96,6 +143,24 @@ final class MassCategoryDetectionTest extends TestCase
     {
         self::assertNull($this->md()->categoryForTitle(''));
         self::assertNull($this->md()->categoryForTitle('   '));
+    }
+
+    /**
+     * #896: a szótár a GENERÁLT adatból jön, nem PHP-konstansból.
+     *
+     * Ez a teszt az egyetlen forrást őrzi: ha valaki visszacsempészné a mintákat egy
+     * osztály konstansába, az `aliasesByCategory()` üresen maradna, és ez elbukna.
+     */
+    public function testTheAliasDictionaryComesFromTheGeneratedData(): void
+    {
+        $szotar = $this->md()->aliasesByCategory();
+
+        self::assertNotEmpty($szotar, 'nincs alias a generált JSON-ban');
+        foreach (['MASS', 'ADORATION', 'CONFESSION', 'OTHER'] as $category) {
+            self::assertNotEmpty($szotar[$category] ?? [], "üres a(z) $category szótára");
+        }
+        self::assertContains('szentmise', $szotar['MASS']);
+        self::assertContains('gyóntat', $szotar['CONFESSION']);
     }
 
     /* ---- A keresési klauzula ---- */
