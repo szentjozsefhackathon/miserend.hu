@@ -1909,6 +1909,88 @@
         }
       }
     },
+    "notification_digest_items": {
+      "engine": "InnoDB",
+      "collation": "utf8mb4_uca1400_ai_ci",
+      "columns": {
+        "id": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": "auto_increment"
+        },
+        "uid": {
+          "type": "int(11)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "email": {
+          "type": "varchar(100)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "type": {
+          "type": "varchar(30)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "church_id": {
+          "type": "int(11)",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        },
+        "title": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "url": {
+          "type": "varchar(255)",
+          "nullable": false,
+          "default": null,
+          "extra": ""
+        },
+        "created_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": "current_timestamp",
+          "extra": ""
+        },
+        "sent_at": {
+          "type": "timestamp",
+          "nullable": true,
+          "default": null,
+          "extra": ""
+        }
+      },
+      "indexes": {
+        "PRIMARY": {
+          "unique": true,
+          "columns": [
+            "id"
+          ]
+        },
+        "sent_created": {
+          "unique": false,
+          "columns": [
+            "sent_at",
+            "created_at"
+          ]
+        },
+        "uid_sent": {
+          "unique": false,
+          "columns": [
+            "uid",
+            "sent_at"
+          ]
+        }
+      }
+    },
     "osm": {
       "engine": "InnoDB",
       "collation": "utf8mb4_unicode_ci",
@@ -3117,6 +3199,12 @@
           "default": "1",
           "extra": ""
         },
+        "notification_frequency": {
+          "type": "enum('instant','daily','weekly')",
+          "nullable": false,
+          "default": "daily",
+          "extra": ""
+        },
         "becenev": {
           "type": "varchar(50)",
           "nullable": false,
@@ -3147,8 +3235,8 @@
     }
   },
   "_meta": {
-    "generated_at": "2026-08-20T11:23:43+02:00",
-    "source_schema": "ref_845",
+    "generated_at": "2026-08-24T05:23:33+02:00",
+    "source_schema": "miserend_ref_872",
     "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
     "initdb_files": {
       "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
