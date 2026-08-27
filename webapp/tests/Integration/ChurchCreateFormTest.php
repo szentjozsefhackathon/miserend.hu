@@ -18,13 +18,11 @@ class ChurchCreateFormTest extends TestCase {
 
     private const NEV_ELOTAG = 'Létrehozás teszt ';
 
-    private string $baseUrl;
-    private ?string $cookie = null;
+    private CsrfFormClient $client;
 
     protected function setUp(): void {
-        $this->baseUrl = rtrim(getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000', '/');
-        $this->login();
-        if ($this->cookie === null) {
+        $this->client = new CsrfFormClient();
+        if (!$this->client->login('admin', 'miserend')) {
             $this->markTestSkipped('Nem sikerült adminisztrátorként bejelentkezni.');
         }
     }
@@ -33,35 +31,18 @@ class ChurchCreateFormTest extends TestCase {
         DB::table('templomok')->where('nev', 'LIKE', self::NEV_ELOTAG . '%')->delete();
     }
 
-    private function login(): void {
-        $ctx = stream_context_create(['http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/x-www-form-urlencoded\r\n",
-            'content'       => http_build_query(['login' => 'admin', 'passw' => 'miserend', 'logout' => 'false']),
-            'timeout'       => 30,
-            'ignore_errors' => true,
-        ]]);
-        @file_get_contents($this->baseUrl . '/', false, $ctx);
-        foreach ($http_response_header ?? [] as $h) {
-            if (stripos($h, 'Set-Cookie:') === 0 && stripos($h, 'token=') !== false) {
-                $this->cookie = trim(explode(';', substr($h, 11))[0]);
-            }
-        }
-    }
-
+    /**
+     * #873: a beküldés a CsrfFormClient-en át megy, ami úgy viselkedik, mint a böngésző:
+     * betölti az űrlap oldalát, elteszi a `csrf` sütit, és a POST-hoz mellékeli a lapról
+     * kiolvasott tokent.
+     *
+     * Ez a teszt eredetileg nyers POST-tal készült — a #880 (CSRF) és a #899 (ez a
+     * folyamat) párhuzamosan futott, és külön-külön mindkettő zöld volt. Együtt viszont
+     * az őr nyelte el a beküldést, és a master lett tőle piros. Ezért van külön eset is
+     * arra, hogy token NÉLKÜL tényleg nem megy át semmi.
+     */
     private function post(array $fields): string {
-        $header = "Content-Type: application/x-www-form-urlencoded\r\n";
-        if ($this->cookie) {
-            $header .= 'Cookie: ' . $this->cookie . "\r\n";
-        }
-        $ctx = stream_context_create(['http' => [
-            'method' => 'POST', 'header' => $header,
-            'content' => http_build_query($fields), 'timeout' => 60, 'ignore_errors' => true,
-        ]]);
-        $body = @file_get_contents($this->baseUrl . '/church/create', false, $ctx);
-        $this->assertNotFalse($body, 'A kérés nem sikerült.');
-
-        return $body;
+        return $this->client->post('/church/create', $fields, true, '/church/create');
     }
 
     private function mezok(string $nev, array $override = []): array {
@@ -166,6 +147,20 @@ class ChurchCreateFormTest extends TestCase {
         self::assertNotNull($sor);
         self::assertSame('123456', (string) $sor->osmid);
         self::assertSame('node', (string) $sor->osmtype);
+    }
+
+    /**
+     * #873/#899: token nélkül NEM jöhet létre templom.
+     *
+     * Ez az eset azért van itt, mert pont ennek a hiánya vitte pirosba a mastert: a
+     * teszt nyers POST-tal ment, és amikor a CSRF-őr bekerült a `create.php`-be, minden
+     * eset elhasalt. Innentől ha valaki leveszi az őrt, ez szól.
+     */
+    public function testAPostWithoutATokenIsRejected(): void {
+        $valasz = $this->client->post('/church/create', $this->mezok('token-nélkül'), false);
+
+        self::assertNull($this->sor('token-nélkül'), 'token nélkül nem jöhet létre templom');
+        self::assertStringContainsString('biztonsági token', $valasz);
     }
 
     /** OSM-azonosító nélkül is létre KELL jönnie — csak letiltva. */

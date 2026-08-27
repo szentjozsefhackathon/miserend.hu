@@ -181,4 +181,25 @@ final class BoundaryFreshnessTest extends TestCase {
         self::assertGreaterThan(1, count(array_unique($belyegek)),
             'a belyegeknek szet kell szorodniuk, kulonben egyszerre jar le mind');
     }
+
+    /**
+     * #890: a bélyeg horgonya a PHP órája, NEM a MySQL `NOW()`-ja.
+     *
+     * A fenti teszt ezt csak szakaszosan fogta meg: a MySQL órájára horgonyzott bélyeg
+     * akkor kerül a jövőbe, ha a `FLOOR(RAND() * $napok)` épp nullát húz — negyven
+     * templomnál nagyjából minden ötödik futásban. A master emiatt volt hol zöld, hol
+     * piros, ugyanarra a kódra.
+     *
+     * A kifejezés viszont determinisztikusan megnézhető, tehát ez az eset MINDIG szól.
+     */
+    public function testTheBackfillStampIsAnchoredToThePhpClock(): void {
+        $kifejezes = \Crons::backfillBelyegKifejezes('2026-08-27 09:15:00', 180);
+
+        self::assertStringContainsString("'2026-08-27 09:15:00'", $kifejezes,
+            'a horgonynak a kapott, PHP-ből jövő időpontnak kell lennie');
+        self::assertStringNotContainsString('NOW()', $kifejezes,
+            'a MySQL órája három órával előrébb jár a PHP-énál (#890) — nem keverhetjük');
+        self::assertStringContainsString('RAND()', $kifejezes,
+            'a szórás soronként kell, különben egyszerre jár le minden bélyeg');
+    }
 }
