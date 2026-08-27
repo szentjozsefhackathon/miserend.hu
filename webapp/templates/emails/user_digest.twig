@@ -1,0 +1,53 @@
+{{ digestCount == 1 ? '1 újdonság a templomodnál' : digestCount ~ ' újdonság a templomaidnál' }}
+
+Kedves {% include 'emails/_megszolitas.twig' %}!<br/>
+<br/>
+{#
+    #872: napi/heti összefoglaló.
+
+    Ez a levél váltja ki az „új észrevétel / új javaslat / új kép érkezett" külön
+    leveleket. Templomonként csoportosítunk, nem eseménytípusonként: a gondnokot az
+    érdekli, hogy MELYIK templomával mi történt.
+#}
+Az utolsó értesítőnk óta {% if digestCount == 1 %}egy újdonság érkezett{% else %}{{ digestCount }} újdonság érkezett{% endif %} a hozzád tartozó
+templom{% if digestChurches|length > 1 %}okhoz{% else %}hoz{% endif %}:<br/>
+<br/>
+
+{% for templom in digestChurches %}
+	<div style="margin-bottom:18px;">
+		<strong>
+			{% if templom.id > 0 %}
+				<a href="{{ domain }}/templom/{{ templom.id }}">{{ templom.nev }}</a>
+			{% else %}
+				{{ templom.nev }}
+			{% endif %}
+		</strong>
+		<ul class="list-group" style="margin-top:6px;">
+			{% for tetel in templom.tetelek %}
+				<li class="list-group-item">
+					<small style="color:#666;">
+						{% if tetel.type == 'remark' %}Észrevétel
+						{% elseif tetel.type == 'suggestion' %}Miserend-javaslat
+						{% elseif tetel.type == 'image' %}Új kép
+						{% else %}{{ tetel.type }}
+						{% endif %}
+						· {{ tetel.created_at|date('Y. m. d. H:i') }}
+					</small><br/>
+					<a href="{{ domain }}{{ tetel.url }}">{{ tetel.title }}</a>
+				</li>
+			{% endfor %}
+		</ul>
+	</div>
+{% endfor %}
+
+<br/>
+{#
+    A beállítás helyét minden levélben megmutatjuk. Enélkül az marad a felhasználónak,
+    hogy az egészet kikapcsolja — pont ezt akartuk elkerülni.
+#}
+<small>
+	Ezt az összefoglalót azért kapod, mert a beállításod szerint
+	{% if notification_frequency == 'weekly' %}hetente{% else %}naponta{% endif %}
+	kérsz értesítést. A <a href="{{ domain }}/user/edit">beállításaid</a> között bármikor
+	átállíthatod azonnalira, ritkábbra, vagy kikapcsolhatod.
+</small>

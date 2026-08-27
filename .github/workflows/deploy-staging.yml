@@ -26,21 +26,42 @@ on:
   workflow_dispatch: {}
 
 # #662: a staging ÉS a production UGYANAZON a gépen fut, és mindkét deploy teljes
-# `docker build`-et csinál (Angular + PHP multi-stage). Külön csoportban egyszerre
-# indulhattak, és több merge után egymásra torlódtak — a gép ettől elérhetetlenné vált.
-# Közös csoport: egyszerre csak EGY deploy nyúlhat a szerverhez.
+# `docker build`-et csinál (Angular + PHP multi-stage). Egyszerre indulva egymásra
+# torlódtak — a gép ettől elérhetetlenné vált. Egyszerre csak EGY deploy nyúlhat a
+# szerverhez; ez a kikötés érvényben marad, csak a helye változott.
 #
-# A `cancel-in-progress` szándékosan false: a job leállítása a GitHub oldalán öli meg a
-# futást, a szerveren a docker daemonban FUTÓ build viszont attól még dolgozik tovább —
-# tehát a cancel nem szabadítja fel a gépet, csak elveszti a naplót. Sorbaállítunk
-# helyette, és a lentebbi "nincs új commit" rövidzár teszi gyorssá a torlódást.
+# #903: a kizárás a szerverre került, a csoport pedig kettévált.
+#
+# A közös `deploy-server` csoport ugyanis mellékhatással járt: a GitHub a csoportban A
+# VÁRAKOZÓ futást törli, amint újabb érkezik. Egy staging pusholás így kiütötte a sorban
+# álló KIADÁS deployját, és a production némán a régi kódon maradt (2026-08-27, és előtte
+# 08-24). Külön csoporttal a staging már nem érhet a kiadás sorához.
+#
+# A `cancel-in-progress` MARAD false, és ez fontos: a job leállítása a GitHub oldalán öli
+# meg a futást, a szerveren a docker daemonban FUTÓ build viszont attól még dolgozik
+# tovább — a cancel nem szabadítja fel a gépet, csak elveszti a naplót. Sőt: a megszakadt
+# ssh-munkamenettel a lentebbi zár is elengedne, miközben a build még fut. Tehát nem
+# kilövünk, hanem a záron sorbaállunk, és ha nem kapjuk meg, KIMARADUNK — borazslo
+# szavaival „a deploy to staging mindig várhat, kimaradhat ha kell". A következő pusholás
+# úgyis hoz újat.
 concurrency:
-  group: deploy-server
+  group: deploy-server-staging
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # #903: felső korlát, mert enélkül egy beragadt futás a GitHub 6 órás
+    # alaplimitjéig fogja a `deploy-server` csoportot — és vele mindent, ami
+    # mögötte áll. 2026-08-27-én pontosan ez történt: a 07:26-os staging deploy
+    # négy órán át `in_progress` maradt (az ssh-action 40 perces
+    # `command_timeout`-ja ellenére), a mögötte várakozó KIADÁS deployja pedig
+    # törlődött. A production így a régi kódot szolgálta ki, és semmi nem szólt.
+    #
+    # 50 perc: a 40 perces parancs-korlát fölött annyi ráhagyással, hogy a
+    # kapcsolódás és a lépés-overhead is elférjen, de a blokkolás órák helyett
+    # legfeljebb egy munkamenetnyi legyen.
+    timeout-minutes: 50
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.5
@@ -57,6 +78,18 @@ jobs:
           timeout: 2m
           script: |
             set -euo pipefail
+
+            # #903: a gépen egyszerre EGY deploy dolgozhat (#662). A kizárás a GitHub
+            # concurrency-csoportjából ide került, mert ott a kiadás deployját ütötte ki.
+            #
+            # A staging KIMARADHAT, ha nem kapja meg a zárat: a következő pusholás úgyis
+            # hoz újat. A `-w 60` azért nem 0, hogy egy épp befejeződő deploy után ne
+            # hagyjuk ki fölöslegesen.
+            exec 9>/tmp/miserend-deploy.lock
+            if ! flock -w 60 9; then
+              echo "⏭️  Másik deploy dolgozik a gépen — a staging kimarad. A következő pusholás újrapróbálja."
+              exit 0
+            fi
 
             DEPLOY_DIR=/var/www/staging.miserend.hu
             cd "$DEPLOY_DIR"

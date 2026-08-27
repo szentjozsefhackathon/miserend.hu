@@ -2,6 +2,7 @@
 
 namespace Tests\Functional;
 
+use Facebook\WebDriver\Exception\PhpWebDriverExceptionInterface;
 use Symfony\Component\Panther\Client as PantherClient;
 use Symfony\Component\Panther\PantherTestCase;
 
@@ -50,7 +51,59 @@ abstract class FunctionalTestCase extends PantherTestCase
      */
     private const REQUEST_TIMEOUT_MS = 30000;
 
+    /**
+     * Hányszor próbáljuk meg elindítani a böngészőt.
+     *
+     * A 2026-08-27-i master-futásban a suite ELSŐ munkamenete hasalt el
+     * `Operation timed out after 30002 milliseconds with 0 bytes received`-del, a
+     * mögötte lévő 79 teszt viszont hibátlanul lefutott. Vagyis nem a korlát szűk és nem
+     * az alkalmazás lassú: a chromedriver hidegindítása csúszott át a 30 másodpercen a
+     * futtatón.
+     *
+     * A korlát emelése rossz válasz lenne — pont azért 30 másodperc, hogy egy VALÓDI
+     * beakadás gyorsan és beszédesen bukjon el (l. a REQUEST_TIMEOUT_MS indoklását).
+     * Egyetlen újrapróbálkozás viszont pont a hidegindítást fedi le: a legrosszabb eset
+     * 60 másodperc, ami még mindig töredéke a lépés korlátjának.
+     */
+    private const INDITASI_PROBALKOZASOK = 2;
+
     protected static function pantherClient(array $options = []): PantherClient
+    {
+        $utolsoHiba = null;
+
+        for ($probalkozas = 1; $probalkozas <= self::INDITASI_PROBALKOZASOK; $probalkozas++) {
+            try {
+                return static::klienstIndit($options);
+            } catch (\Throwable $hiba) {
+                // Csak a WebDriver felől jövő indulási hibát próbáljuk újra. Bármi más
+                // (rossz opció, hiányzó bináris) azonnal szálljon el — azon az
+                // újrapróbálkozás nem segít, csak elfedi.
+                if (!$hiba instanceof PhpWebDriverExceptionInterface) {
+                    throw $hiba;
+                }
+
+                $utolsoHiba = $hiba;
+
+                // Látszódjon a naplóban: ha ez sűrűsödik, a futtatóval van baj, és azt
+                // egy néma újrapróbálkozás elrejtené.
+                fwrite(STDERR, sprintf(
+                    "\n[panther] a böngésző indítása nem sikerült (%d/%d): %s\n",
+                    $probalkozas,
+                    self::INDITASI_PROBALKOZASOK,
+                    explode("\n", $hiba->getMessage())[0]
+                ));
+
+                if ($probalkozas < self::INDITASI_PROBALKOZASOK) {
+                    // Egy másodperc, hogy a félbemaradt chromedriver elengedje a portját.
+                    sleep(1);
+                }
+            }
+        }
+
+        throw $utolsoHiba;
+    }
+
+    private static function klienstIndit(array $options): PantherClient
     {
         return static::createPantherClient(
             array_merge([

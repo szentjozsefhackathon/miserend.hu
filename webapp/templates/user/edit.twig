@@ -144,7 +144,27 @@
 	    			</label>
 	    			<p class="help-block">Leginkább a felelőssségi köreidbe tartozó templomokhoz érkező észrevételekről küldünk üzeneteket.</p>
 		    	</div>
-			</div>                    
+			</div>
+
+			{#
+			   #872: milyen sűrűn. Eddig csak „minden vagy semmi" volt, és aki több
+			   templomot gondnokol, az a sok levél miatt inkább az egészet kikapcsolta.
+			   Az alapérték a napi összefoglaló — a meglévő felhasználóknál is.
+			#}
+			<div class="form-group">
+				<label for="notification_frequency">Értesítések gyakorisága</label>
+				<select id="notification_frequency" name="edituser[notification_frequency]" class="form-control" style="max-width:22em;">
+					<option value="instant" {% if edituser.notification_frequency == 'instant' %}selected{% endif %}>Azonnal, eseményenként</option>
+					<option value="daily" {% if edituser.notification_frequency != 'instant' and edituser.notification_frequency != 'weekly' %}selected{% endif %}>Naponta egy összefoglaló</option>
+					<option value="weekly" {% if edituser.notification_frequency == 'weekly' %}selected{% endif %}>Hetente egy összefoglaló</option>
+				</select>
+				<p class="help-block">
+					Az új észrevételekről, miserend-javaslatokról és képekről szól. Az összefoglaló
+					templomonként csoportosítva sorolja fel, mi történt — így több templom mellett sem
+					kapsz naponta tucatnyi levelet. A búcsú- és ünnep-emlékeztetők ettől függetlenül,
+					a maguk idejében érkeznek.
+				</p>
+			</div>
                 {% endif %}
 
                 {% if user.roles is not empty %}

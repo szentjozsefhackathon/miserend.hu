@@ -89,6 +89,26 @@ class Crons {
 	public static function backfillBoundaryCheckedAt(): int {
 		$napok = max(1, (int) round((time() - strtotime('-' . \OSM::BOUNDARY_FRESHNESS)) / 86400));
 
+		/*
+		 * #890: a horgony a PHP órája, nem a MySQL `NOW()`-ja.
+		 *
+		 * Az oszlop MINDEN más írója és olvasója a PHP óráját használja: a bélyeget az
+		 * `OSM::checkBoundaries()` `date('Y-m-d H:i:s')`-szel írja, az esedékességet az
+		 * `osm.php` és a `requeueChurchesWithoutBoundary()` PHP-ben számolt határidőhöz
+		 * méri. Egyedül ez a visszatöltés dolgozott a MySQL órájával — az pedig a
+		 * `+05:00`-s session-zóna miatt HÁROM ÓRÁVAL előrébb jár (#890).
+		 *
+		 * Következmény élesben: a visszatöltött templom három órával frissebbnek látszik
+		 * a valóságosnál. Egy 180 napos ablakban ez kicsi, de a CI-ben mérhető volt: ha a
+		 * `FLOOR(RAND() * $napok)` nullát húzott, a bélyeg a PHP órájához képest a JÖVŐBE
+		 * került, és a `BoundaryFreshnessTest` elhasalt — pontosan 10799 másodperccel.
+		 * Innen a master szakaszos pirosa.
+		 *
+		 * A `RAND()` marad a MySQL-ben: soronként KELL más érték, különben az egész köteg
+		 * ugyanazt a bélyeget kapná, és fél év múlva egyszerre járna le mind.
+		 */
+		$horgony = date('Y-m-d H:i:s');
+
 		return DB::table('templomok')
 			->whereNull('boundaries_checked_at')
 			->whereExists(function ($q) {
@@ -98,9 +118,23 @@ class Crons {
 					->whereColumn('lookup_boundary_church.church_id', 'templomok.id')
 					->where('boundaries.boundary', 'administrative');
 			})
-			->update(['boundaries_checked_at' => DB::raw(
-				'DATE_SUB(NOW(), INTERVAL FLOOR(RAND() * ' . $napok . ') DAY)'
-			)]);
+			->update(['boundaries_checked_at' => DB::raw(self::backfillBelyegKifejezes($horgony, $napok))]);
+	}
+
+	/**
+	 * #890: a visszatöltés SQL-kifejezése, külön, hogy tesztelhető legyen.
+	 *
+	 * Azért van kiemelve, mert a hiba, amit javít, csak SZAKASZOSAN látszik: a MySQL
+	 * órájára horgonyzott bélyeg akkor kerül a jövőbe, ha a `FLOOR(RAND() * $napok)`
+	 * épp nullát húz — negyven templomnál ez nagyjából minden ötödik futás. A kifejezést
+	 * viszont determinisztikusan meg lehet nézni, tehát a visszaesés nem tud észrevétlen
+	 * maradni.
+	 *
+	 * A `$horgony` a saját óránkból jön (`date('Y-m-d H:i:s')`), kötött formátumú, nem
+	 * külső bemenet; a `$napok` egész.
+	 */
+	public static function backfillBelyegKifejezes(string $horgony, int $napok): string {
+		return "DATE_SUB('" . $horgony . "', INTERVAL FLOOR(RAND() * " . max(1, $napok) . ") DAY)";
 	}
 
 	public static function churchesWithoutBoundaryCount(): int {

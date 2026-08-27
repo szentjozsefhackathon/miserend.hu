@@ -121,6 +121,16 @@ class UploadImage extends Html {
         }
         
         foreach($emails as $email) {
+            // #872: napi/heti összefoglalónál egy sor a várólistára, nem külön levél.
+            if (isset($email[2]) && \DigestQueue::halaszt(
+                    $email[2],
+                    'image',
+                    (int) $this->church->id,
+                    'Új kép érkezett',
+                    '/templom/' . (int) $this->church->id . '/editphotos')) {
+                continue;
+            }
+
             if(isset($email[2])) $this->addressee = $email[2];
             else $this->addressee = false;
             $mail = new \Eloquent\Email();                

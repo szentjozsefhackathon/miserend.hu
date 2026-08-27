@@ -40,6 +40,11 @@ class User {
     public $presaved;
     public $favorites;
     public $inactiveDays;
+    /** #872: az értesítési gyakoriság (instant/daily/weekly) — a `user` tábla oszlopa. */
+    public $notification_frequency;
+    /** #872: a napi/heti összefoglaló adatai a levélsablonnak. */
+    public $digestChurches;
+    public $digestCount;
 
     function __construct($uid = false) {
         if (isset($uid) AND $uid != false) {
@@ -197,6 +202,7 @@ class User {
             'volunteer' => 'Hibás értéke van az önkéntességnek!',
             'roles' => 'Hibás formátumú jogkörök!',
             'notifications' => 'Email értesítések engedélyezése körül hiba lépett fel!',
+            'notification_frequency' => 'Hibás értesítési gyakoriság!',
         );
 
         // #829: a mezőnkénti általános mondat helyett a KONKRÉT ok, ha tudjuk.
@@ -204,7 +210,7 @@ class User {
         // használatban van?"), így a felhasználó találgathatott, mit rontott el.
         $this->presaveErrors = [];
 
-        foreach (array('uid', 'username', 'nickname', 'name', 'email', 'volunteer', 'roles','notifications') as $input) {
+        foreach (array('uid', 'username', 'nickname', 'name', 'email', 'volunteer', 'roles','notifications','notification_frequency') as $input) {
             if (isset($vars[$input])) {
                 if (!$this->presave($input, $vars[$input])) {
                     $return = false;
@@ -389,6 +395,14 @@ class User {
         } elseif ($key == 'notifications') {
             if(!in_array($val,[0,1])) {
                 $this->presaveError($key, 'Az értesítés csak be- vagy kikapcsolt lehet.');
+                return false;
+            }
+            $this->presaved[$key] = $val;
+        } elseif ($key == 'notification_frequency') {
+            // #872: fehérlista. Ismeretlen érték az enum-oszlopon némán üres sztringgé
+            // válna, és onnantól a felhasználó besorolhatatlan gyakoriságon állna.
+            if (!in_array($val, \DigestQueue::GYAKORISAGOK, true)) {
+                $this->presaveError($key, 'Ilyen értesítési gyakoriság nincs.');
                 return false;
             }
             $this->presaved[$key] = $val;
