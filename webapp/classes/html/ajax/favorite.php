@@ -15,6 +15,10 @@ class Favorite extends Ajax {
             throw new \Exception("Hiányzó jogosultság: a kedvencekhez be kell jelentkezni.");
         }
 
+        // #873: a kedvenc felvétele/törlése írás — POST + token. Kis tét, de ugyanaz a
+        // szabály: ne lehessen idegen oldalról a felhasználónk nevében módosítani.
+        \Csrf::guard();
+
         $tid = \Request::IntegerRequired('tid');
         $method = \Request::SimpletextRequired('method');
         echo $tid."-".$method;

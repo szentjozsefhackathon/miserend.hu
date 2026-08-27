@@ -36,17 +36,39 @@
                             </a>
 
                             <div style="float:right">
+                                {#
+                                   #873: a három művelet eddig sima link volt, tehát GET-tel is
+                                   kiadható. Egy bejelentkezett adminnak elég volt megnéznie egy
+                                   idegen oldalt, és a nevében kiosztódott a szerkesztési jog egy
+                                   tetszőleges felhasználónak. Ezért mind POST-űrlap lett, tokennel.
+                                   A gomb keret és háttér nélküli, hogy a felület ne változzon.
+                                #}
                                 {% if status in ['allowed'] %}
                                     <i class="{{ ICONS_GRANT_ACCESS}} green" title="A felhasználó tudja szerkeszteni a templom adatait."></i>
                                 {% else %}
-                                    <a href="/church/{{ church.id }}/changeholders?uid={{ holder.user.uid }}&access=allowed"><i class="{{ ICONS_GRANT_ACCESS}} grey" title="Az engedélyezéshez kattints ide."></i></a>
+                                    <form method="post" action="/church/{{ church.id }}/changeholders" style="display:inline">
+                                        <input type="hidden" name="uid" value="{{ holder.user.uid }}">
+                                        <input type="hidden" name="access" value="allowed">
+                                        {{ csrf_field() }}
+                                        <button type="submit" class="holder-action" title="Az engedélyezéshez kattints ide."><i class="{{ ICONS_GRANT_ACCESS}} grey"></i></button>
+                                    </form>
                                 {% endif %}
                                 {% if status in ['denied','revoked','left']  %}
                                     <i class="{{ ICONS_DENY_ACCESS}} red" title="A felhasználó nem szerkesztheti a templom adatait. És nem is kérheti újra ehhez a jogot."></i>
                                 {% else %}
-                                    <a href="/church/{{ church.id }}/changeholders?uid={{ holder.user.uid }}&access={% if status == 'asked' %}denied{% else %}revoked{% endif %}"><i class="{{ ICONS_DENY_ACCESS}} grey" title="A letiltáshoz kattints ide, így nem is kérheti többé a jogot a szerkesztéshez."></i></a>
+                                    <form method="post" action="/church/{{ church.id }}/changeholders" style="display:inline">
+                                        <input type="hidden" name="uid" value="{{ holder.user.uid }}">
+                                        <input type="hidden" name="access" value="{% if status == 'asked' %}denied{% else %}revoked{% endif %}">
+                                        {{ csrf_field() }}
+                                        <button type="submit" class="holder-action" title="A letiltáshoz kattints ide, így nem is kérheti többé a jogot a szerkesztéshez."><i class="{{ ICONS_DENY_ACCESS}} grey"></i></button>
+                                    </form>
                                 {% endif %}
-									<a href="/church/{{ church.id }}/changeholders?uid={{ holder.user.uid }}&access=toDelete"><i class="{{ ICONS_DELETE_ACCESS}} grey" title="A felelős (kérés) törlése. Ez után tiszta lappal indulunk."></i></a>
+                                <form method="post" action="/church/{{ church.id }}/changeholders" style="display:inline">
+                                    <input type="hidden" name="uid" value="{{ holder.user.uid }}">
+                                    <input type="hidden" name="access" value="toDelete">
+                                    {{ csrf_field() }}
+                                    <button type="submit" class="holder-action" title="A felelős (kérés) törlése. Ez után tiszta lappal indulunk."><i class="{{ ICONS_DELETE_ACCESS}} grey"></i></button>
+                                </form>
 
                             </div>
                         </td>
@@ -109,6 +131,7 @@
         {% endif %}
 
         <FORM ENCTYPE='multipart/form-data' action="/templom/{{ church.id }}/changeholders" method=post>
+        {{ csrf_field() }}
             <table class="table">
                 <tr class="bg-primary">
                     <td colspan="2" >Új felelős megadása</td>

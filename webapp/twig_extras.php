@@ -277,5 +277,13 @@ function buildTwigEnvironment(?string $templatesPath = null): \Twig\Environment 
     // rájuk is érvényes.
     $twig->addGlobal('overpass_api_url', $config['overpass']['apiUrl'] ?? 'https://overpass-api.de/api/interpreter');
 
+    // #873: CSRF-token. Globálisként kell, nem szűrőként: a token LEKÉRÉSE hozza létre
+    // a sütit, és a sütit a kimenet előtt kell elküldeni. Twig-globálisként minden
+    // oldal-renderelés elején megtörténik, még a layout <head> kiírása előtt.
+    // CLI-ből (cron, teszt-bootstrap) is fut, ott a Csrf memóriában tartja az értéket.
+    $twig->addGlobal('csrf_token', \Csrf::token());
+    // A kész rejtett mező: `{{ csrf_field()|raw }}` — így az űrlapokba egy sor a beépítés.
+    $twig->addFunction(new \Twig\TwigFunction('csrf_field', ['Csrf', 'field'], ['is_safe' => ['html']]));
+
     return $twig;
 }

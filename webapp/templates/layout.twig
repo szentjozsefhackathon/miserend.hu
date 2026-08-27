@@ -44,6 +44,9 @@
         <meta name="description" content="{{ teaser ? teaser : 'Magyarország és a Kárpát-medence katolikus templomainak miserendjei.' }}">
         <meta name="keywords" content="katolikus, római katolikus, görögkatolikus, szentmise, miserend, liturgia, ünnep">
         <meta name="author" content="miserend.hu">
+        {# #873: a CSRF-token a böngészőben futó ajax-hívásoknak. A jQuery innen olvassa
+           ki, és minden nem-GET kéréshez X-CSRF-Token fejlécként mellékeli (l. csrf.js). #}
+        <meta name="csrf-token" content="{{ csrf_token }}">
         <meta http-equiv="cleartype" content="on">
 
         <meta name="apple-itunes-app" content="app-id=967827488">
@@ -105,6 +108,9 @@
 -->
         <script src="/node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
 
+        {# #873: a CSRF-fejléc beakasztása a miserend.js ELŐTT, hogy az ott regisztrált
+           ajax-hívások is védve legyenek. #}
+        <script src="/js/csrf.js"></script>
         <script src="/js/miserend.js"></script>
         
 

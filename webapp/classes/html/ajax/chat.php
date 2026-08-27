@@ -29,6 +29,10 @@ class Chat extends Ajax {
                 break;
 
             case 'save':
+                // #873: a chat-üzenet a mi nevünkben kerül be — POST + token. A `load` és
+                // a `getusers` marad őrizetlen: azok csak olvasnak.
+                \Csrf::guard();
+
                 $text = \Request::TextRequired('text');
                 if (preg_match('/^\$(\w+)/si', $text, $match)) {
                     $kinek = $match[1];

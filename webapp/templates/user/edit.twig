@@ -81,6 +81,7 @@
 {% block content %}
         {% if not newusercreated and not needtologin and not accessdenied %}
 	<form method="post">
+	{{ csrf_field() }}
 		<input type="hidden" name="q" value="user/edit">
 
 		{% if edit %}<input type="hidden" name="edituser[uid]" value="{{ edituser.uid }}">{% endif %}

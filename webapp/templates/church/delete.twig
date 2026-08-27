@@ -14,6 +14,7 @@
         <form role="form" method="post" class="form"
                       action="/templom/{{ church2delete.id }}/delete">
             
+            {{ csrf_field() }}
             <div class="controls" class="form-group">            
                 <label for="comment">Indoklás:</label><br/>
                 <input type="text" name="comment" class="form-control">

@@ -14,11 +14,11 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class UserEditFormTest extends TestCase {
 
-    private string $baseUrl;
+    private CsrfFormClient $client;
     private array $createdLogins = [];
 
     protected function setUp(): void {
-        $this->baseUrl = rtrim(getenv('PANTHER_EXTERNAL_BASE_URI') ?: 'http://127.0.0.1:8000', '/');
+        $this->client = new CsrfFormClient();
     }
 
     protected function tearDown(): void {
@@ -36,18 +36,15 @@ class UserEditFormTest extends TestCase {
         return $login;
     }
 
-    /** POST az űrlap-feldolgozóra; a válasz HTML-je jön vissza. */
+    /**
+     * POST az űrlap-feldolgozóra; a válasz HTML-je jön vissza.
+     *
+     * #873: a beküldés úgy megy, mint a böngészőből — előbb betöltjük a regisztrációs
+     * lapot (onnan jön a `csrf` süti és a token), és azzal együtt küldünk. Nyers POST-tól
+     * ma már — helyesen — nem történne semmi.
+     */
     private function post(string $path, array $fields): string {
-        $ctx = stream_context_create(['http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/x-www-form-urlencoded\r\n",
-            'content'       => http_build_query($fields),
-            'timeout'       => 30,
-            'ignore_errors' => true,
-        ]]);
-        $body = @file_get_contents($this->baseUrl . $path, false, $ctx);
-        $this->assertNotFalse($body, 'A kérés nem sikerült: ' . $path);
-        return $body;
+        return $this->client->post($path, $fields, true, $path);
     }
 
     private function userRow(string $login) {
