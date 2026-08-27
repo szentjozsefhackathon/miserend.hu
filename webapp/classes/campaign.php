@@ -162,6 +162,11 @@ class Campaign {
                     DB::table('updates')->insert([
                         'uid' => $user->uid,
                         'tid' => $church->id,
+                        // #890: eddig a MySQL `CURRENT_TIMESTAMP` alapértéke töltötte,
+                        // ami a `+05:00`-s session-zóna miatt három órával előrébb jár a
+                        // PHP órájánál. A tábla minden lekérdezése viszont PHP-ben
+                        // számolt határidőhöz méri — így az ablak csúszott.
+                        'timestamp' => date('Y-m-d H:i:s'),
                     ]);
                 }
                 self::sendWeeklyEmail($user, $batch);
