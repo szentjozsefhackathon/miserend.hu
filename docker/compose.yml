@@ -99,7 +99,6 @@ services:
       start_period: 30s
   mysql:
     image: mariadb:12
-    platform: linux/amd64
     volumes:
       - db_data:/var/lib/mysql
       - ./mysql/initdb.d:/docker-entrypoint-initdb.d
