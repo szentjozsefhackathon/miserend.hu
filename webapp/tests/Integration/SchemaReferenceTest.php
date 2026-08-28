@@ -68,9 +68,24 @@ final class SchemaReferenceTest extends TestCase {
         $reference = \SchemaCheck::loadReference();
         $current   = \SchemaCheck::initdbFingerprint();
 
-        if ($current === null) {
-            self::markTestSkipped('az initdb.d nem olvasható ebben a környezetben');
-        }
+        /*
+         * #911: ez korábban `markTestSkipped` volt, és pont ez volt a baj.
+         *
+         * Ha a sémafájlok nem olvashatók, az ellenőrzés NÉMÁN kimaradt — az eredmény
+         * zöld futás, miközben senki nem vetett össze semmit. Az elavulás így hónapokig
+         * észrevétlen maradhatott: a referencia tíz initdb-fájlt ismert a tizennyolcból.
+         *
+         * Minden környezetben, ahol ez a teszt fut, a könyvtárnak ott kell lennie: a
+         * compose becsatolja a forrásfából (`docker/compose.dev.yml`,
+         * `docker/compose.coverage.yml`), élesben pedig a Dockerfile `COPY . .`-ja
+         * teszi be. Ha mégis hiányzik, azt meg kell tudni — nem elhallgatni.
+         */
+        self::assertNotNull(
+            $current,
+            "Nem olvashatók a sémafájlok: " . \SchemaCheck::initdbDirectory() . "\n"
+            . "Enélkül ez az ellenőrzés vakon futna. Hiányzik a becsatolás?\n"
+            . "  - ./mysql/initdb.d:/miserend/docker/mysql/initdb.d:ro"
+        );
 
         self::assertSame(
             $reference['_meta']['initdb_fingerprint'], $current,
@@ -83,6 +98,18 @@ final class SchemaReferenceTest extends TestCase {
         $result = \SchemaCheck::check();
 
         self::assertArrayHasKey('stale', $result);
+
+        /*
+         * #911: a `stale` akkor is HAMIS, ha nem tudtunk összevetni — a `check()` a két
+         * ujjlenyomat egyezését nézi, és a hiányzó oldalt nem tekinti eltérésnek. Az
+         * alábbi állítás nélkül tehát ez a teszt üresen menne át abban a környezetben,
+         * ahol a legnagyobb szükség volna rá.
+         */
+        self::assertNotNull(
+            \SchemaCheck::initdbFingerprint(),
+            'nincs mivel összevetni: a `stale = false` itt nem jelent semmit'
+        );
+
         self::assertFalse($result['stale'], 'a beversenyzett referencia nem lehet elavult. ' . self::REGENERATE);
     }
 

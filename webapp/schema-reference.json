@@ -3235,20 +3235,28 @@
     }
   },
   "_meta": {
-    "generated_at": "2026-08-24T05:23:33+02:00",
-    "source_schema": "miserend_ref_872",
-    "initdb_fingerprint": "0e7a7451023e81f73e62b23d418801aad4c4bf2501edd9160e93f8729aab08ae",
+    "generated_at": "2026-08-28T07:32:17+02:00",
+    "source_schema": "miserend",
+    "initdb_fingerprint": "bd4127dba86207e7b7d3daf44314890b61caf59eb135dab2abf3ec259ee7dadd",
     "initdb_files": {
       "00-users.sh": "e4f1149c70b9b0b44ce0ba172110ca07ad099fffaf720876e45e8a0a5cb910f8",
       "01-create-database.sql": "dec66da6495a0d5ee007beda9e2be684b104cb4875b12ba0cf21ebae81874385",
-      "02-schema.sql": "40fdcedfd73cc57f8cb24e64c5785c91286de80d22c42700e0704cd42d657b7a",
+      "02-schema.sql": "3afc5a10cfe59d5580ab9ad1f1552f6d72a96dba3cea2e81356cc469f4fe3307",
       "03-migrations.sql": "b17a6da4226a09f95c8249d6886802fe1087b944644f705d75a716a9a562f644",
       "04-attributes-index.sql": "b2cf9ff6b616a8679c944fb6eb09baf6daeaa53793c0395e8d921525a91ea61a",
       "04-mass-languages.sql": "9df189d0de091724f0b3119bd9fc088a5960885e4a35487df11d5a6422c2bcf5",
       "05-data.sh": "5cf4dcd42e89288863792ed219c41937abcca249da22fbbf623d30dcd176874f",
       "06-data-integrity.sql": "d0afff9288b6b7ccd60aae9e9f9e14c903732f4560e7eb7efde299ff946a944a",
       "06-relationship-type-drop.sql": "04ac1538b42e0d9ad1f8106762013c8e9003965b70bc76ae1b27891273da938e",
-      "07-boundaries-iso.sql": "120cd5b6a656e754c8eef74d34415e03d987a09dce6ba998cb5c6ad1604fc03b"
+      "07-boundaries-iso.sql": "120cd5b6a656e754c8eef74d34415e03d987a09dce6ba998cb5c6ad1604fc03b",
+      "08-usage-stats.sql": "f0b63528507eb0edb0caaa309cdbea1278b99ba9f842adfc804a2eda716001bf",
+      "09-suggestion-handler.sql": "f2b92352c0dd219915630f34e77409b97248c6f15400c6add24c7989f80317e0",
+      "10-location-columns-drop.sql": "b096ed0821aa09e1154a2ab8435c3dd2273769b0cede9b9f5b01e7d6e788e732",
+      "11-mass-location.sql": "661365a7fc5adae8892dc7557e6fc3a028e1c0e877110e2e32df252cc1196b4b",
+      "12-mass-external-calendar.sql": "e4cd35ce1096c4f4ca1454aa422b24e8d521f4adfb2fda9be1a1c69c894e8f5c",
+      "13-emails-error-reason.sql": "d104b534204416e523da52989375fda0696d8a4520bd19892664d67d78ab92c0",
+      "15-attributes-unique.sql": "613796ef5bbdc06f736176b57b5e8da288ed40d07ed75858caa8302fb2fbac5b",
+      "16-notification-digest.sql": "3f6e22de9be67f2a753224d108afa56bda1b88d20be26c71f3dbc2c2f20819f2"
     }
   }
 }
