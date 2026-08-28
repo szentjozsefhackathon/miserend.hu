@@ -1111,6 +1111,8 @@ class User {
 					'church_id'      => $churchID,
 					'email_batch_id' => $batchId,
 					'expires_at'     => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+					// #890: a PHP órájával, mint az expires_at — l. a modellt.
+					'created_at'     => date('Y-m-d H:i:s'),
 				]);
 				$churchTokens[$churchID] = $token;
 			}
@@ -1121,6 +1123,8 @@ class User {
 				'church_id'      => null,
 				'email_batch_id' => $batchId,
 				'expires_at'     => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+				// #890: a PHP órájával, mint az expires_at — l. a modellt.
+				'created_at'     => date('Y-m-d H:i:s'),
 			]);
 			$user->churchTokens = $churchTokens;
 			$user->allToken     = $allToken;
@@ -1254,6 +1258,8 @@ class User {
 					'token' => $token, 'uid' => $user->uid, 'church_id' => $churchID,
 					'email_batch_id' => $batchId,
 					'expires_at' => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+					// #890: a PHP órájával, mint az expires_at — l. a modellt.
+					'created_at'     => date('Y-m-d H:i:s'),
 				]);
 				$churchTokens[$churchID] = $token;
 			}
@@ -1262,6 +1268,8 @@ class User {
 				'token' => $allToken, 'uid' => $user->uid, 'church_id' => null,
 				'email_batch_id' => $batchId,
 				'expires_at' => date('Y-m-d H:i:s', strtotime('+3 weeks')),
+				// #890: a PHP órájával, mint az expires_at — l. a modellt.
+				'created_at'     => date('Y-m-d H:i:s'),
 			]);
 
 			$user->responsible['church'] = $churches;

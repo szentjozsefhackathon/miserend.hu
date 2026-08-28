@@ -139,6 +139,9 @@ class Report extends Api {
         $this->remark = new \Eloquent\Remark;
 
         $this->remark->church_id = $this->input['tid'];
+        // #890: a PHP órájával, mint a webes beküldésnél — l. a Html\Remark::pageAdded()
+        // indoklását. Enélkül itt a MySQL `CURRENT_TIMESTAMP` alapértéke sülne el.
+        $this->remark->admindatum = date('Y-m-d H:i:s');
         $this->remark->nev = $this->user->name;
         if(isset($this->user->email))
             $this->remark->email = $this->user->email;

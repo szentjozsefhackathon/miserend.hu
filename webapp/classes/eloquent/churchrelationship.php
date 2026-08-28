@@ -13,6 +13,19 @@ namespace Eloquent;
  */
 class ChurchRelationship extends \Illuminate\Database\Eloquent\Model {
 
+    /*
+     * #890: az `updated_at` oszlopon `ON UPDATE current_timestamp()` van, a `DEFAULT`
+     * pedig NULL — és ez így marad, NEM kell hozzányúlni.
+     *
+     * Ezen a táblán ugyanis EGYÁLTALÁN NINCS UPDATE-útvonal: a kapcsolat módosítása a
+     * #521 óta delete + create (l. `html/church/edit.php`), a `create()` pedig mindkét
+     * időbélyeget beteszi az INSERT-be, PHP órával. Az `ON UPDATE` tehát holt szabály, a
+     * `DEFAULT NULL` pedig sosem sül el.
+     *
+     * FIGYELEM, ha valaki kézi SQL-lel javítja a történelmi adatot: az `updated_at`-et
+     * KÖTELEZŐ beírni a SET-be, különben az `ON UPDATE` a MySQL órájával — a PHP-énál
+     * három órával előrébb járó órával — írja felül.
+     */
     protected $table = 'church_relationships';
 
     /*
