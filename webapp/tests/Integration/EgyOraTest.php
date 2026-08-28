@@ -55,6 +55,7 @@ final class EgyOraTest extends TestCase {
 
     protected function tearDown(): void {
         DB::rollBack();
+        $_REQUEST = [];
     }
 
     private function elteresMasodpercben(?string $belyeg): int {
@@ -110,12 +111,51 @@ final class EgyOraTest extends TestCase {
         );
     }
 
+    /**
+     * #890: az észrevétel `admindatum`-ja ugyanabból az órából, mint a `created_at`.
+     *
+     * Az oszlopon `DEFAULT current_timestamp()` van, és eddig egyik beszúró út sem adta
+     * meg — tehát a MySQL órája töltötte, miközben a `created_at`-et ugyanannál a
+     * beküldésnél az Eloquent írta PHP-ből. Egy beküldésből két, három órával elcsúszott
+     * időbélyeg lett; az éles jellegű adaton 1437 „u" sorból 1435 mutatta ezt.
+     *
+     * Az állítás SZÁNDÉKOSAN a két oszlop egymáshoz mért távolsága, nem a PHP órájához
+     * mért abszolút eltérés. Így akkor is érvényes marad, ha a kapcsolat zónája egyszer
+     * UTC-re vált: a kettőnek attól még együtt kell mozognia. (A PHP órájához mérés
+     * viszont ilyenkor hamis riasztást adna.)
+     */
+    public function testTheRemarkAdminStampSharesTheClockWithCreation(): void {
+        $GLOBALS['user'] = new \User();
+        $_REQUEST = [
+            'leiras' => 'Egy óra teszt — észrevétel szövege.',
+            'email'  => 'egyora-' . bin2hex(random_bytes(3)) . '@example.invalid',
+            'nev'    => 'Teszt Bejelentő',
+        ];
+
+        try {
+            new \Html\Remark(['add', (string) $this->churchId]);
+        } catch (\Throwable $e) {
+            // A levélküldés SMTP nélkül elszállhat — a mentés ettől már megtörtént.
+        }
+
+        $sor = DB::table('remarks')->where('church_id', $this->churchId)
+            ->orderByDesc('id')->first();
+
+        self::assertNotNull($sor, 'nem jött létre az észrevétel');
+
+        $elteres = abs(strtotime((string) $sor->admindatum) - strtotime((string) $sor->created_at));
+
+        self::assertLessThanOrEqual(2, $elteres,
+            'az admindatum és a created_at nem ugyanabból az órából jön '
+            . "(admindatum={$sor->admindatum}, created_at={$sor->created_at})");
+    }
+
     /*
      * A `confessions.timestamp`-re NINCS itt teszt, és ez tudatos.
      *
-     * Ott a `lorawan.php` közvetlen értékadással ír (`$confession->timestamp = …`), amit
-     * a `$fillable` nem szűr — tehát nincs mit elkapni: egy ilyen teszt csak azt mérné,
-     * hogy a MySQL visszaadja-e, amit beírtunk. A `create()`-es út a veszélyes, azt
-     * őrzi a fenti két eset.
+     * Ott a `lorawan.php` az ESZKÖZ saját eseményidejét írja be (`$this->input['time']`,
+     * kötelező és mintára ellenőrzött mező), tehát az oszlop 2025 óta PHP-ből kap értéket
+     * — a `CURRENT_TIMESTAMP` alapérték sosem sül el. Nincs mit javítani és nincs mit
+     * őrizni: egy ilyen teszt csak azt mérné, hogy a MySQL visszaadja-e, amit beírtunk.
      */
 }

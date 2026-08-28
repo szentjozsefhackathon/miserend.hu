@@ -160,6 +160,28 @@ class Remark extends Html {
 
         $remark->church_id = $this->church->id;
         $remark->allapot = 'u';
+
+        /*
+         * #890: az `admindatum`-ot a PHP órája írja, ne a MySQL-é.
+         *
+         * Az oszlopon `DEFAULT current_timestamp()` van, és eddig egyik beszúró út sem
+         * adta meg — tehát a MySQL órája töltötte, az pedig a `+05:00`-s session-zóna
+         * miatt három órával a budapesti falióra előtt jár. Ugyanennek a sornak a
+         * `created_at`-jét viszont az Eloquent írja, PHP-ből: egyetlen beküldésből két,
+         * egymáshoz képest elcsúszott időbélyeg lett. Kimérve: 1437 „u" állapotú sorból
+         * 1435-nél pontosan 10800 másodperc a különbség.
+         *
+         * A mező jelentése a kódból: az utolsó `?remark=modify` beküldés ideje (l. lentebb
+         * a modify-ágat). Új észrevételnél ilyen még nem volt — a mai viselkedést tartom
+         * meg (a keletkezés ideje kerül bele), csak helyes órával. Hogy az „érintetlen"
+         * állapotnak inkább üresnek kellene-e látszania, az tartalmi kérdés, és séma-
+         * módosítás lenne: a #890-ben rákérdeztem.
+         *
+         * A típus itt DATETIME, nem TIMESTAMP: a MySQL nem váltja át, tehát a beírt
+         * karakterlánc marad. A PHP-ból írt érték emiatt akkor is helyes marad, ha a
+         * kapcsolat zónája egyszer UTC-re vált.
+         */
+        $remark->admindatum = date('Y-m-d H:i:s');
         $remark->leiras = \Request::TextRequired('leiras');
         $remark->email = \Request::TextRequired('email');
         $remark->nev = \Request::Text('nev');

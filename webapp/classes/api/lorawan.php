@@ -240,15 +240,15 @@ class LoRaWAN extends Api {
         $confession = new \Eloquent\Confession();
 
         /*
-         * #890: a beérkezés idejét a PHP órája adja.
+         * #890: ez a tábla NEM szorul javításra, és ez nem magától értetődő.
          *
-         * A `$timestamps = false` miatt az Eloquent nem tölti, tehát eddig a MySQL
-         * `CURRENT_TIMESTAMP` alapértéke sült el — az pedig a `+05:00`-s session-zóna
-         * miatt három órával előrébb jár. Az olvasó oldal viszont PHP-ben számol: a
-         * `Church::getConfessionStatusAttribute()` a 20 (ma 2) órás toleranciát
-         * `strtotime()`-mal méri, tehát a bélyeg és a küszöb két külön órából jött.
+         * A `confessions.timestamp` oszlopon ott a `CURRENT_TIMESTAMP` alapérték, a modellen
+         * pedig `$timestamps = false` — ebből az következne, hogy a MySQL órája tölti. Nem
+         * az: lentebb a `timestamp` mindig megkapja az ESZKÖZ saját eseményidejét
+         * (`$this->input['time']`), ami kötelező és mintára ellenőrzött mező. Az alapérték
+         * tehát sosem sül el, és egy „PHP-óra" beállítás itt holt kód lenne — pár sorral
+         * lejjebb úgyis felülíródna.
          */
-        $confession->timestamp = date('Y-m-d H:i:s');
 
         if ($this->input['object']['Mód'] == 1) {
             // #866: a helyesen írt `Status_Door` alakot is elfogadjuk (l. a mezőknél).
