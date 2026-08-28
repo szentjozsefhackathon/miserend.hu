@@ -36,6 +36,20 @@ if (!function_exists('configurationSetEnvironment')) {
 $env = env('MISEREND_WEBAPP_ENVIRONMENT', 'testing');
 configurationSetEnvironment($env);
 
+/*
+ * #890: a `date_default_timezone_set()` a `dbconnect()` ELŐTT kell, hogy legyen.
+ *
+ * A load.php ezt a legelső dolgai közt teszi meg (load.php:12), a teszt-bootstrap
+ * viszont eddig a `dbconnect()` UTÁN — így a kapcsolat születésekor a PHP még a
+ * konténer alapértelmezett UTC-jén állt. A `dbconnect()` most a PHP zónájából
+ * származtatja a munkamenet-zónát, tehát ez a sorrend már nem ízlés kérdése:
+ * fordítva a tesztek UTC-s kapcsolaton futnának, az alkalmazás meg budapestin.
+ *
+ * A régi sorrend nyoma az adatbázisban is látszott: a `crons` sorai a `Cron::init()`
+ * miatt UTC-s PHP-órával születtek, miközben minden más sor budapestivel.
+ */
+date_default_timezone_set('Europe/Budapest');
+
 // Set up database connection for integration tests
 dbconnect();
 
@@ -53,7 +67,6 @@ if (!defined('DOMAIN')) {
     define('DOMAIN', $GLOBALS['config']['path']['domain'] ?? 'http://localhost');
 }
 
-date_default_timezone_set('Europe/Budapest');
 
 /*
  * A `t()` fordító-rövidítést a load.php definiálja, a tesztek viszont nem azt töltik be.

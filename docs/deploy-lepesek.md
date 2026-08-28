@@ -133,6 +133,62 @@ SELECT COUNT(*) FROM information_schema.COLUMNS
 
 ---
 
+### `890-idozona-europe-budapest.sql` — **KARBANTARTÁSI ABLAK KELL, olvasd el végig**
+
+A munkamenet-időzóna `+05:00`-ról `Europe/Budapest`-re áll (`webapp/functions.php`), és a
+történelmi, PHP által írt TIMESTAMP oszlopokat ez a migráció tolja helyre. **A kettő
+együtt jár**: külön-külön futtatva a fél rendszer 3-4 órával elcsúszik.
+
+**Előfeltétel — ezt a deploy ELŐTT nézd meg, nem közben:**
+```sql
+SELECT (SELECT COUNT(*) FROM mysql.time_zone_name)                   AS zonak,
+       CONVERT_TZ('2026-07-15 10:00:00','Europe/Budapest','+05:00')  AS nyar,
+       CONVERT_TZ('2026-01-15 10:00:00','Europe/Budapest','+05:00')  AS tel;
+-- elvárt: zonak > 0, nyar = '2026-07-15 13:00:00', tel = '2026-01-15 14:00:00'
+-- NULL vagy eltérés -> a tz-tábla hiányzik. NE menj tovább, töltsd be:
+--   mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -u root -p mysql
+```
+A MariaDB a tz-táblát CSAK üres adatkönyvtárnál tölti be, a prod deploy pedig soha nem
+üríti a volume-ot — tehát nem lehet feltételezni, hogy megvan. Ha hiányzik, a `CONVERT_TZ`
+NEM hibázik, hanem NULL-t ad; a migráció saját őre emiatt áll meg (ERROR 1048).
+
+**Sorrend (az alkalmazás ÁLLJON a 2-4. lépés alatt):**
+1. friss mentés: `mariadb-dump --single-transaction --databases miserend | gzip > ~/backups/miserend-PRE-890-$(date +%F_%H%M%S).sql.gz`
+2. `docker compose ... stop miserend`, és a hoszt crontab `q=cron` sora kikommentelve
+3. **kód előbb** (a javított `functions.php`-t tartalmazó image induljon el), majd
+4. `docker exec -i mysql mariadb -u root -p miserend < docker/mysql/migrations/890-idozona-europe-budapest.sql`
+5. utóellenőrzés (lent), csak utána `start miserend` és a crontab vissza
+
+**Kell-e még?**
+```sql
+SELECT COUNT(*) FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA='miserend' AND TABLE_NAME='tz_migracio_890';
+-- 0 -> még kell
+-- 1 -> megvolt; a `SELECT * FROM tz_migracio_890` megmondja, mikor és hány sorra
+```
+A migráció **idempotens**: a `tz_migracio_890` napló miatt a második futás nulla sort ír.
+Enélkül nem lenne az — az eltolt időbélyeg ugyanolyan hihető, mint az eredeti.
+
+**Utóellenőrzés, még leállított alkalmazás mellett.** A migráció ELŐTT jegyezd fel néhány
+sor értékét egy `+05:00`-s munkamenetből; utána ugyanannak kell visszajönnie egy
+`Europe/Budapest`-esből:
+```sql
+SET time_zone='Europe/Budapest';
+SELECT MAX(created_at) FROM photos;      -- egyezzen a migráció előtti +05:00-s értékkel
+SELECT MAX(timeout)    FROM tokens;      -- ha ez 3-4 órával korábbi, mindenki kilépett
+SELECT MAX(deadline_at) FROM crons;      -- ha korábbi, egyszerre indul minden cron
+```
+
+Elasticsearch-újraindexelés **nem kell**: a mise-index a `cal_masses.start_date` varchar
+mezőből épül, amihez a migráció nem nyúl, a `crons.lastsuccess_at` pedig vele együtt
+mozdul, tehát az újraindexelési kapu nem billen át. Ez viszont csak akkor igaz, ha a
+kódjavítás és a migráció között NEM futott cron — ezért kell a leállás.
+
+**Amit szándékosan NEM javít:** a DATETIME oszlopokat (`chat.datum`, `user.regdatum`,
+`user.lastlogin`, `user.lastactive`, `remarks.admindatum`, `templomok.moddatum`) és a
+MySQL órájával írt `church_update_tokens.created_at` / `updates.timestamp` oszlopokat.
+Az indoklás a migrációs fájl fejlécében van.
+
 ## Nem SQL, de deploy után kell
 
 ### Séma-referencia újragenerálása

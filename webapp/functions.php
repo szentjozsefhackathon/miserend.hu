@@ -17,12 +17,51 @@ function dbconnect() {
 			'charset' => 'utf8mb4',
 			'collation' => 'utf8mb4_unicode_ci',
 			'prefix' => '',
+			/*
+			 * #890: a munkamenet-zóna ott dől el, ahol a kapcsolat születik.
+			 *
+			 * Eddig `bootEloquent()` UTÁN ment egy `DB::statement("SET time_zone='+05:00'")`.
+			 * Két baja volt. Az egyik, hogy `+05:00` — a PHP `Europe/Budapest`-ben ír
+			 * (load.php), tehát a tárolt pillanat 5 órával a falióra mögé került a helyes
+			 * 1-2 óra helyett. A másik, hogy EGYSZER futott: a Laravel elveszett kapcsolat
+			 * után magától újracsatlakozik (Connection::reconnectIfMissingConnection()), és
+			 * az új kapcsolat már NEM kapta meg a beállítást — mérve `SYSTEM` (=UTC) lett
+			 * belőle, némán, egy harmadik kódolást hozva be. Tipikus alkalom rá a fél órás
+			 * `updateMasses()` újraindexelés.
+			 *
+			 * A `timezone` konfigkulcsot a MySqlConnector::configureTimezone() a `connect()`
+			 * részeként alkalmazza, tehát MINDEN újracsatlakozásnál is lefut.
+			 *
+			 * A zónát a PHP-tól kérdezzük, nem írjuk le másodszor: két helyen karbantartott
+			 * időzónából előbb-utóbb kettő lesz.
+			 */
+			'timezone' => date_default_timezone_get(),
 				], 'default');
 		// Make this Capsule instance available globally via static methods... (optional)
 		$capsule->setAsGlobal();
 		$capsule->bootEloquent();
-		DB::statement("SET time_zone='+05:00';");
 	} catch(PDOException $e) {
+		/*
+		 * #890: az időzóna-hibát NEM szabad elnyelni.
+		 *
+		 * Ha a `mysql.time_zone_*` tábla nincs betöltve, a connector `set time_zone`-ja
+		 * ERROR 1298-cal elszáll. A Laravel ezt `QueryException`-be csomagolja, ami
+		 * `PDOException`-leszármazott (vendor/illuminate/database/QueryException.php) —
+		 * tehát ez a catch eddig lenyelte volna, kiírta volna a hibát a HTML-be, és az
+		 * alkalmazás futott volna tovább SYSTEM (=UTC) zónán. Az a legrosszabb kimenet:
+		 * egy harmadik, néma időrendszer a PHP falióra-értékei mellett.
+		 *
+		 * Megoldás nincs a kódban — a tz-táblát be kell tölteni:
+		 *   mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -u root -p mysql
+		 */
+		if (($e->errorInfo[1] ?? null) === 1298) {
+			throw new \RuntimeException(
+				'#890: a MySQL nem ismeri a(z) "' . date_default_timezone_get() . '" időzónát. '
+				. 'Töltsd be a nevesített időzóna-táblát: '
+				. 'mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -u root -p mysql',
+				0, $e
+			);
+		}
 		echo $e->getMessage();		
 	}
 

@@ -96,7 +96,9 @@ class Crons {
 		 * `OSM::checkBoundaries()` `date('Y-m-d H:i:s')`-szel írja, az esedékességet az
 		 * `osm.php` és a `requeueChurchesWithoutBoundary()` PHP-ben számolt határidőhöz
 		 * méri. Egyedül ez a visszatöltés dolgozott a MySQL órájával — az pedig a
-		 * `+05:00`-s session-zóna miatt HÁROM ÓRÁVAL előrébb jár (#890).
+		 * `+05:00`-s session-zóna miatt HÁROM ÓRÁVAL előrébb járt (#890). A session-zóna
+		 * azóta `Europe/Budapest`, tehát a rés megszűnt; a PHP-horgony viszont marad,
+		 * mert a helyes függés így is ez, és a lenti regressziós teszt is ezt őrzi.
 		 *
 		 * Következmény élesben: a visszatöltött templom három órával frissebbnek látszik
 		 * a valóságosnál. Egy 180 napos ablakban ez kicsi, de a CI-ben mérhető volt: ha a
