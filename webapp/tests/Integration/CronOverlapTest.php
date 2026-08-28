@@ -30,6 +30,10 @@ class CronOverlapTest extends TestCase {
             'password' => $c['password'],
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
+            // #890: ez a kapcsolat megkerüli a `dbconnect()`-et, tehát külön kell
+            // megkapnia a zónát — enélkül a szerver SYSTEM (=UTC) zónáján ülne, és
+            // egy ide tévedő időbélyeg-összehasonlítás némán két órát tévedne.
+            'timezone' => date_default_timezone_get(),
         ], 'masik');
 
         return $capsule->getConnection('masik');
