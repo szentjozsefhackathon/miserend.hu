@@ -12,7 +12,16 @@ class ChurchUpdateToken extends Model {
     public    $incrementing = false;
     protected $keyType    = 'string';
 
-    protected $fillable = ['token', 'uid', 'church_id', 'email_batch_id', 'expires_at'];
+    /*
+     * #890: a `created_at` szándékosan kitölthető.
+     *
+     * A `$timestamps = false` miatt az Eloquent nem tölti, tehát eddig a MySQL
+     * `CURRENT_TIMESTAMP` alapértéke sült el — a MySQL órája viszont a `+05:00`-s
+     * session-zóna miatt három órával előrébb jár a PHP-énál. Ugyanennek a táblának az
+     * `expires_at`-jét a PHP írja: a lejárat és a keletkezés között három óra szakadék
+     * tátongott, pedig egyszerre születnek.
+     */
+    protected $fillable = ['token', 'uid', 'church_id', 'email_batch_id', 'expires_at', 'created_at'];
 
     public $timestamps = false;
 

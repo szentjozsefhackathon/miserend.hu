@@ -239,6 +239,17 @@ class LoRaWAN extends Api {
 
         $confession = new \Eloquent\Confession();
 
+        /*
+         * #890: ez a tábla NEM szorul javításra, és ez nem magától értetődő.
+         *
+         * A `confessions.timestamp` oszlopon ott a `CURRENT_TIMESTAMP` alapérték, a modellen
+         * pedig `$timestamps = false` — ebből az következne, hogy a MySQL órája tölti. Nem
+         * az: lentebb a `timestamp` mindig megkapja az ESZKÖZ saját eseményidejét
+         * (`$this->input['time']`), ami kötelező és mintára ellenőrzött mező. Az alapérték
+         * tehát sosem sül el, és egy „PHP-óra" beállítás itt holt kód lenne — pár sorral
+         * lejjebb úgyis felülíródna.
+         */
+
         if ($this->input['object']['Mód'] == 1) {
             // #866: a helyesen írt `Status_Door` alakot is elfogadjuk (l. a mezőknél).
             $ajto = $this->input['object']['Satus_Door'] ?? $this->input['object']['Status_Door'] ?? null;
