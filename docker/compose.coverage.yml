@@ -10,6 +10,17 @@ services:
       - EXTERNAL_APIS_OFFLINE=1
     volumes:
       - ../webapp:/miserend/webapp
+      # #911: a sémafájlok a CHECKOUTBÓL jöjjenek, ne a beégetett image-ből.
+      #
+      # A séma-referencia ujjlenyomata a `/miserend/docker/mysql/initdb.d`-ből számolódik
+      # (`SchemaCheck::initdbDirectory()`). Ha az az image-ből jön, akkor egy TAG-re épült,
+      # hetekkel korábbi image régi sémafájljait hasonlítjuk a szintén régi, beversenyzett
+      # referenciához — a kettő egyezik, a teszt zöld, és az elavulás észrevétlen marad.
+      # Pontosan ez történt: a referencia tíz fájlt ismert a tizennyolcból, és senki nem
+      # szólt, mert mindkét oldal ugyanazt a nyolcat hiányolta.
+      #
+      # Csak olvasásra kell, és nem kerül semmibe: se build-időbe, se image-méretbe.
+      - ./mysql/initdb.d:/miserend/docker/mysql/initdb.d:ro
       - vendor_data:/miserend/webapp/vendor
       - node_modules_data:/miserend/webapp/node_modules
       - ${TEST_RESULTS_PATH:-..}/test-results:/miserend/test-results
