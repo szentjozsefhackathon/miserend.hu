@@ -19,7 +19,7 @@
     "@angular/material": "21.2.14",
     "@angular/platform-browser": "21.2.19",
     "@angular/platform-browser-dynamic": "21.2.19",
-    "@angular/router": "21.2.19",
+    "@angular/router": "21.2.25",
     "@fullcalendar/angular": "^6.1.21",
     "@fullcalendar/core": "^6.1.21",
     "@fullcalendar/daygrid": "^6.1.21",
