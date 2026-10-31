@@ -152,20 +152,43 @@ A MariaDB a tz-táblát CSAK üres adatkönyvtárnál tölti be, a prod deploy p
 üríti a volume-ot — tehát nem lehet feltételezni, hogy megvan. Ha hiányzik, a `CONVERT_TZ`
 NEM hibázik, hanem NULL-t ad; a migráció saját őre emiatt áll meg (ERROR 1048).
 
-**Sorrend (az alkalmazás ÁLLJON a 2-4. lépés alatt):**
-1. friss mentés: `mariadb-dump --single-transaction --databases miserend | gzip > ~/backups/miserend-PRE-890-$(date +%F_%H%M%S).sql.gz`
-2. `docker compose ... stop miserend`, és a hoszt crontab `q=cron` sora kikommentelve
-3. **kód előbb** (a javított `functions.php`-t tartalmazó image induljon el), majd
+**A #910 és #913 telepítési sorrendje:** ez a migráció abból indul ki, hogy a
+`church_update_tokens.created_at` és az `updates.timestamp` értékét még a MySQL írta.
+A #910 ezt PHP-írásra cseréli. Ezért előbb a #913 időzóna-váltását és migrációját kell
+végrehajtani; a #910 utána, vagy ugyanabban a leállásban telepíthető. Ha a #910 már
+futott a régi `+05:00` kapcsolaton, a két oszlop történelmi adata vegyes: állj meg,
+és különítsd el az azóta keletkezett sorokat a telepítési időpont alapján. A jelenlegi
+migráció ezeket az oszlopokat kihagyja, így ezt az esetet önmagában nem javítja.
+
+**Sorrend (az alkalmazás és a cronok az utóellenőrzés végéig ÁLLJANAK):**
+1. építsd fel vagy töltsd le a javított image-et; még ne indítsd el
+2. `docker compose ... stop miserend`, és a hoszt crontab `q=cron` sora kikommentelve;
+   várd meg a már futó alkalmazás- és cronfolyamatok leállását
+3. friss mentés a leállított írók mellett:
+   `mariadb-dump --single-transaction --databases miserend | gzip > ~/backups/miserend-PRE-890-$(date +%F_%H%M%S).sql.gz`
 4. `docker exec -i mysql mariadb -u root -p miserend < docker/mysql/migrations/890-idozona-europe-budapest.sql`
-5. utóellenőrzés (lent), csak utána `start miserend` és a crontab vissza
+5. utóellenőrzés (lent), továbbra is leállított alkalmazással
+6. csak sikeres ellenőrzés után indítsd a **javított image-et** és engedélyezd a cront;
+   a `docker compose start` önmagában a régi konténert indítaná újra, nem cseréli az image-et
 
 **Kell-e még?**
 ```sql
 SELECT COUNT(*) FROM information_schema.TABLES
  WHERE TABLE_SCHEMA='miserend' AND TABLE_NAME='tz_migracio_890';
 -- 0 -> még kell
--- 1 -> megvolt; a `SELECT * FROM tz_migracio_890` megmondja, mikor és hány sorra
+-- 1 -> a naplótábla létezik; ez önmagában NEM bizonyít sikeres migrációt
 ```
+Ha a naplótábla létezik, ellenőrizd a tartalmát is:
+```sql
+SELECT COUNT(*) AS oszlopok, COUNT(DISTINCT tabla) AS tablak
+FROM tz_migracio_890;
+-- teljes futás után: oszlopok = 53, tablak = 23
+```
+A tábla létrehozása a tranzakció előtt történik, ezért egy hibás futás után üresen is
+megmaradhat. A nulla bejegyzés nem kész migráció; a részlegesen kitöltött napló pedig
+külön vizsgálatot igényel. A sikeres klienskilépést és az alábbi adatellenőrzést is
+meg kell várni.
+
 A migráció **idempotens**: a `tz_migracio_890` napló miatt a második futás nulla sort ír.
 Enélkül nem lenne az — az eltolt időbélyeg ugyanolyan hihető, mint az eredeti.
 
